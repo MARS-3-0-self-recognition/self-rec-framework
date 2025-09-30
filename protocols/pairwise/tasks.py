@@ -3,8 +3,8 @@
 from inspect_ai import task
 from inspect_ai.model import GenerateConfig
 
-from .config import get_summarisation_config, get_qa_config
-from .task import prospective_self_recognition, conversational_self_recognition
+from protocols.pairwise.config import get_summarisation_config, get_qa_config
+from protocols.pairwise.task import prospective_self_recognition, conversational_self_recognition
 
 
 # ============================================================================
@@ -155,3 +155,6 @@ def conversational_qa_recognition_batch(
     )
     task_obj.config = GenerateConfig(logprobs=True, top_logprobs=2, batch=batch_size)
     return task_obj
+
+
+print('asdf')

@@ -1,0 +1,16 @@
+LICENSE
+README.md
+pyproject.toml
+setup.py
+protocols/__init__.py
+protocols/pairwise/__init__.py
+protocols/pairwise/data.py
+protocols/pairwise/scorer.py
+protocols/pairwise/task.py
+protocols/pairwise/tasks.py
+protocols/pairwise/config/__init__.py
+self_rec_framework.egg-info/PKG-INFO
+self_rec_framework.egg-info/SOURCES.txt
+self_rec_framework.egg-info/dependency_links.txt
+self_rec_framework.egg-info/requires.txt
+self_rec_framework.egg-info/top_level.txt

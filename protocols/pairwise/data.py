@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import List, Dict, Any
 
-from .config import PairwiseConfig
+from protocols.pairwise.config import PairwiseConfig
 
 
 def load_dataset(
@@ -36,7 +36,8 @@ def load_dataset(
         - output2: Second output
         - metadata: Dict with correct_answer, ordering, and other info
     """
-    data_dir = Path("data") / dataset_name
+    project_root = Path(__file__).parent.parent.parent
+    data_dir = project_root / "data" / dataset_name
     
     # Load content (articles or questions)
     content_path = data_dir / config.content_file

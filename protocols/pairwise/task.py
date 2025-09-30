@@ -5,9 +5,9 @@ from inspect_ai.dataset import Sample
 from inspect_ai.solver import generate
 from inspect_ai.model import ChatMessageUser, ChatMessageAssistant, GenerateConfig
 
-from .config import PairwiseConfig
-from .scorer import logprob_scorer
-from .data import load_dataset
+from protocols.pairwise.config import PairwiseConfig
+from protocols.pairwise.scorer import logprob_scorer
+from protocols.pairwise.data import load_dataset
 
 
 def prospective_self_recognition(

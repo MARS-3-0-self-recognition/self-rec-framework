@@ -23,6 +23,15 @@ inspect eval protocols/pairwise/tasks.py@prospective_summary_recognition \
     -T dataset_name=cnn \
     -T model_generation_string=test \
     -T alternative_model_generation_string=test
+
+
+inspect eval protocols/pairwise/tasks.py@prospective_summary_recognition \
+    --model fireworks/accounts/fireworks/models/llama-v3p3-70b-instruct \
+    -T model_name=gpt4 \
+    -T alternative_model_name=claude \
+    -T dataset_name=cnn \
+    -T model_generation_string=test \
+    -T alternative_model_generation_string=test
 ```
 
 ### Design Philosophy
@@ -298,7 +307,7 @@ def get_code_generation_config() -> PairwiseConfig:
 
 ### 3. Add to `tasks.py`
 ```python
-from .config import get_code_generation_config
+from protocols.pairwise.config import get_code_generation_config
 
 @task
 def prospective_code_recognition(
@@ -333,8 +342,8 @@ def conversational_code_recognition(
 
 ### 4. Export in `__init__.py`
 ```python
-from .config import get_code_generation_config
-from .tasks import prospective_code_recognition, conversational_code_recognition
+from protocols.pairwise.config import get_code_generation_config
+from protocols.pairwise.tasks import prospective_code_recognition, conversational_code_recognition
 
 __all__ = [
     # ... existing exports ...
