@@ -12,15 +12,35 @@ from .task import prospective_self_recognition, conversational_self_recognition
 # ============================================================================
 
 @task
-def prospective_summary_recognition(model_name: str, alternative_model_name: str, dataset_name: str):
+def prospective_summary_recognition(
+    model_name: str,
+    alternative_model_name: str,
+    dataset_name: str,
+    model_generation_string: str,
+    alternative_model_generation_string: str
+):
     """Prospective self-recognition for article summarization."""
-    return prospective_self_recognition(model_name, alternative_model_name, dataset_name, get_summarisation_config())
+    return prospective_self_recognition(
+        model_name, alternative_model_name, dataset_name,
+        model_generation_string, alternative_model_generation_string,
+        get_summarisation_config()
+    )
 
 
 @task
-def conversational_summary_recognition(model_name: str, alternative_model_name: str, dataset_name: str):
+def conversational_summary_recognition(
+    model_name: str,
+    alternative_model_name: str,
+    dataset_name: str,
+    model_generation_string: str,
+    alternative_model_generation_string: str
+):
     """Conversational self-recognition for article summarization."""
-    return conversational_self_recognition(model_name, alternative_model_name, dataset_name, get_summarisation_config())
+    return conversational_self_recognition(
+        model_name, alternative_model_name, dataset_name,
+        model_generation_string, alternative_model_generation_string,
+        get_summarisation_config()
+    )
 
 
 # ============================================================================
@@ -28,15 +48,35 @@ def conversational_summary_recognition(model_name: str, alternative_model_name: 
 # ============================================================================
 
 @task
-def prospective_qa_recognition(model_name: str, alternative_model_name: str, dataset_name: str):
+def prospective_qa_recognition(
+    model_name: str,
+    alternative_model_name: str,
+    dataset_name: str,
+    model_generation_string: str,
+    alternative_model_generation_string: str
+):
     """Prospective self-recognition for question answering."""
-    return prospective_self_recognition(model_name, alternative_model_name, dataset_name, get_qa_config())
+    return prospective_self_recognition(
+        model_name, alternative_model_name, dataset_name,
+        model_generation_string, alternative_model_generation_string,
+        get_qa_config()
+    )
 
 
 @task
-def conversational_qa_recognition(model_name: str, alternative_model_name: str, dataset_name: str):
+def conversational_qa_recognition(
+    model_name: str,
+    alternative_model_name: str,
+    dataset_name: str,
+    model_generation_string: str,
+    alternative_model_generation_string: str
+):
     """Conversational self-recognition for question answering."""
-    return conversational_self_recognition(model_name, alternative_model_name, dataset_name, get_qa_config())
+    return conversational_self_recognition(
+        model_name, alternative_model_name, dataset_name,
+        model_generation_string, alternative_model_generation_string,
+        get_qa_config()
+    )
 
 
 # ============================================================================
@@ -44,32 +84,74 @@ def conversational_qa_recognition(model_name: str, alternative_model_name: str, 
 # ============================================================================
 
 @task
-def prospective_summary_recognition_deterministic(model_name: str, alternative_model_name: str, dataset_name: str):
+def prospective_summary_recognition_deterministic(
+    model_name: str,
+    alternative_model_name: str,
+    dataset_name: str,
+    model_generation_string: str,
+    alternative_model_generation_string: str
+):
     """Deterministic (temperature=0.0) variant for article summarization."""
-    task_obj = prospective_self_recognition(model_name, alternative_model_name, dataset_name, get_summarisation_config())
-    task_obj.config = GenerateConfig(temperature=0.0, logprobs=True, top_logprobs=5)
+    task_obj = prospective_self_recognition(
+        model_name, alternative_model_name, dataset_name,
+        model_generation_string, alternative_model_generation_string,
+        get_summarisation_config()
+    )
+    task_obj.config = GenerateConfig(temperature=0.0, logprobs=True, top_logprobs=2)
     return task_obj
 
 
 @task
-def conversational_summary_recognition_high_temp(model_name: str, alternative_model_name: str, dataset_name: str, temperature: float = 1.0):
+def conversational_summary_recognition_high_temp(
+    model_name: str,
+    alternative_model_name: str,
+    dataset_name: str,
+    model_generation_string: str,
+    alternative_model_generation_string: str
+):
     """High temperature (1.0) variant for article summarization."""
-    task_obj = conversational_self_recognition(model_name, alternative_model_name, dataset_name, get_summarisation_config())
-    task_obj.config = GenerateConfig(temperature=temperature, logprobs=True, top_logprobs=5)
+    task_obj = conversational_self_recognition(
+        model_name, alternative_model_name, dataset_name,
+        model_generation_string, alternative_model_generation_string,
+        get_summarisation_config()
+    )
+    task_obj.config = GenerateConfig(temperature=1.0, logprobs=True, top_logprobs=2)
     return task_obj
 
 
 @task
-def prospective_summary_recognition_batch(model_name: str, alternative_model_name: str, dataset_name: str, batch_size: int = 100):
+def prospective_summary_recognition_batch(
+    model_name: str,
+    alternative_model_name: str,
+    dataset_name: str,
+    model_generation_string: str,
+    alternative_model_generation_string: str,
+    batch_size: int = 100
+):
     """Batch-optimized variant for large-scale evaluation."""
-    task_obj = prospective_self_recognition(model_name, alternative_model_name, dataset_name, get_summarisation_config())
-    task_obj.config = GenerateConfig(logprobs=True, top_logprobs=5, batch=batch_size)
+    task_obj = prospective_self_recognition(
+        model_name, alternative_model_name, dataset_name,
+        model_generation_string, alternative_model_generation_string,
+        get_summarisation_config()
+    )
+    task_obj.config = GenerateConfig(logprobs=True, top_logprobs=2, batch=batch_size)
     return task_obj
 
 
 @task
-def conversational_qa_recognition_batch(model_name: str, alternative_model_name: str, dataset_name: str, batch_size: int = 100):
+def conversational_qa_recognition_batch(
+    model_name: str,
+    alternative_model_name: str,
+    dataset_name: str,
+    model_generation_string: str,
+    alternative_model_generation_string: str,
+    batch_size: int = 100
+):
     """Batch-optimized conversational QA variant."""
-    task_obj = conversational_self_recognition(model_name, alternative_model_name, dataset_name, get_qa_config())
-    task_obj.config = GenerateConfig(logprobs=True, top_logprobs=5, batch=batch_size)
+    task_obj = conversational_self_recognition(
+        model_name, alternative_model_name, dataset_name,
+        model_generation_string, alternative_model_generation_string,
+        get_qa_config()
+    )
+    task_obj.config = GenerateConfig(logprobs=True, top_logprobs=2, batch=batch_size)
     return task_obj

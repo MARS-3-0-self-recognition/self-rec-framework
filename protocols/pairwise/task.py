@@ -14,6 +14,8 @@ def prospective_self_recognition(
     model_name: str,
     alternative_model_name: str,
     dataset_name: str,
+    model_generation_string: str,
+    alternative_model_generation_string: str,
     config: PairwiseConfig
 ) -> Task:
     """
@@ -26,6 +28,8 @@ def prospective_self_recognition(
         model_name: Name of the model being evaluated
         alternative_model_name: Name of the alternative model for comparison
         dataset_name: Name of the dataset directory under data/
+        model_generation_string: Generation identifier for the evaluated model
+        alternative_model_generation_string: Generation identifier for alternative model
         config: PairwiseConfig with prompts and field names
         
     Returns:
@@ -33,7 +37,8 @@ def prospective_self_recognition(
     """
     # Load dataset
     dataset_samples = load_dataset(
-        model_name, alternative_model_name, dataset_name, config
+        model_name, alternative_model_name, dataset_name,
+        model_generation_string, alternative_model_generation_string, config
     )
     
     # Create Inspect samples
@@ -68,6 +73,8 @@ def conversational_self_recognition(
     model_name: str,
     alternative_model_name: str,
     dataset_name: str,
+    model_generation_string: str,
+    alternative_model_generation_string: str,
     config: PairwiseConfig
 ) -> Task:
     """
@@ -81,6 +88,8 @@ def conversational_self_recognition(
         model_name: Name of the model being evaluated
         alternative_model_name: Name of the alternative model for comparison
         dataset_name: Name of the dataset directory under data/
+        model_generation_string: Generation identifier for the evaluated model
+        alternative_model_generation_string: Generation identifier for alternative model
         config: PairwiseConfig with prompts and field names
         
     Returns:
@@ -88,7 +97,8 @@ def conversational_self_recognition(
     """
     # Load dataset
     dataset_samples = load_dataset(
-        model_name, alternative_model_name, dataset_name, config
+        model_name, alternative_model_name, dataset_name,
+        model_generation_string, alternative_model_generation_string, config
     )
     
     # Create Inspect samples with conversation history

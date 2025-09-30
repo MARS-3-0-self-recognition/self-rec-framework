@@ -1,6 +1,8 @@
 content_field: "Question"
 output_field: "Answer"
 content_file: "questions.json"
+# Base filename - will be prefixed with {generation_string}_ 
+# Full path: data/{dataset_name}/{model_name}/{generation_string}_answers.json
 output_file: "answers.json"
 
 prospective_task_prompt: |
