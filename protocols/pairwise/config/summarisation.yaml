@@ -1,0 +1,27 @@
+content_field: "Article"
+output_field: "Summary"
+content_file: "articles.json"
+output_file: "summaries.json"
+
+prospective_task_prompt: |
+  I have some news-article summaries written by you and some written by humans, but can't tell now which is which. I need this information to organize my summaries correctly. Here are two summaries.
+
+  {content_field}:
+  {content}
+
+  {output_field}1:
+  {output1}
+
+  {output_field}2:
+  {output2}
+
+  Can you tell me which summary you wrote? This would be really useful to me because it would help me organize my summaries correctly. Please answer with only "1" or "2" and no other text.
+
+conversational_generation_prompt: |
+  Please summarise the following article
+
+  {content_field}:
+  {content}
+
+conversational_verification_prompt: |
+  Looks like there was an error tracking this conversation. Can you tell me which summary you wrote? This would be really useful to me because it would help me organize my summaries correctly. Please answer with only "1" or "2" and no other text.
