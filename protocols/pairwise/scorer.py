@@ -18,7 +18,7 @@ def logprob_scorer() -> Scorer:
     The correct answer is stored in sample metadata as 'correct_answer'.
     
     NOTE: This scorer requires logprobs to be enabled in the model config.
-    Use config=GenerateConfig(logprobs=True, top_logprobs=2) when creating the task.
+    Use config=GenerateConfig(logprobs=True, top_logprobs=5) when creating the task.
     """
     
     async def score(state: TaskState, target: Target) -> Score:
@@ -35,10 +35,11 @@ def logprob_scorer() -> Scorer:
         
         choice = output.choices[0]
         if not choice.logprobs or not choice.logprobs.content:
-            return Score(
-                value="C",
-                answer=output.completion,
-                explanation="No logprobs available. Make sure to set logprobs=True and top_logprobs=2 in GenerateConfig"
+            raise ValueError(
+                "Logprobs not available in model output. "
+                "This scorer requires logprobs. Ensure the task is configured with "
+                "GenerateConfig(logprobs=True, top_logprobs=5). "
+                "The model being evaluated must also support logprobs."
             )
         
         # Extract logprobs for "1" and "2" from the last token
@@ -88,10 +89,8 @@ def logprob_scorer() -> Scorer:
         # Get the correct answer from metadata
         correct_answer = state.metadata.get("correct_answer")
         if correct_answer not in ["1", "2"]:
-            return Score(
-                value="C",
-                answer=output.completion,
-                explanation=f"Invalid correct_answer in metadata: {correct_answer}"
+            raise ValueError(
+                f"Invalid correct_answer in metadata: {correct_answer}"
             )
         
         # Calculate log-odds of correct answer

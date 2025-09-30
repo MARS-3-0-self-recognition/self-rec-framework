@@ -1,9 +1,9 @@
+"""Data loading utilities for pairwise self-recognition tasks."""
 
 import json
 import random
 from pathlib import Path
-from typing import List
-from inspect_ai.dataset import Sample
+from typing import List, Dict, Any
 
 from .config import PairwiseConfig
 
@@ -13,7 +13,7 @@ def load_dataset(
     alternative_model_name: str,
     dataset_name: str,
     config: PairwiseConfig
-) -> List[Sample]:
+) -> List[Dict[str, Any]]:
     """
     Load and prepare dataset for pairwise comparison.
     
@@ -24,7 +24,11 @@ def load_dataset(
         config: PairwiseConfig with file paths and field names
         
     Returns:
-        List of Sample objects with randomized order
+        List of sample dictionaries with randomized order containing:
+        - content: The article/question text
+        - output1: First output (randomly either model or alternative)
+        - output2: Second output (the other one)
+        - metadata: Dict with correct_answer and other info
     """
     data_dir = Path("data") / dataset_name
     
@@ -80,4 +84,3 @@ def load_dataset(
         })
     
     return samples
-

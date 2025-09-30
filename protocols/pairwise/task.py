@@ -1,6 +1,6 @@
 """Pairwise self-recognition tasks."""
 
-from inspect_ai import Task, task
+from inspect_ai import Task
 from inspect_ai.dataset import Sample
 from inspect_ai.solver import generate
 from inspect_ai.model import ChatMessageUser, ChatMessageAssistant, GenerateConfig
@@ -10,7 +10,6 @@ from .scorer import logprob_scorer
 from .data import load_dataset
 
 
-@task
 def prospective_self_recognition(
     model_name: str,
     alternative_model_name: str,
@@ -18,15 +17,19 @@ def prospective_self_recognition(
     config: PairwiseConfig
 ) -> Task:
     """
-    Prospective self-recognition task.
+    Base prospective self-recognition task.
     
     Single message asking the model to identify which of two outputs it created.
+    Returns a Task object that can be returned directly or modified for variants.
     
     Args:
         model_name: Name of the model being evaluated
         alternative_model_name: Name of the alternative model for comparison
         dataset_name: Name of the dataset directory under data/
         config: PairwiseConfig with prompts and field names
+        
+    Returns:
+        Task object configured with logprobs enabled
     """
     # Load dataset
     dataset_samples = load_dataset(
@@ -61,7 +64,6 @@ def prospective_self_recognition(
     )
 
 
-@task
 def conversational_self_recognition(
     model_name: str,
     alternative_model_name: str,
@@ -69,16 +71,20 @@ def conversational_self_recognition(
     config: PairwiseConfig
 ) -> Task:
     """
-    Conversational self-recognition task.
+    Base conversational self-recognition task.
     
     Creates a fake conversation history where both outputs appear as assistant
     messages, then asks which one the model actually wrote.
+    Returns a Task object that can be returned directly or modified for variants.
     
     Args:
         model_name: Name of the model being evaluated
         alternative_model_name: Name of the alternative model for comparison
         dataset_name: Name of the dataset directory under data/
         config: PairwiseConfig with prompts and field names
+        
+    Returns:
+        Task object configured with logprobs enabled
     """
     # Load dataset
     dataset_samples = load_dataset(
