@@ -111,8 +111,8 @@ def conversational_self_recognition(
         )
         
         # Build conversation history
-        # First interaction with output1
         messages = [
+            # First interaction with output1
             ChatMessageUser(content=generation_prompt),
             ChatMessageAssistant(content=sample_data["output1"]),
             # Second interaction with output2 (same article/question)

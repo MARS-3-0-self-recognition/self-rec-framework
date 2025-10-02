@@ -19,35 +19,20 @@ Quick run with test data:
 inspect eval protocols/pairwise/tasks.py@prospective_summary_recognition \
     --model anthropic/claude-3-5-sonnet-20241022 \
     -T model_name=claude \
-    -T alternative_model_name=gpt4 \
-    -T dataset_name=cnn \
     -T model_generation_string=test \
-    -T alternative_model_generation_string=test
+    -T alternative_model_name=gpt4 \
+    -T alternative_model_generation_string=test \
+    -T dataset_name=cnn
 
 
 inspect eval protocols/pairwise/tasks.py@prospective_summary_recognition \
     --model fireworks/accounts/fireworks/models/llama-v3p3-70b-instruct \
     -T model_name=gpt4 \
-    -T alternative_model_name=claude \
-    -T dataset_name=cnn \
     -T model_generation_string=test \
-    -T alternative_model_generation_string=test
+    -T alternative_model_name=claude \
+    -T alternative_model_generation_string=test \
+    -T dataset_name=cnn
 ```
-
-### Design Philosophy
-
-This framework emphasizes simplicity and clarity:
-
-1. **Config-driven**: Content types are defined in YAML configs
-2. **Layered tasks**: Base tasks (undecorated) → High-level tasks (@task decorated)
-3. **Simple variants**: Variants modify Task.config directly - no complex patterns
-4. **Fail fast**: Scorer raises exceptions for misconfiguration rather than silent failures
-
-Benefits:
-- **Reusability**: Base tasks work with any content type via config
-- **Clarity**: Each task does one thing and the code is self-explanatory  
-- **Extensibility**: Add new content types by adding a YAML config
-- **Debuggability**: Errors are explicit and informative
 
 ## Task Formats
 
