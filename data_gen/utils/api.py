@@ -6,6 +6,10 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 import time
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class BatchAPIClient(ABC):

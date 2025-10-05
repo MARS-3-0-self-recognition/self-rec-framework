@@ -2,19 +2,37 @@
 
 Batch inference scripts for generating model outputs across multiple APIs.
 
+## Setup
+
+Create a .env file in the project root:
+
+```bash
+OPENAI_API_KEY="your-key-here"
+ANTHROPIC_API_KEY="your-key-here"
+TOGETHER_API_KEY="your-key-here"
+FIREWORKS_API_KEY="your-key-here"
+FIREWORKS_ACCOUNT_ID="your-account-here"
+```
+
+Install dependencies:
+```bash
+pip install openai anthropic together fireworks-ai python-dotenv pyyaml requests
+```
+
+
 ## Quick Start
 
 ```bash
 # Send batch request
 python -m data_gen.simple_response.send \
-    --model openai/gpt-4 \
-    --data cnn \
+    --model fireworks/accounts/fireworks/models/llama-v3p3-70b-instruct \
+    --data cnn_debug \
     --generation_config data_gen/simple_response/config/simple_config.yaml
 
 # Check and download results
 python -m data_gen.simple_response.receive \
-    --model openai/gpt-4 \
-    --data cnn \
+    --model fireworks/accounts/fireworks/models/llama-v3p3-70b-instruct \
+    --data cnn_debug \
     --generation_config data_gen/simple_response/config/simple_config.yaml
 ```
 
@@ -68,7 +86,7 @@ data/{dataset}/gpt-4/
 
 **Model format:** `{api}/{model_path}`
 
-- OpenAI: `openai/gpt-4`, `openai/gpt-3.5-turbo`
+- OpenAI: `fireworks/accounts/fireworks/models/llama-v3p3-70b-instruct`, `openai/gpt-3.5-turbo`
 - Anthropic: `anthropic/claude-sonnet-4-5`, `anthropic/claude-opus-4`
 - Fireworks: `fireworks/accounts/fireworks/models/llama-v3p3-70b-instruct`
 - Together: `together/meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo`
