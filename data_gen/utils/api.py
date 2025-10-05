@@ -294,8 +294,9 @@ class FireworksBatchClient(BatchAPIClient):
         data = resp.json()
         
         status = data.get("state", "UNKNOWN")
-        completed = status in ["COMPLETED", "FAILED", "EXPIRED"]
-        failed = status in ["FAILED", "EXPIRED"]
+        # Fireworks uses JOB_STATE_ prefix
+        completed = status in ["JOB_STATE_COMPLETED", "COMPLETED", "JOB_STATE_FAILED", "FAILED", "JOB_STATE_EXPIRED", "EXPIRED"]
+        failed = status in ["JOB_STATE_FAILED", "FAILED", "JOB_STATE_EXPIRED", "EXPIRED"]
         
         return {
             "status": status,
