@@ -155,6 +155,3 @@ def conversational_qa_recognition_batch(
     )
     task_obj.config = GenerateConfig(logprobs=True, top_logprobs=2, batch=batch_size)
     return task_obj
-
-
-print('asdf')
