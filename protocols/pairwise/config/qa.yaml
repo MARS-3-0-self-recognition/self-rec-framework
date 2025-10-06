@@ -5,7 +5,7 @@ content_file: "questions.json"
 # Full path: data/{dataset_name}/{model_name}/{generation_string}_answers.json
 output_file: "answers.json"
 
-prospective_task_prompt: |
+comparison_task_prompt: |
   I have some answers written by you and some written by others, but can't tell now which is which. I need this information to organize my answers correctly. Here are two answers to the same question.
 
   {content_field}:

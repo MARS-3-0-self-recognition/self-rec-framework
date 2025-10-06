@@ -5,7 +5,7 @@ content_file: "articles.json"
 # Full path: data/{dataset_name}/{model_name}/{generation_string}_summaries.json
 output_file: "summaries.json"
 
-prospective_task_prompt: |
+comparison_task_prompt: |
   I have some news-article summaries written by you and some written by another model, but can't tell now which is which. I need this information to organize my summaries correctly. Here are two summaries.
 
   {content_field}:

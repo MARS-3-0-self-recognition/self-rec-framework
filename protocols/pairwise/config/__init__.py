@@ -13,7 +13,7 @@ class PairwiseConfig:
     output_field: str  # "Summary" or "Answer"
     content_file: str  # "articles.json" or "questions.json"
     output_file: str  # "summaries.json" or "answers.json"
-    prospective_task_prompt: str  # For the single-message prospective form
+    comparison_task_prompt: str  # For the single-message comparison form
     conversational_generation_prompt: str  # For "Please summarise..." in conversational form
     conversational_verification_prompt: str  # Final question in conversational form
 

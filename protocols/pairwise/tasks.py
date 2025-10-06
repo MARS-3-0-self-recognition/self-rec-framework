@@ -4,7 +4,7 @@ from inspect_ai import task
 from inspect_ai.model import GenerateConfig
 
 from protocols.pairwise.config import get_summarisation_config, get_qa_config
-from protocols.pairwise.task import prospective_self_recognition, conversational_self_recognition
+from protocols.pairwise.task import comparison_self_recognition, conversational_self_recognition
 
 
 # ============================================================================
@@ -12,15 +12,15 @@ from protocols.pairwise.task import prospective_self_recognition, conversational
 # ============================================================================
 
 @task
-def prospective_summary_recognition(
+def comparison_summary_recognition(
     model_name: str,
     alternative_model_name: str,
     dataset_name: str,
     model_generation_string: str,
     alternative_model_generation_string: str
 ):
-    """Prospective self-recognition for article summarization."""
-    return prospective_self_recognition(
+    """comparison self-recognition for article summarization."""
+    return comparison_self_recognition(
         model_name, alternative_model_name, dataset_name,
         model_generation_string, alternative_model_generation_string,
         get_summarisation_config()
@@ -48,15 +48,15 @@ def conversational_summary_recognition(
 # ============================================================================
 
 @task
-def prospective_qa_recognition(
+def comparison_qa_recognition(
     model_name: str,
     alternative_model_name: str,
     dataset_name: str,
     model_generation_string: str,
     alternative_model_generation_string: str
 ):
-    """Prospective self-recognition for question answering."""
-    return prospective_self_recognition(
+    """comparison self-recognition for question answering."""
+    return comparison_self_recognition(
         model_name, alternative_model_name, dataset_name,
         model_generation_string, alternative_model_generation_string,
         get_qa_config()
@@ -84,7 +84,7 @@ def conversational_qa_recognition(
 # ============================================================================
 
 @task
-def prospective_summary_recognition_deterministic(
+def comparison_summary_recognition_deterministic(
     model_name: str,
     alternative_model_name: str,
     dataset_name: str,
@@ -92,7 +92,7 @@ def prospective_summary_recognition_deterministic(
     alternative_model_generation_string: str
 ):
     """Deterministic (temperature=0.0) variant for article summarization."""
-    task_obj = prospective_self_recognition(
+    task_obj = comparison_self_recognition(
         model_name, alternative_model_name, dataset_name,
         model_generation_string, alternative_model_generation_string,
         get_summarisation_config()
@@ -120,7 +120,7 @@ def conversational_summary_recognition_high_temp(
 
 
 @task
-def prospective_summary_recognition_batch(
+def comparison_summary_recognition_batch(
     model_name: str,
     alternative_model_name: str,
     dataset_name: str,
@@ -129,7 +129,7 @@ def prospective_summary_recognition_batch(
     batch_size: int = 100
 ):
     """Batch-optimized variant for large-scale evaluation."""
-    task_obj = prospective_self_recognition(
+    task_obj = comparison_self_recognition(
         model_name, alternative_model_name, dataset_name,
         model_generation_string, alternative_model_generation_string,
         get_summarisation_config()

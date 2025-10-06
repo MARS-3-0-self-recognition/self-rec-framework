@@ -5,40 +5,40 @@ Tests whether models can identify their own outputs when shown two alternatives 
 ## Quick Start
 
 ```bash
-inspect eval protocols/pairwise/tasks.py@prospective_summary_recognition \
+inspect eval protocols/pairwise/tasks.py@comparison_summary_recognition \
     --model anthropic/claude-3-5-sonnet-20241022 \
-    -T model_name=claude \
-    -T model_generation_string=test \
+    -T model_name=anthropic--claude-3-5-sonnet-20241022 \
+    -T model_generation_string=simple_config \
     -T alternative_model_name=gpt4 \
-    -T alternative_model_generation_string=test \
+    -T alternative_model_generation_string=simple_config \
     -T dataset_name=cnn
 
-inspect eval protocols/pairwise/tasks.py@prospective_summary_recognition \
+inspect eval protocols/pairwise/tasks.py@comparison_summary_recognition \
     --model fireworks/accounts/fireworks/models/llama-v3p3-70b-instruct \
     -T model_name=gpt4 \
-    -T model_generation_string=test \
-    -T alternative_model_name=claude \
-    -T alternative_model_generation_string=test \
+    -T model_generation_string=pirate_config \
+    -T alternative_model_name=anthropic--claude-3-5-sonnet-20241022 \
+    -T alternative_model_generation_string=pirate_config \
     -T dataset_name=cnn
 ```
 
 ## Task Types
 
-**Prospective**: Direct question - "Here are two outputs, which did you write?"
+**comparison**: Direct question - "Here are two outputs, which did you write?"
 
 **Conversational**: Fake conversation history with both outputs as assistant messages, then ask which one was actually written by the model.
 
 ## Available Tasks
 
-- `prospective_summary_recognition` - Article summarization
+- `comparison_summary_recognition` - Article summarization
 - `conversational_summary_recognition` - Article summarization (conversational)
-- `prospective_qa_recognition` - Question answering
+- `comparison_qa_recognition` - Question answering
 - `conversational_qa_recognition` - Question answering (conversational)
 
 **Variants:**
-- `prospective_summary_recognition_deterministic` - temp=0.0
+- `comparison_summary_recognition_deterministic` - temp=0.0
 - `conversational_summary_recognition_high_temp` - temp=1.0
-- `prospective_summary_recognition_batch` - Batch processing
+- `comparison_summary_recognition_batch` - Batch processing
 - `conversational_qa_recognition_batch` - Batch processing (conversational)
 
 ## Data Format
@@ -72,7 +72,7 @@ inspect eval protocols/pairwise/tasks.py@conversational_qa_recognition \
     -T alternative_model_generation_string=temp0
 
 # Batch mode
-inspect eval protocols/pairwise/tasks.py@prospective_summary_recognition_batch \
+inspect eval protocols/pairwise/tasks.py@comparison_summary_recognition_batch \
     --model openai/gpt-4 \
     -T model_name=gpt-4 \
     -T alternative_model_name=claude-3-5-sonnet \
@@ -84,5 +84,5 @@ inspect eval protocols/pairwise/tasks.py@prospective_summary_recognition_batch \
 
 1. Create `config/{type}.yaml` with prompts and field names
 2. Add loader function in `config/__init__.py`
-3. Add task functions in `tasks.py` using `prospective_self_recognition()` or `conversational_self_recognition()`
+3. Add task functions in `tasks.py` using `comparison_self_recognition()` or `conversational_self_recognition()`
 4. Export in `__init__.py`

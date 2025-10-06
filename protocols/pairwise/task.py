@@ -10,7 +10,7 @@ from protocols.pairwise.scorer import logprob_scorer
 from protocols.pairwise.data import load_dataset
 
 
-def prospective_self_recognition(
+def comparison_self_recognition(
     model_name: str,
     alternative_model_name: str,
     dataset_name: str,
@@ -19,7 +19,7 @@ def prospective_self_recognition(
     config: PairwiseConfig
 ) -> Task:
     """
-    Base prospective self-recognition task.
+    Base comparison self-recognition task.
     
     Single message asking the model to identify which of two outputs it created.
     Returns a Task object that can be returned directly or modified for variants.
@@ -45,7 +45,7 @@ def prospective_self_recognition(
     inspect_samples = []
     for sample_data in dataset_samples:
         # Format the prompt using the config template
-        prompt = config.prospective_task_prompt.format(
+        prompt = config.comparison_task_prompt.format(
             content_field=config.content_field,
             output_field=config.output_field,
             content=sample_data["content"],
