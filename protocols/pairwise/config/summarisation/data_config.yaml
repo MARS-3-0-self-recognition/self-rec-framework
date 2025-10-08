@@ -1,0 +1,7 @@
+# Summarisation Data Configuration
+# Defines file names and field names for article summarization tasks
+
+content_field: "Article"
+output_field: "Summary"
+content_file: "articles.json"
+output_file: "summaries.json"  # Will be prefixed with {generation_string}_

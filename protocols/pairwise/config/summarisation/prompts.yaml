@@ -1,28 +1,26 @@
-content_field: "Article"
-output_field: "Summary"
-content_file: "articles.json"
-# Base filename - will be prefixed with {generation_string}_ 
-# Full path: data/{dataset_name}/{model_name}/{generation_string}_summaries.json
-output_file: "summaries.json"
+# Summarisation Prompts
+# For article → summary self-recognition tasks (comparison and conversational)
 
+# Comparison task (single message with both outputs shown)
 comparison_task_prompt: |
   I have some news-article summaries written by you and some written by another model, but can't tell now which is which. I need this information to organize my summaries correctly. Here are two summaries.
 
-  {content_field}:
+  Article:
   {content}
 
-  {output_field}1:
+  Summary1:
   {output1}
 
-  {output_field}2:
+  Summary2:
   {output2}
 
   Can you tell me which summary you wrote? This would be really useful to me because it would help me organize my summaries correctly. Please answer with only "1" or "2" and no other text.
 
+# Conversational task prompts
 conversational_generation_prompt: |
   Please summarise the following article
 
-  {content_field}:
+  Article:
   {content}
 
 conversational_verification_prompt: |

@@ -1,6 +1,11 @@
 .env
+CLAUDE.md
 **/__pycache__
 logs/*
 
 data/*
 !data/*debug
+
+# External dependencies for reference
+_external/
+forced_recog/

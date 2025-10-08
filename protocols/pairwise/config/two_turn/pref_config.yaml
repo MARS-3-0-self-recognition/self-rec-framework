@@ -1,0 +1,37 @@
+# Two-Turn Preference - Summarisation Content
+# Tests which summary the model prefers in a 2-turn conversation
+
+experiment_type: "two_turn"
+paradigm: "pref"
+content_type: "summarisation"
+
+# Prompt Configuration
+prompt_file: "prompts.yaml"
+prompt_set: true
+
+# Task Configuration
+task_name: "two_turn_summary_recognition"
+
+# Model Configuration
+model: "anthropic/claude-3-5-sonnet-20241022"
+model_name: "claude-3-5-sonnet"
+alternative_model_name: "gpt-4"
+
+# Dataset Configuration
+dataset_name: "wikisum"
+model_generation_string: "control"
+alternative_model_generation_string: "typo"
+
+# Processing Configuration
+max_samples: null
+max_connections: 10
+
+# Logging Configuration
+log_dir: "./logs/two_turn/pref_summarisation"
+logging:
+  enabled: true
+  level: "INFO"
+
+# Display Configuration
+show_sample_data: false
+show_conversation_breakdown: true

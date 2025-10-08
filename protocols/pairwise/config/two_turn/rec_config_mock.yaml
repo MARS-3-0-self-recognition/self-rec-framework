@@ -1,0 +1,37 @@
+# Two-Turn Recognition - Mock/Test Mode
+# For testing the pipeline
+
+experiment_type: "two_turn"
+paradigm: "rec"
+content_type: "summarisation"
+
+# Prompt Configuration
+prompt_file: "prompts.yaml"
+prompt_set: true
+
+# Task Configuration
+task_name: "two_turn_summary_recognition"
+
+# Model Configuration - Mock
+model: "mockllm/model"
+model_name: "mock_model"
+alternative_model_name: "mock_alternative"
+
+# Dataset Configuration
+dataset_name: "test_2t"
+model_generation_string: "control"
+alternative_model_generation_string: "treatment"
+
+# Processing Configuration
+max_samples: 4
+max_connections: 1
+
+# Logging Configuration
+log_dir: "./logs/two_turn/rec_mock"
+logging:
+  enabled: true
+  level: "DEBUG"
+
+# Display Configuration
+show_sample_data: true
+show_conversation_breakdown: true

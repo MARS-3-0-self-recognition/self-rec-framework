@@ -1,0 +1,157 @@
+feat: Integrate 2T experimental design with inspect-ai and hierarchical config structure
+
+This commit integrates the Two-Turn (2T) experimental design from forced_recog
+into the new inspect-ai framework with a hierarchical configuration structure.
+
+## Integration Summary
+
+### New 2T Task Implementation
+- Added two_turn_summary_recognition() task in protocols/pairwise/tasks.py
+- Added two_turn_summary_recognition_deterministic() variant
+- Creates 2-turn conversation history using ChatMessageUser/ChatMessageAssistant
+- Supports both recognition (rec) and preference (pref) paradigms
+- Uses inspect-ai's GenerateConfig for automatic logprob handling
+
+### Hierarchical Config Structure
+Following forced_recog pattern, configs are now organized by experiment type:
+
+**protocols/pairwise/config/**
+├── qa/                          # Question-answering experiments
+│   ├── prompts.yaml            # QA-specific prompts
+│   └── data_config.yaml        # QA data settings
+├── summarisation/               # Summarisation experiments
+│   ├── prompts.yaml            # Summarisation prompts
+│   └── data_config.yaml        # Summarisation data settings
+└── two_turn/                    # Two-turn summarisation experiments
+    ├── prompts.yaml            # 2T prompts (system, user, detection)
+    ├── rec_config.yaml         # Recognition paradigm
+    ├── pref_config.yaml        # Preference paradigm
+    └── rec_config_mock.yaml    # Testing/mock mode
+
+**Key Design:**
+- Three separate, non-overlapping experiment types
+- Prompts separated from experiment settings
+- Each directory is self-contained with own prompts and data config
+- two_turn is specifically for summarisation (not a generic wrapper)
+
+### Config Loader (protocols/pairwise/config/config_loader.py)
+New hierarchical configuration loader that:
+- Automatically loads and merges prompt files with experiment configs
+- Provides methods to extract prompts: get_system_prompt(), get_detection_prompt(), get_user_prompt_template()
+- Paradigm-aware: automatically selects rec_detection or pref_detection based on config
+- Supports both absolute and relative config paths
+- Fallback to defaults if prompts missing
+
+### Runner Scripts (scripts/)
+
+**run_2t_experiment.py**
+- Main script to run single 2T experiments
+- Supports both IDE mode (hardcoded config) and CLI mode (config as argument)
+- Uses hierarchical config loader for automatic prompt merging
+- Builds and executes inspect eval commands
+- Default: protocols/pairwise/config/two_turn/rec_config.yaml
+
+**run_all_2t_experiments.py**
+- Batch runner for multiple experiments
+- Supports sequential and parallel execution (--parallel --workers N)
+- Dry-run mode (--dry-run) to preview execution
+- Summary statistics and error reporting
+- Default directory: protocols/pairwise/config/two_turn/
+
+**convert_forced_recog_data.py**
+- Utility to convert old CSV data (control/treatment) to new JSON format
+- Creates UUID mappings and properly structured data directories
+- Supports custom field names and file names
+- Helps migrate existing forced_recog experiments
+
+### Documentation
+
+**INTEGRATION_SUMMARY.md**
+- Technical details of 2T integration
+- Comparison of old (forced_recog) vs new (inspect-ai) pipeline
+- Usage examples and migration guide
+
+**CONFIG_RESTRUCTURE_SUMMARY.md**
+- Detailed explanation of hierarchical config structure
+- Benefits and design decisions
+- Migration guide from flat to hierarchical configs
+
+**protocols/pairwise/CONFIG_STRUCTURE.md**
+- Visual quick reference for config organization
+- Common workflows and patterns
+- Config keys reference
+
+**protocols/pairwise/config/README.md**
+- Complete config system documentation
+- Usage examples and best practices
+- API reference for ConfigLoader
+
+**protocols/pairwise/config/STRUCTURE.md**
+- Simple overview of three experiment types
+- Quick usage guide
+- Prompt file structure reference
+
+**scripts/README.md**
+- Comprehensive guide to running experiments
+- Data format requirements
+- Task variants and parameters
+- Troubleshooting section
+
+**scripts/QUICK_START.md**
+- Minimal quick-start guide
+- Common tasks and workflows
+- TL;DR examples
+
+### Updated Files
+
+**protocols/pairwise/config/__init__.py**
+- Added exports for ConfigLoader, load_experiment_config, load_prompts_from_config
+- Maintains backward compatibility with PairwiseConfig dataclass
+
+**protocols/pairwise/tasks.py**
+- Added two_turn_summary_recognition task
+- Added two_turn_summary_recognition_deterministic variant
+- Updated imports to include get_two_turn_config
+
+**.gitignore**
+- Added common ignore patterns for logs, data, and temp files
+
+**uv.lock**
+- Updated dependencies after uv sync
+
+## Migration from forced_recog
+
+The new structure provides:
+- Built-in logprob handling (no manual extraction)
+- Automatic conversation formatting via inspect-ai
+- Integrated scoring and metrics
+- Cleaner separation of prompts and experiment settings
+- Easier prompt iteration (edit once, affects all experiments)
+- Better organization (experiment-type directories)
+
+## Breaking Changes
+
+None - this is additive. Existing comparison and conversational tasks remain unchanged.
+
+## Usage
+
+```bash
+# Run single 2T experiment (IDE mode - uses default config)
+python scripts/run_2t_experiment.py
+
+# Run with specific config (CLI mode)
+uv run python scripts/run_2t_experiment.py \
+    --config protocols/pairwise/config/two_turn/rec_config.yaml
+
+# Batch run all configs in directory
+python scripts/run_all_2t_experiments.py --parallel --workers 4
+
+# Convert old forced_recog data
+python scripts/convert_forced_recog_data.py \
+    --input forced_recog/results_and_data/experiments/WikiSum/experiment_dir \
+    --output data/wikisum \
+    --model-name claude-3-5-sonnet \
+    --alternative-model-name gpt-4
+```
+
+Co-authored-by: Claude (Anthropic)

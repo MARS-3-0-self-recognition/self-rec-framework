@@ -1,0 +1,7 @@
+# Question-Answering Data Configuration
+# Defines file names and field names for QA tasks
+
+content_field: "Question"
+output_field: "Answer"
+content_file: "questions.json"
+output_file: "answers.json"  # Will be prefixed with {generation_string}_

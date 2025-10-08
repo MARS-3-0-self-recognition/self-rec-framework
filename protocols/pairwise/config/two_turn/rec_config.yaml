@@ -1,0 +1,37 @@
+# Two-Turn Recognition - Summarisation Content
+# Tests if models can recognize their own summaries in a 2-turn conversation
+
+experiment_type: "two_turn"
+paradigm: "rec"
+content_type: "summarisation"  # Uses summarisation prompts and data config
+
+# Prompt Configuration
+prompt_file: "prompts.yaml"  # Relative to two_turn directory
+prompt_set: true
+
+# Task Configuration
+task_name: "two_turn_summary_recognition"
+
+# Model Configuration
+model: "anthropic/claude-3-5-sonnet-20241022"
+model_name: "claude-3-5-sonnet"
+alternative_model_name: "gpt-4"
+
+# Dataset Configuration
+dataset_name: "wikisum"
+model_generation_string: "control"
+alternative_model_generation_string: "typo"
+
+# Processing Configuration
+max_samples: null
+max_connections: 10
+
+# Logging Configuration
+log_dir: "./logs/two_turn/rec_summarisation"
+logging:
+  enabled: true
+  level: "INFO"
+
+# Display Configuration
+show_sample_data: false
+show_conversation_breakdown: true
