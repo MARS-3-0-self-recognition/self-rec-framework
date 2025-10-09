@@ -9,3 +9,4 @@ data/*
 # External dependencies for reference
 _external/
 forced_recog/
+commit_msg_temp.txt
