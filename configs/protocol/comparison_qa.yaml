@@ -1,0 +1,5 @@
+_target_: src.protocols.pairwise.solvers.pairwise_comparison
+
+template_path: prompts/pairwise/qa/comparison.txt
+content_field: Question
+output_field: Answer

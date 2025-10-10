@@ -1,0 +1,5 @@
+name: cnn
+content_file: articles.json
+output_file: summaries.json
+content_field: Article
+output_field: Summary
