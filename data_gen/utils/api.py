@@ -198,7 +198,7 @@ class AnthropicBatchClient(BatchAPIClient):
         return {
             "batch_id": batch.id,
             "status": batch.processing_status,
-            "created_at": batch.created_at
+            "created_at": batch.created_at.isoformat() if batch.created_at else None
         }
     
     def get_status(self, batch_id: str) -> Dict[str, Any]:
