@@ -2313,6 +2313,7 @@ dependencies = [
 [package.optional-dependencies]
 dev = [
     { name = "pre-commit" },
+    { name = "ruff" },
 ]
 
 [package.metadata]
@@ -2326,6 +2327,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.1.1" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "requests", specifier = ">=2.32.5" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.9.10" },
 ]
 provides-extras = ["dev"]
 
