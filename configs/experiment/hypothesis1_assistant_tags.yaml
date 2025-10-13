@@ -1,0 +1,26 @@
+# Hypothesis 1: Assistant tags help with recognition
+# Test with and without priming (4 conditions total)
+
+defaults:
+  - pairwise_base
+  - _self_
+
+# This is a placeholder - actual assistant tags protocol to be implemented
+# For now, uses comparison protocol as example
+
+# Sweep over priming conditions
+priming: true  # Override with priming=false
+
+# Model comparison
+model:
+  short_name: claude
+
+alternative_model:
+  short_name: gpt4
+
+# Use consistent generation configs
+model_gen_string: temp0
+alternative_gen_string: temp0
+
+# Logging
+log_dir: logs/hypothesis1

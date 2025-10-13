@@ -1,0 +1,7 @@
+# Comparison protocol: single message with both outputs
+
+_target_: src.protocols.pairwise.solvers.pairwise_comparison
+
+template_path: prompts/pairwise/summarization/comparison.txt
+content_field: Article
+output_field: Summary

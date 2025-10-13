@@ -1,0 +1,8 @@
+# Conversational protocol: fake conversation history with both outputs
+
+_target_: src.protocols.pairwise.solvers.pairwise_conversational
+
+generation_template_path: prompts/pairwise/summarization/generation.txt
+verification_template_path: prompts/pairwise/summarization/verification.txt
+content_field: Article
+output_field: Summary

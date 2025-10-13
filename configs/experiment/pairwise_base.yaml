@@ -1,0 +1,22 @@
+# Base pairwise recognition experiment
+# Override specific components via CLI: python run.py model=gpt4 alternative_model=llama70b
+
+defaults:
+  - /model: claude
+  - /model@alternative_model: gpt4  # Load into alternative_model namespace
+  - /dataset: cnn
+  - /protocol: comparison
+  - /scorer: logprob
+  - _self_
+
+# Generation strings for loading outputs
+model_gen_string: temp0
+alternative_gen_string: temp0
+
+# Generate config
+logprobs: true
+top_logprobs: 2
+temperature: null  # Use model default
+
+# Logging
+log_dir: logs

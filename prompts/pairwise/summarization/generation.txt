@@ -1,0 +1,4 @@
+Please summarise the following article
+
+{content_field}:
+{content}
