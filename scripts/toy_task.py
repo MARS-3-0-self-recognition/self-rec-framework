@@ -13,6 +13,7 @@ def identity_scorer():
     async def score(state: TaskState, target: Target) -> Score:
         return Score(
             value=0,
+            uuid=state.metadata["uuid"],
             answer=state.output.completion,
         )
 
