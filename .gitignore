@@ -4,3 +4,5 @@ logs/*
 
 data/*
 !data/*debug
+
+*.egg-info

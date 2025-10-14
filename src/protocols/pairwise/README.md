@@ -4,20 +4,22 @@ Tests whether models can identify their own outputs when shown two alternatives 
 
 ## Quick Start
 
+NOTE: `model_name`s are short, see `helpers/model_names.py`.
+
 ```bash
-inspect eval protocols/pairwise/tasks.py@comparison_self_recognition \
-    --model anthropic/claude-3-5-sonnet-20241022 \
-    -T model_name=anthropic--claude-3-5-sonnet-20241022 \
+inspect eval src/protocols/pairwise/tasks.py@comparison_self_recognition \
+    -T model_name=3-5-sonnet \
     -T model_generation_string=simple_config \
-    -T alternative_model_name=gpt4 \
-    -T alternative_model_generation_string=simple_config \
-    -T dataset_name=cnn
+    -T alternative_model_name=3-5-sonnet \
+    -T alternative_model_generation_string=pirate_style_config \
+    -T pairwise_config_string=summarisation \
+    -T dataset_name=cnn_debug
 
 inspect eval protocols/pairwise/tasks.py@conversational_self_recognition \
-    --model fireworks/accounts/fireworks/models/llama-v3p3-70b-instruct \
-    -T model_name=gpt4 \
+    -T model_name=Qwen3-8B \
     -T model_generation_string=pirate_config \
-    -T alternative_model_name=anthropic--claude-3-5-sonnet-20241022 \
+    -T alternative_model_name=3-5-sonnet \
     -T alternative_model_generation_string=pirate_config \
-    -T dataset_name=cnn
+    -T dataset_name=toy_lennie \
+    -T pairwise_config_string=qa
 ```

@@ -2,7 +2,7 @@
 
 from typing import List, Dict, Any
 
-from helpers.utils import data_dir, load_json, load_rollout_json
+from src.helpers.utils import data_dir, load_json, load_rollout_json
 
 
 def load_dataset(
@@ -34,7 +34,7 @@ def load_dataset(
         - metadata: Dict with correct_answer, ordering, and other info
     """
     # Load content (articles or questions)
-    contents = load_json(data_dir() / "input.json")
+    contents = load_json(data_dir() / dataset_name / "input.json")
 
     model_outputs = load_rollout_json(dataset_name, model_name, model_generation_string)
     alt_outputs = load_rollout_json(

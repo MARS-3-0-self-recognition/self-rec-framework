@@ -1,2 +1,0 @@
-inspect-ai>=0.3.134
-pre-commit>=4.3.0

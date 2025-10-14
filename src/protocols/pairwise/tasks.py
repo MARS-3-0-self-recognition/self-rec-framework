@@ -5,9 +5,10 @@ from inspect_ai.dataset import Sample
 from inspect_ai.solver import generate
 from inspect_ai.model import ChatMessageUser, ChatMessageAssistant, GenerateConfig
 
-from protocols.pairwise.config import load_config
-from protocols.pairwise.scorer import logprob_scorer
-from protocols.pairwise.data import load_dataset
+from src.helpers.model_names import inspect_model_name
+from src.protocols.pairwise.config import load_pairwise_config
+from src.protocols.pairwise.scorer import logprob_scorer
+from src.protocols.pairwise.data import load_dataset
 
 
 @task
@@ -31,12 +32,14 @@ def comparison_self_recognition(
         dataset_name: Name of the dataset directory under data/
         model_generation_string: Generation identifier for the evaluated model
         alternative_model_generation_string: Generation identifier for alternative model
-        config: PairwiseConfig with prompts and field names
+        pairwise_config_string: name of pairwise config file with each required prompt
 
     Returns:
         Task object configured with logprobs enabled
     """
-    config = load_config(pairwise_config_string)
+    config = load_pairwise_config(pairwise_config_string)
+
+    inspect_model: str = inspect_model_name(model_name)
 
     # Load dataset
     dataset_samples = load_dataset(
@@ -45,7 +48,6 @@ def comparison_self_recognition(
         dataset_name,
         model_generation_string,
         alternative_model_generation_string,
-        config,
     )
 
     # Create Inspect samples
@@ -53,8 +55,6 @@ def comparison_self_recognition(
     for sample_data in dataset_samples:
         # Format the prompt using the config template
         prompt = config.comparison_task_prompt.format(
-            content_field=config.content_field,
-            output_field=config.output_field,
             content=sample_data["content"],
             output1=sample_data["output1"],
             output2=sample_data["output2"],
@@ -72,6 +72,7 @@ def comparison_self_recognition(
         dataset=inspect_samples,
         solver=generate(),
         scorer=logprob_scorer(),
+        model=inspect_model,
         config=GenerateConfig(logprobs=True, top_logprobs=2),
     )
 
@@ -98,12 +99,14 @@ def conversational_self_recognition(
         dataset_name: Name of the dataset directory under data/
         model_generation_string: Generation identifier for the evaluated model
         alternative_model_generation_string: Generation identifier for alternative model
-        config: PairwiseConfig with prompts and field names
+        pairwise_config_string: name of pairwise config file with each required prompt
 
     Returns:
         Task object configured with logprobs enabled
     """
-    config = load_config(pairwise_config_string)
+    config = load_pairwise_config(pairwise_config_string)
+
+    inspect_model: str = inspect_model_name(model_name)
 
     # Load dataset
     dataset_samples = load_dataset(
@@ -112,7 +115,6 @@ def conversational_self_recognition(
         dataset_name,
         model_generation_string,
         alternative_model_generation_string,
-        config,
     )
 
     # Create Inspect samples with conversation history
@@ -120,7 +122,7 @@ def conversational_self_recognition(
     for sample_data in dataset_samples:
         # Format the generation prompt
         generation_prompt = config.conversational_generation_prompt.format(
-            content_field=config.content_field, content=sample_data["content"]
+            content=sample_data["content"]
         )
 
         # Build conversation history
@@ -147,5 +149,6 @@ def conversational_self_recognition(
         dataset=inspect_samples,
         solver=generate(),
         scorer=logprob_scorer(),
+        model=inspect_model,
         config=GenerateConfig(logprobs=True, top_logprobs=2),
     )

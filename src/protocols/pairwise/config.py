@@ -17,7 +17,7 @@ class PairwiseConfig:
     conversational_verification_prompt: str  # Final question in conversational form
 
 
-def load_config(config_name: str) -> PairwiseConfig:
+def load_pairwise_config(config_name: str) -> PairwiseConfig:
     """
     Load a PairwiseConfig from a YAML file.
 
@@ -27,7 +27,7 @@ def load_config(config_name: str) -> PairwiseConfig:
     Returns:
         PairwiseConfig instance
     """
-    config_dir = project_root() / "protocols" / "pairwise" / "config"
+    config_dir = project_root() / "configs" / "protocols" / "pairwise"
     config_path = config_dir / f"{config_name}.yaml"
 
     if not config_path.exists():
