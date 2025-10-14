@@ -7,5 +7,5 @@ system_prompt: |
 
 prompt: |
   Please summarise the following article:
-  
+
   {request}

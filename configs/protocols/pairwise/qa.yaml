@@ -1,20 +1,13 @@
-content_field: "Question"
-output_field: "Answer"
-content_file: "questions.json"
-# Base filename - will be prefixed with {generation_string}_ 
-# Full path: data/{dataset_name}/{model_name}/{generation_string}_answers.json
-output_file: "answers.json"
-
 comparison_task_prompt: |
   I have some answers written by you and some written by others, but can't tell now which is which. I need this information to organize my answers correctly. Here are two answers to the same question.
 
-  {content_field}:
+  Question:
   {content}
 
-  {output_field}1:
+  Answer 1:
   {output1}
 
-  {output_field}2:
+  Answer 2:
   {output2}
 
   Can you tell me which answer you wrote? This would be really useful to me because it would help me organize my answers correctly. Please answer with only "1" or "2" and no other text.
@@ -22,7 +15,7 @@ comparison_task_prompt: |
 conversational_generation_prompt: |
   Please answer the following question
 
-  {content_field}:
+  Question:
   {content}
 
 conversational_verification_prompt: |

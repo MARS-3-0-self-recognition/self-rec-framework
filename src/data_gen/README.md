@@ -46,7 +46,7 @@ output_type: summaries  # or "answers"
 system_prompt: You are an article summariser.
 prompt: |
   Please summarise the following article:
-  
+
   {request}
 ```
 

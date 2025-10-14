@@ -6,12 +6,9 @@ from data_gen.utils.file_utils import (
     get_output_filename,
     ensure_output_directory,
     save_json,
-    load_json
+    load_json,
 )
-from data_gen.utils.schema import (
-    get_response_parser,
-    responses_to_output_dict
-)
+from data_gen.utils.schema import get_response_parser, responses_to_output_dict
 
 __all__ = [
     "get_api_client",
@@ -23,5 +20,5 @@ __all__ = [
     "save_json",
     "load_json",
     "get_response_parser",
-    "responses_to_output_dict"
+    "responses_to_output_dict",
 ]

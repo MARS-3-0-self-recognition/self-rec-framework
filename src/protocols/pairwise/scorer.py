@@ -4,6 +4,7 @@ import sys
 from inspect_ai.scorer import scorer, Score, mean, stderr, Target
 from inspect_ai.solver import TaskState
 
+
 @scorer(
     metrics={
         "*": [mean(), stderr()]  # apply mean + stderr to all metrics
@@ -17,7 +18,7 @@ def logprob_scorer():
       - correct_log_odds: logprob(correct) - logprob(incorrect)
       - ordered_log_odds: logprob("1") - logprob("2")
       - acc: "C" (correct) or "I" (incorrect)
-    
+
     Fallback if logprobs are missing:
       - Look at the generated text and extract the first "1" or "2".
       - If none found, fail the sample.
@@ -56,7 +57,7 @@ def logprob_scorer():
         #         answer=state.output.completion,
         #         explanation=f"[logprobs] 1={lp1}, 2={lp2}, correct={correct}, pred={pred}"
         #     )
-        
+
         # sys.stderr.write("[fallback] No logprobs available, using completion tokens.\n")
 
         # Case 2: fallback to generated text
@@ -72,19 +73,25 @@ def logprob_scorer():
             for ch in completion:
                 if ch in {"1", "2"}:
                     pred = ch
-                    sys.stderr.write(f"[fallback] Found answer later in completion: {pred}\n")
+                    sys.stderr.write(
+                        f"[fallback] Found answer later in completion: {pred}\n"
+                    )
                     break
 
         if pred is None:
-            sys.stderr.write("[fallback] Could not find '1' or '2' in completion. Marking as failure.\n")
-            return Score(value={"acc": "F"}, answer=completion, explanation="No valid prediction")
+            sys.stderr.write(
+                "[fallback] Could not find '1' or '2' in completion. Marking as failure.\n"
+            )
+            return Score(
+                value={"acc": "F"}, answer=completion, explanation="No valid prediction"
+            )
 
         acc = "C" if pred == correct else "I"
 
         return Score(
             value={"acc": acc},
             answer=completion,
-            explanation=f"[fallback] pred={pred}, correct={correct}"
+            explanation=f"[fallback] pred={pred}, correct={correct}",
         )
 
     return score
