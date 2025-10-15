@@ -1,6 +1,8 @@
 INSPECT_MODEL_NAMES: dict = {
     "4o-mini": "openai/gpt-4o-mini",
+    # Anthropic
     "3-5-sonnet": "anthropic/claude-3-5-sonnet-20241022",
+    "3-5-haiku": "anthropic/claude-3-5-haiku-20241022",
     "Qwen3-8B": "fireworks/accounts/fireworks/models/Qwen3-72B-Instruct",
 }
 

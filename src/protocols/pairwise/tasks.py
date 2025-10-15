@@ -121,7 +121,7 @@ def conversational_self_recognition(
     inspect_samples = []
     for sample_data in dataset_samples:
         # Format the generation prompt
-        generation_prompt = config.conversational_generation_prompt.format(
+        generation_prompt = config.generation_prompt.format(
             content=sample_data["content"]
         )
 

@@ -19,6 +19,14 @@ def load_json(file_path: Path) -> Dict[str, Any]:
         return json.load(f)
 
 
+def save_json(data: Any, file_path: Path, create_dir: bool = True):
+    """Save the data to the given path."""
+    if create_dir:
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(file_path, "w") as f:
+        json.dump(data, f, indent=2)
+
+
 def rollout_json_file_path(
     dataset_name: str, model_name: str, generation_string: str
 ) -> Path:
@@ -26,6 +34,13 @@ def rollout_json_file_path(
     Returns the path to the rollout json file for a given dataset, model, and generation string.
     """
     return data_dir() / dataset_name / model_name / f"{generation_string}.json"
+
+
+def rollout_eval_log_dir(
+    dataset_name: str, model_name: str, generation_string: str
+) -> Path:
+    """Returns the path to the Inspect eval file for base rollout corresponding to a given dataset, model, and generation string."""
+    return data_dir() / dataset_name / model_name / generation_string
 
 
 def load_rollout_json(

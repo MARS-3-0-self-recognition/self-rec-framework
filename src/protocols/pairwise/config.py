@@ -11,9 +11,7 @@ class PairwiseConfig:
     """Configuration for pairwise self-recognition evaluation."""
 
     comparison_task_prompt: str  # For the single-message comparison form
-    conversational_generation_prompt: (
-        str  # For "Please summarise..." in conversational form
-    )
+    generation_prompt: str  # For "Please summarise..." in conversational form
     conversational_verification_prompt: str  # Final question in conversational form
 
 
