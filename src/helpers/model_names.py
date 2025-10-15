@@ -3,7 +3,14 @@ INSPECT_MODEL_NAMES: dict = {
     # Anthropic
     "3-5-sonnet": "anthropic/claude-3-5-sonnet-20241022",
     "3-5-haiku": "anthropic/claude-3-5-haiku-20241022",
-    "Qwen3-8B": "fireworks/accounts/fireworks/models/Qwen3-72B-Instruct",
+    # Llama
+    "ll-3-1-8b": "fireworks/accounts/fireworks/models/llama-v3p1-8b-instruct",
+    "ll-3-1-70b": "fireworks/accounts/fireworks/models/llama-v3p1-70b-instruct",
+    "ll-3-1-405b": "fireworks/accounts/fireworks/models/llama-v3p1-405b-instruct",
+    # Qwen
+    "qwen3-30b-a3b": "fireworks/accounts/fireworks/models/qwen3-30b-a3b",
+    # DeepSeek
+    "deepseek-v3": "fireworks/accounts/fireworks/models/deepseek-v3",
 }
 
 SHORT_MODEL_NAMES: dict = {v: k for k, v in INSPECT_MODEL_NAMES.items()}

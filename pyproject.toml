@@ -8,10 +8,18 @@ dependencies = [
     "anthropic>=0.69.0",
     "fireworks-ai>=0.19.19",
     "inspect-ai>=0.3.134",
+    "matplotlib>=3.10.7",
     "openai>=2.3.0",
+    "pandas>=2.3.3",
     "pre-commit>=4.3.0",
     "python-dotenv>=1.1.1",
     "pyyaml>=6.0.3",
     "requests>=2.32.5",
+    "seaborn>=0.13.2",
     "together>=1.5.26",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.9.10",
 ]

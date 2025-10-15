@@ -7,6 +7,7 @@ Run a complete self-recognition experiment:
 import argparse
 from pathlib import Path
 from itertools import permutations
+from dotenv import load_dotenv
 
 from inspect_ai import eval
 from src.protocols.pairwise.tasks import (
@@ -233,4 +234,5 @@ def main():
 
 
 if __name__ == "__main__":
+    load_dotenv(override=True)
     main()

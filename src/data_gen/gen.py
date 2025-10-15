@@ -81,6 +81,33 @@ def construct_rollout_dict(eval_log: EvalLog) -> dict[str, str]:
     return rollout_dict
 
 
+def run_base_generation(
+    model_name: str,
+    model_generation_string: str,
+    dataset_name: str,
+    pairwise_config_string: str,
+):
+    task = base_generation(
+        model_name=model_name,
+        model_generation_string=model_generation_string,
+        dataset_name=dataset_name,
+        pairwise_config_string=pairwise_config_string,
+    )
+    log_dir = str(
+        rollout_eval_log_dir(dataset_name, model_name, model_generation_string)
+    )
+    print(f"Log directory: {log_dir}")
+    eval_logs = eval(task, log_dir=log_dir)
+    assert len(eval_logs) == 1, "Expected only one eval log"
+    eval_log = eval_logs[0]
+    rollout_dict = construct_rollout_dict(eval_log)
+
+    save_dir = rollout_json_file_path(dataset_name, model_name, model_generation_string)
+    save_json(rollout_dict, save_dir)
+
+    print(f"Saved rollout json to {save_dir}")
+
+
 if __name__ == "__main__":
     import argparse
     from dotenv import load_dotenv
@@ -112,26 +139,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    task = base_generation(
+    run_base_generation(
         model_name=args.model_name,
         model_generation_string=args.model_generation_string,
         dataset_name=args.dataset_name,
         pairwise_config_string=args.pairwise_config_string,
     )
-    log_dir = str(
-        rollout_eval_log_dir(
-            args.dataset_name, args.model_name, args.model_generation_string
-        )
-    )
-    print(f"Log directory: {log_dir}")
-    eval_logs = eval(task, log_dir=log_dir)
-    assert len(eval_logs) == 1, "Expected only one eval log"
-    eval_log = eval_logs[0]
-    rollout_dict = construct_rollout_dict(eval_log)
-
-    save_dir = rollout_json_file_path(
-        args.dataset_name, args.model_name, args.model_generation_string
-    )
-    save_json(rollout_dict, save_dir)
-
-    print(f"Saved rollout json to {save_dir}")
