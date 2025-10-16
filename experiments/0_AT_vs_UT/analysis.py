@@ -305,7 +305,7 @@ def main():
     args = parser.parse_args()
 
     output_dir = (
-        Path("experiments")
+        Path(__file__).parent
         / args.experiment_id
         / "plots"
         / args.dataset_name
