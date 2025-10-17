@@ -1,6 +1,7 @@
 INSPECT_MODEL_NAMES: dict = {
     "4o-mini": "openai/gpt-4o-mini",
     # Anthropic
+    "4-5-sonnet": "anthropic/claude-sonnet-4-5-20250929",
     "3-5-sonnet": "anthropic/claude-3-5-sonnet-20241022",
     "3-5-haiku": "anthropic/claude-3-5-haiku-20241022",
     # Llama
