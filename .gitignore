@@ -6,3 +6,6 @@ data/*
 !data/*debug
 
 *.egg-info
+
+_external/
+CLAUDE.md

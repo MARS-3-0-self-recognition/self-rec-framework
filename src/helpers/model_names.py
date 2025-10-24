@@ -28,4 +28,4 @@ def short_model_name(model: str) -> str:
     """
     Read from inverse of hard-coded INSPECT_MODEL_NAMES dict.
     """
-    return SHORT_MODEL_NAMES.inverse[model]
+    return SHORT_MODEL_NAMES[model]
