@@ -49,8 +49,8 @@ def base_generation(
     inspect_samples = []
     for uuid in contents.keys():
         sample_input = contents[uuid]
-        generation_prompt = config.user_prompt.format(
-            request=sample_input,
+        generation_prompt = config.generation_prompt.format(
+            content=sample_input,
         )
         metadata = {
             "uuid": uuid,

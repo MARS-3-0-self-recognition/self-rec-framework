@@ -6,24 +6,25 @@ from src.helpers.utils import data_dir, load_json, load_rollout_json
 
 
 def load_dataset(
-    treatment_name_1: str,
-    treatment_name_2: str,
+    model_name: str,
+    alternative_model_name: str,
     dataset_name: str,
-    file_name_1: str,
-    file_name_2: str,
+    model_generation_string: str,
+    alternative_model_generation_string: str,
 ) -> List[Dict[str, Any]]:
     """
     Load and prepare dataset for pairwise comparison.
 
-    Creates TWO samples per UUID - one with each ordering (treatment1-first, treatment2-first).
+    Creates TWO samples per UUID - one with each ordering (model-first, alt-first).
     This ensures we test both presentation orders.
 
     Args:
-        treatment_name_1: Name of the first treatment being compared
-        treatment_name_2: Name of the second treatment being compared
+        model_name: Name of the model being evaluated
+        alternative_model_name: Name of the alternative model
         dataset_name: Name of the dataset directory
-        file_name_1: Generation/treatment identifier for the first treatment (e.g., "temp0", "typo_s1", "default")
-        file_name_2: Generation/treatment identifier for the second treatment
+        model_generation_string: Generation identifier for the evaluated model (e.g., "temp0", "default")
+        alternative_model_generation_string: Generation identifier for alternative model
+        config: PairwiseConfig with file paths and field names
 
     Returns:
         List of sample dictionaries (2 per UUID) containing:
@@ -35,15 +36,17 @@ def load_dataset(
     # Load content (articles or questions)
     contents = load_json(data_dir() / dataset_name / "input.json")
 
-    outputs_1 = load_rollout_json(dataset_name, treatment_name_1, file_name_1)
-    outputs_2 = load_rollout_json(dataset_name, treatment_name_2, file_name_2)
+    model_outputs = load_rollout_json(dataset_name, model_name, model_generation_string)
+    alt_outputs = load_rollout_json(
+        dataset_name, alternative_model_name, alternative_model_generation_string
+    )
 
     # Create TWO samples per UUID - one for each ordering
     samples = []
     skipped_uuids = []
 
     for uuid in contents.keys():
-        if uuid not in outputs_1 or uuid not in outputs_2:
+        if uuid not in model_outputs or uuid not in alt_outputs:
             # Skip if either output is missing
             # Puria TODO: Review this error handling
             print(f"Skipping UUID {uuid} because it is missing in one or both outputs")
@@ -51,23 +54,23 @@ def load_dataset(
             continue
 
         content = contents[uuid]
-        output_1 = outputs_1[uuid]
-        output_2 = outputs_2[uuid]
+        model_output = model_outputs[uuid]
+        alt_output = alt_outputs[uuid]
 
         metadata = {
             "uuid": uuid,
-            "treatment_name_1": treatment_name_1,
-            "treatment_name_2": treatment_name_2,
-            "file_name_1": file_name_1,
-            "file_name_2": file_name_2,
+            "model_name": model_name,
+            "alternative_model_name": alternative_model_name,
+            "model_generation_string": model_generation_string,
+            "alternative_model_generation_string": alternative_model_generation_string,
         }
 
-        # Sample 1: Treatment 1 output first (position 1)
+        # Sample 1: Model output first (position 1)
         samples.append(
             {
                 "content": content,
-                "output1": output_1,
-                "output2": output_2,
+                "output1": model_output,
+                "output2": alt_output,
                 "metadata": {
                     **metadata,
                     "correct_answer": "1",
@@ -75,12 +78,12 @@ def load_dataset(
             }
         )
 
-        # Sample 2: Treatment 2 output first (position 1)
+        # Sample 2: Alternative model output first (position 1)
         samples.append(
             {
                 "content": content,
-                "output1": output_2,
-                "output2": output_1,
+                "output1": alt_output,
+                "output2": model_output,
                 "metadata": {
                     **metadata,
                     "correct_answer": "2",

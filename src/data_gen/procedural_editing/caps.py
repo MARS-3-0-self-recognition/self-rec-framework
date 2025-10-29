@@ -7,13 +7,13 @@ saving the results as {treatment_name}_config.json files.
 
 Usage:
     # Apply S1 treatment (25% caps) to simple_config.json
-    uv run data_loader/apply_caps_treatment.py --input_file=data/cnn_debug/3-5-sonnet/simple_config.json --treatment_name=caps_s1 --strength=S1
+    uv run data_loader/caps.py --input_file=data/cnn_debug/3-5-sonnet/simple_config.json --treatment_name=caps_s1 --strength=S1
 
     # Apply S4 treatment (100% caps) to all outputs
-    uv run data_loader/apply_caps_treatment.py --input_file=data/cnn_debug/3-5-haiku/simple_config.json --treatment_name=caps_s4 --strength=S4
+    uv run data_loader/caps.py --input_file=data/cnn_debug/3-5-haiku/simple_config.json --treatment_name=caps_s4 --strength=S4
 
     # Apply S2 treatment with custom output directory
-    uv run data_loader/apply_caps_treatment.py --input_file=data/wikisum_debug/input.json --treatment_name=caps_s2 --strength=S2 --output_dir=data/wikisum_debug
+    uv run data_loader/caps.py --input_file=data/wikisum_debug/input.json --treatment_name=caps_s2 --strength=S2 --output_dir=data/wikisum_debug
 
 Strength levels:
     S1: 25% capitalization (light)

@@ -14,12 +14,11 @@ from src.protocols.pairwise.data import load_dataset
 @task
 def comparison_self_recognition(
     model_name: str,
-    treatment_name_1: str,
-    treatment_name_2: str,
+    alternative_model_name: str,
     dataset_name: str,
-    dataset_file_name_1: str,
-    dataset_file_name_2: str,
-    config_name: str,
+    model_generation_string: str,
+    alternative_model_generation_string: str,
+    pairwise_config_string: str,
 ) -> Task:
     """
     Base comparison self-recognition task.
@@ -28,28 +27,27 @@ def comparison_self_recognition(
     Returns a Task object that can be returned directly or modified for variants.
 
     Args:
-        model_name: Name of the model being used as evaluator
-        treatment_name_1: Name of the first treatment to compare
-        treatment_name_2: Name of the second treatment to compare
+        model_name: Name of the model being evaluated
+        alternative_model_name: Name of the alternative model for comparison
         dataset_name: Name of the dataset directory under data/
-        dataset_file_name_1: File identifier for the first treatment
-        dataset_file_name_2: File identifier for the second treatment
-        config_name: name of pairwise config file with each required prompt
+        model_generation_string: Generation identifier for the evaluated model
+        alternative_model_generation_string: Generation identifier for alternative model
+        pairwise_config_string: name of pairwise config file with each required prompt
 
     Returns:
         Task object configured with logprobs enabled
     """
-    config = load_pairwise_config(config_name)
+    config = load_pairwise_config(pairwise_config_string)
 
     inspect_model: str = inspect_model_name(model_name)
 
     # Load dataset
     dataset_samples = load_dataset(
-        treatment_name_1,
-        treatment_name_2,
+        model_name,
+        alternative_model_name,
         dataset_name,
-        dataset_file_name_1,
-        dataset_file_name_2,
+        model_generation_string,
+        alternative_model_generation_string,
     )
 
     # Create Inspect samples
@@ -75,21 +73,18 @@ def comparison_self_recognition(
         solver=generate(),
         scorer=logprob_scorer(),
         model=inspect_model,
-        config=GenerateConfig(
-            logprobs=True, top_logprobs=2, system_message=config.system_prompt
-        ),
+        config=GenerateConfig(logprobs=True, top_logprobs=2),
     )
 
 
 @task
 def conversational_self_recognition(
     model_name: str,
-    treatment_name_1: str,
-    treatment_name_2: str,
+    alternative_model_name: str,
     dataset_name: str,
-    dataset_file_name_1: str,
-    dataset_file_name_2: str,
-    config_name: str,
+    model_generation_string: str,
+    alternative_model_generation_string: str,
+    pairwise_config_string: str,
 ) -> Task:
     """
     Base conversational self-recognition task.
@@ -99,28 +94,27 @@ def conversational_self_recognition(
     Returns a Task object that can be returned directly or modified for variants.
 
     Args:
-        model_name: Name of the model being used as evaluator
-        treatment_name_1: Name of the first treatment to compare
-        treatment_name_2: Name of the second treatment to compare
+        model_name: Name of the model being evaluated
+        alternative_model_name: Name of the alternative model for comparison
         dataset_name: Name of the dataset directory under data/
-        dataset_file_name_1: File identifier for the first treatment
-        dataset_file_name_2: File identifier for the second treatment
-        config_name: name of pairwise config file with each required prompt
+        model_generation_string: Generation identifier for the evaluated model
+        alternative_model_generation_string: Generation identifier for alternative model
+        pairwise_config_string: name of pairwise config file with each required prompt
 
     Returns:
         Task object configured with logprobs enabled
     """
-    config = load_pairwise_config(config_name)
+    config = load_pairwise_config(pairwise_config_string)
 
     inspect_model: str = inspect_model_name(model_name)
 
     # Load dataset
     dataset_samples = load_dataset(
-        treatment_name_1,
-        treatment_name_2,
+        model_name,
+        alternative_model_name,
         dataset_name,
-        dataset_file_name_1,
-        dataset_file_name_2,
+        model_generation_string,
+        alternative_model_generation_string,
     )
 
     # Create Inspect samples with conversation history
@@ -156,7 +150,5 @@ def conversational_self_recognition(
         solver=generate(),
         scorer=logprob_scorer(),
         model=inspect_model,
-        config=GenerateConfig(
-            logprobs=True, top_logprobs=2, system_message=config.system_prompt
-        ),
+        config=GenerateConfig(logprobs=True, top_logprobs=2),
     )

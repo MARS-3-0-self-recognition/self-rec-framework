@@ -1,9 +1,12 @@
 INSPECT_MODEL_NAMES: dict = {
-    "4o-mini": "openai/gpt-4o-mini",
+    "gpt-4o-mini": "openai/gpt-4o-mini",
+    "gpt-4o": "openai/gpt-4o",
+    "gpt-4.1-mini": "openai/gpt-4.1-mini-2025-04-14",
+    "gpt-4.1": "openai/gpt-4.1-2025-04-14",
     # Anthropic
-    "4-5-sonnet": "anthropic/claude-sonnet-4-5-20250929",
-    "3-5-sonnet": "anthropic/claude-3-5-sonnet-20241022",
-    "3-5-haiku": "anthropic/claude-3-5-haiku-20241022",
+    "sonnet-4-5": "anthropic/claude-sonnet-4-5-20250929",
+    "sonnet-3-5": "anthropic/claude-3-5-sonnet-20241022",
+    "haiku-3-5": "anthropic/claude-3-5-haiku-20241022",
     # Llama
     "ll-3-1-8b": "fireworks/accounts/fireworks/models/llama-v3p1-8b-instruct",
     "ll-3-1-70b": "fireworks/accounts/fireworks/models/llama-v3p1-70b-instruct",

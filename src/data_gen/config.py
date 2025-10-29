@@ -11,7 +11,7 @@ from src.helpers.utils import project_root
 class DataGenerationConfig:
     """Configuration for data generation tasks."""
 
-    user_prompt: str  # For the user prompt
+    generation_prompt: str  # For the generation prompt
     system_prompt: Optional[str] = None  # Optional system prompt
 
     # Common generation parameters
@@ -45,7 +45,9 @@ def load_generation_config(config_name: str) -> DataGenerationConfig:
     # Map config fields to our dataclass
     return DataGenerationConfig(
         system_prompt=config_dict.get("system_prompt"),
-        user_prompt=config_dict.get("user_prompt", config_dict.get("prompt", "")),
+        generation_prompt=config_dict.get(
+            "generation_prompt", config_dict.get("prompt", "")
+        ),
         temperature=config_dict.get("temperature"),
         max_tokens=config_dict.get("max_tokens"),
         top_p=config_dict.get("top_p"),

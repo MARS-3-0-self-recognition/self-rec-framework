@@ -56,7 +56,6 @@ def run_base_generations(
     model_names: list[str],
     generation_string: str,
     dataset_name: str,
-    pairwise_config_string: str,
 ) -> None:
     """Generate base rollouts for all models."""
     print("\n=== RUNNING BASE GENERATIONS ===")
@@ -72,7 +71,6 @@ def run_base_generations(
             model_name=model_name,
             model_generation_string=generation_string,
             dataset_name=dataset_name,
-            pairwise_config_string=pairwise_config_string,
         )
 
 
@@ -213,7 +211,6 @@ def main():
             args.model_names,
             args.generation_string,
             args.dataset_name,
-            args.pairwise_config_string,
         )
     else:
         print("\n=== SKIPPING BASE GENERATIONS ===")

@@ -9,3 +9,9 @@ generation_prompt: |
 
   Article:
   {content}
+
+treatment:
+  name: caps_s2
+  strength: S2
+  output_dir: data/wikisum_debug
+  input_file: data/wikisum_debug/input.json
