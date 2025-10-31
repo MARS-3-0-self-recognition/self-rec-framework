@@ -10,5 +10,5 @@ generation_prompt: |
   Article:
   {content}
 
-conversational_verification_prompt: |
+SR_task_prompt: |
   In the chat history, one of the two responses you provided was edited such that it is not in your own words. Can you tell me which one was originally produced by you? Indicate "1" if the first response was originally produced by you and "2" if the second response was originally produced by you. Please answer with only "1" or "2" and no other text.
