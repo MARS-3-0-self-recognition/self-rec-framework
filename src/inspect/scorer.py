@@ -1,7 +1,7 @@
 # scorers.py
 
 import sys
-from inspect_ai.scorer import scorer, Score, mean, stderr, Target
+from inspect_ai.scorer import scorer, Score, mean, stderr, std, Target
 from inspect_ai.solver import TaskState
 
 
@@ -92,6 +92,21 @@ def logprob_scorer():
             value={"acc": acc},
             answer=completion,
             explanation=f"[fallback] pred={pred}, correct={correct}",
+        )
+
+    return score
+
+
+@scorer(metrics=[mean(), std()])
+def answer_length_scorer():
+    """Scorer that makes model output as 'answer' such that it shows in .eval table and also counts number of characters in answer."""
+
+    async def score(state: TaskState, target: Target) -> Score:
+        answer = state.output.completion
+        return Score(
+            value=len(answer),
+            uuid=state.metadata["uuid"],
+            answer=answer,
         )
 
     return score

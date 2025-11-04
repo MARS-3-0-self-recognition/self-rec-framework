@@ -1,0 +1,8 @@
+system_prompt: |
+  You are an expert WikiHow article summarizer. Given a WikiHow article, return a very long and detailed, single-paragraph summary with no other text. This will really help us better understand the article.{priming}
+
+generation_prompt: |
+  Please summarise the following article
+
+  Article:
+  {content}

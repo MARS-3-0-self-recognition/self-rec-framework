@@ -16,6 +16,7 @@ class SelfRecognitionConfig:
     system_prompt: Optional[str] = None  # For the system prompt
     temperature: Optional[float] = None
     max_tokens: Optional[int] = None
+    seed: Optional[int] = None
 
 
 def load_self_recognition_config(config_name: str) -> SelfRecognitionConfig:
@@ -44,4 +45,5 @@ def load_self_recognition_config(config_name: str) -> SelfRecognitionConfig:
         system_prompt=config_dict.get("system_prompt"),
         temperature=config_dict.get("temperature"),
         max_tokens=config_dict.get("max_tokens"),
+        seed=config_dict.get("seed"),
     )
