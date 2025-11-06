@@ -7,55 +7,60 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from inspect_ai import eval
-from src.protocols.pairwise.tasks import (
-    conversational_self_recognition,
-)
-
-from src.helpers.utils import data_dir, rollout_json_file_path
+from src.inspect.tasks import get_task_function
+from src.inspect.config import load_experiment_config
+from src.helpers.utils import data_dir
 
 
 def parse_dataset_path(dataset_path: str):
     """
     Parse a dataset path to extract components.
 
-    Expected format: data/dataset_name/treatment_name/file.json
-    Example: data/wikisum_train_1-20/haiku-3-5/wikisum_config.json
-    Also handles: dataset_name/treatment_name/file.json (without data/ prefix)
+    Expected format: data/input/dataset_name/data_subset/treatment/data.json
+    Example: data/input/wikisum/training_set_1-20/haiku-3-5/data.json
 
     Returns:
-        tuple: (dataset_name, treatment_name, file_name)
+        tuple: (dataset_name, data_subset, treatment_name)
     """
+    if dataset_path is None:
+        return None, None, None
     path = Path(dataset_path)
     parts = list(path.parts)
 
-    # Remove 'data/' prefix if present
-    if parts and parts[0] == "data":
+    # Expected: data/input/dataset_name/data_subset/treatment/data.json
+    if parts[0] == "data" and parts[1] == "input":
+        # Remove 'data/input/' prefix
+        parts = parts[2:]
+    elif parts[0] == "input":
+        # Remove 'input/' prefix
         parts = parts[1:]
+    else:
+        raise ValueError(
+            f"Invalid dataset path format: {dataset_path}. "
+            f"Expected: data/input/dataset_name/data_subset/treatment/data.json"
+        )
 
     if len(parts) < 3:
         raise ValueError(
             f"Invalid dataset path format: {dataset_path}. "
-            f"Expected: data/dataset_name/treatment_name/file.json "
-            f"or dataset_name/treatment_name/file.json"
+            f"Expected: data/input/dataset_name/data_subset/treatment/data.json"
         )
 
     dataset_name = parts[0]
-    treatment_name = parts[1]
-    file_name = parts[2]
+    data_subset = parts[1]
+    treatment_name = parts[2]
 
-    # Remove .json extension if present
-    if file_name.endswith(".json"):
-        file_name = file_name[:-5]
-
-    return dataset_name, treatment_name, file_name
+    return dataset_name, data_subset, treatment_name
 
 
 def check_rollout_exists(
-    dataset_name: str, treatment_name: str, file_name: str
+    dataset_name: str, data_subset: str, treatment_name: str
 ) -> bool:
-    """Check if rollout JSON already exists."""
-    rollout_path = rollout_json_file_path(dataset_name, treatment_name, file_name)
-    return rollout_path.exists()
+    """Check if data.json already exists."""
+    data_path = (
+        data_dir() / "input" / dataset_name / data_subset / treatment_name / "data.json"
+    )
+    return data_path.exists()
 
 
 def check_eval_exists(log_dir: Path) -> bool:
@@ -68,115 +73,175 @@ def check_eval_exists(log_dir: Path) -> bool:
 
 def get_judge_log_dir(
     dataset_name: str,
-    task_name: str,
+    data_subset: str,
+    experiment_name: str,
     model_name: str,
-    treatment_name_1: str,
-    treatment_name_2: str,
+    treatment_name_control: str,
+    treatment_name_treatment: str,
     config_name: str,
 ) -> Path:
-    """Construct path for judging evaluation logs."""
+    """
+    Construct path for judging evaluation logs.
+
+    Format: data/results/{dataset_name}/{data_subset}/{experiment_name}/{eval_subdir}/
+    - Pairwise: {model_name}_eval_on_{control}_vs_{treatment}
+    - Individual: {model_name}_eval_on_{evaluated_treatment}
+    """
+    if treatment_name_treatment is not None:
+        eval_subdir = f"{model_name}_eval_on_{treatment_name_control}_vs_{treatment_name_treatment}"
+    else:
+        eval_subdir = f"{model_name}_eval_on_{treatment_name_control}"
+
     return (
         data_dir()
+        / "results"
         / dataset_name
-        / "judge_logs"
-        / task_name
-        / f"{model_name}_eval_{treatment_name_1}_vs_{treatment_name_2}_in_{config_name}"
+        / data_subset
+        / experiment_name
+        / eval_subdir
     )
 
 
 def run_judging_evals(
     model_name: str,
-    dataset_path_1: str,
-    dataset_path_2: str,
-    config_name: str,
+    dataset_path_control: str,
+    experiment_config_path: str,
+    dataset_path_treatment: str | None = None,
+    is_control: bool = True,
 ) -> None:
-    """Run pairwise judging evaluations."""
+    """
+    Run judging evaluations (pairwise or individual based on config).
+
+    Args:
+        model_name: Model to use as evaluator
+        dataset_path_control: Path to control (original) dataset
+        experiment_config_path: Path to experiment config
+        dataset_path_treatment: Path to treatment (modified) dataset (for pairwise only)
+        is_control: Whether we're evaluating control dataset (for individual only)
+    """
     print("\n=== RUNNING JUDGING EVALUATIONS ===")
 
-    # Parse dataset paths
-    dataset_name_1, treatment_name_1, file_name_1 = parse_dataset_path(dataset_path_1)
-    dataset_name_2, treatment_name_2, file_name_2 = parse_dataset_path(dataset_path_2)
+    # Extract experiment name from config path
+    experiment_name = Path(experiment_config_path).parent.name
 
-    # Use dataset_name from path 1
-    dataset_name = dataset_name_1
-
-    # Check prerequisites
-    if not check_rollout_exists(dataset_name_1, treatment_name_1, file_name_1):
-        print(f"✗ Missing rollout for {dataset_path_1}, skipping")
-        return
-    if not check_rollout_exists(dataset_name_2, treatment_name_2, file_name_2):
-        print(f"✗ Missing rollout for {dataset_path_2}, skipping")
-        return
-
-    print(
-        f"\n--- Judge: {model_name} | Treatment 1: {treatment_name_1} | Treatment 2: {treatment_name_2} ---"
+    # Parse dataset paths first to get dataset_name
+    dataset_name_ctrl, data_subset_ctrl, treatment_name_ctrl = parse_dataset_path(
+        dataset_path_control
+    )
+    dataset_name_treat, data_subset_treat, treatment_name_treat = parse_dataset_path(
+        dataset_path_treatment
     )
 
-    # Run comparison task
-    # run_single_judging_task(
-    #     task_name="comparison",
-    #     task_fn=comparison_self_recognition,
-    #     model_name=model_name,
-    #     treatment_name_1=treatment_name_1,
-    #     treatment_name_2=treatment_name_2,
-    #     dataset_file_name_1=file_name_1,
-    #     dataset_file_name_2=file_name_2,
-    #     dataset_name=dataset_name,
-    #     config_name=config_name,
-    # )
+    # Use dataset info from control path
+    dataset_name = dataset_name_ctrl
+    data_subset = data_subset_ctrl
 
-    # Run conversational task
-    run_single_judging_task(
-        task_name="conversational",
-        task_fn=conversational_self_recognition,
-        model_name=model_name,
-        treatment_name_1=treatment_name_1,
-        treatment_name_2=treatment_name_2,
-        dataset_file_name_1=file_name_1,
-        dataset_file_name_2=file_name_2,
-        dataset_name=dataset_name,
-        config_name=config_name,
+    # Load experiment config with dataset_name from path
+    exp_config = load_experiment_config(
+        experiment_config_path, dataset_name=dataset_name
     )
+
+    # Check control data exists
+    if not check_rollout_exists(
+        dataset_name_ctrl, data_subset_ctrl, treatment_name_ctrl
+    ):
+        print(f"✗ Missing data for {dataset_path_control}, skipping")
+        return
+
+    # For pairwise tasks, check treatment dataset exists
+    if exp_config.is_pairwise():
+        if not check_rollout_exists(
+            dataset_name_treat, data_subset_treat, treatment_name_treat
+        ):
+            print(f"✗ Missing data for {dataset_path_treatment}, skipping")
+            return
+        print(
+            f"\n--- Judge: {model_name} | Control: {treatment_name_ctrl} | Treatment: {treatment_name_treat} ---"
+        )
+        # Single call for pairwise task
+        run_single_judging_task(
+            exp_config=exp_config,
+            model_name=model_name,
+            treatment_name_control=treatment_name_ctrl,
+            treatment_name_treatment=treatment_name_treat,
+            data_subset=data_subset,
+            dataset_name=dataset_name,
+            experiment_name=experiment_name,
+            is_control=True,  # Not used for pairwise
+        )
+    else:
+        # Individual task - run on specified dataset (either control or treatment)
+        # For individual, we always pass the dataset being evaluated as "control" parameter
+        # The is_control flag tells the data loader how to set correct answers
+        eval_treatment_name = treatment_name_ctrl
+        dataset_type = "Control" if is_control else "Treatment"
+        print(
+            f"\n--- Judge: {model_name} | Evaluating: {eval_treatment_name} ({dataset_type}) ---"
+        )
+        run_single_judging_task(
+            exp_config=exp_config,
+            model_name=model_name,
+            treatment_name_control=eval_treatment_name,
+            treatment_name_treatment=None,
+            data_subset=data_subset,
+            dataset_name=dataset_name,
+            experiment_name=experiment_name,
+            is_control=is_control,
+        )
 
 
 def run_single_judging_task(
-    task_name: str,
-    task_fn,
+    exp_config,
     model_name: str,
-    treatment_name_1: str,
-    treatment_name_2: str,
-    dataset_file_name_1: str,
-    dataset_file_name_2: str,
+    treatment_name_control: str,
+    data_subset: str,
     dataset_name: str,
-    config_name: str,
+    experiment_name: str,
+    is_control: bool,
+    treatment_name_treatment: str | None = None,
 ) -> None:
-    """Run a single judging task (comparison or conversational)."""
+    """
+    Run a single judging task (pairwise or individual).
+
+    Args:
+        treatment_name_control: Name of control (original) treatment
+        treatment_name_treatment: Name of treatment (modified) - for pairwise only
+        is_control: Whether evaluating control (True) or treatment (False) - for individual only
+    """
+    # Build task name and config name for logging
+    task_name = exp_config.config_name_for_logging()
+    config_name = task_name
+
+    # Determine log directory
     log_dir = get_judge_log_dir(
         dataset_name,
-        task_name,
+        data_subset,
+        experiment_name,
         model_name,
-        treatment_name_1,
-        treatment_name_2,
+        treatment_name_control,
+        treatment_name_treatment,
         config_name,
     )
 
     if check_eval_exists(log_dir):
-        print(f"  ✓ {task_name}: already evaluated, skipping")
+        print(f"  ✓ {experiment_name}: already evaluated, skipping")
         return
 
-    print(f"  Running {task_name} task...")
-    task = task_fn(
+    print(f"  Running {experiment_name} task...")
+
+    # Get task - all branching logic is handled in get_task_function
+    task = get_task_function(
+        exp_config=exp_config,
         model_name=model_name,
-        treatment_name_1=treatment_name_1,
-        treatment_name_2=treatment_name_2,
+        treatment_name_control=treatment_name_control,
+        treatment_name_treatment=treatment_name_treatment,
         dataset_name=dataset_name,
-        dataset_file_name_1=dataset_file_name_1,
-        dataset_file_name_2=dataset_file_name_2,
-        config_name=config_name,
+        data_subset=data_subset,
+        is_control=is_control,
     )
 
     eval(task, log_dir=str(log_dir))
-    print(f"  ✓ {task_name}: completed")
+    print(f"  ✓ {experiment_name}: completed")
 
 
 def main():
@@ -184,22 +249,29 @@ def main():
         description="Run complete self-recognition experiment"
     )
     parser.add_argument(
-        "--dataset_path_1",
+        "--dataset_path_control",
         type=str,
         required=True,
-        help="First dataset path (e.g., 'data/wikisum_train_1-20/haiku-3-5/wikisum_config.json')",
+        help="Control dataset path (original model output) (e.g., 'data/input/wikisum/debug/haiku-3-5/data.json')",
     )
     parser.add_argument(
-        "--dataset_path_2",
+        "--dataset_path_treatment",
         type=str,
-        required=True,
-        help="Second dataset path (e.g., 'data/wikisum_train_1-20/sonnet-3-5/wikisum_config.json')",
+        required=False,
+        default=None,
+        help="Treatment dataset path (modified output) - required for pairwise tasks (e.g., 'data/input/wikisum/debug/haiku-3-5_typos_S2/data.json')",
     )
     parser.add_argument(
-        "--config_name",
+        "--is_control",
+        action="store_true",
+        default=False,
+        help="For individual tasks: whether evaluating control (original) dataset. If false, evaluating treatment dataset.",
+    )
+    parser.add_argument(
+        "--experiment_config",
         type=str,
         required=True,
-        help="Protocol config name (e.g., 'summarisation')",
+        help="Path to experiment config file (e.g., 'experiments/01_AT_PW-C_Rec_Pr/config.yaml')",
     )
     parser.add_argument(
         "--model_name",
@@ -211,33 +283,50 @@ def main():
     args = parser.parse_args()
 
     # Parse dataset paths for display
-    dataset_name_1, treatment_name_1, file_name_1 = parse_dataset_path(
-        args.dataset_path_1
+    dataset_name_ctrl, data_subset_ctrl, treatment_name_ctrl = parse_dataset_path(
+        args.dataset_path_control
     )
-    dataset_name_2, treatment_name_2, file_name_2 = parse_dataset_path(
-        args.dataset_path_2
+
+    # Load experiment config for display (with dataset_name from path)
+    exp_config = load_experiment_config(
+        args.experiment_config, dataset_name=dataset_name_ctrl
     )
 
     print(f"\n{'=' * 60}")
     print("SELF-RECOGNITION EXPERIMENT")
     print(f"{'=' * 60}")
-    print(f"Dataset path 1: {args.dataset_path_1}")
+    print(f"Experiment config: {args.experiment_config}")
     print(
-        f"  -> Dataset: {dataset_name_1}, Treatment: {treatment_name_1}, File: {file_name_1}"
+        f"  -> Tags: {exp_config.tags}, Format: {exp_config.format}, Task: {exp_config.task}"
     )
-    print(f"Dataset path 2: {args.dataset_path_2}")
+    print(f"  -> Dataset: {dataset_name_ctrl}, Priming: {exp_config.priming}")
+    print(f"Control dataset: {args.dataset_path_control}")
     print(
-        f"  -> Dataset: {dataset_name_2}, Treatment: {treatment_name_2}, File: {file_name_2}"
+        f"  -> Dataset: {dataset_name_ctrl}, Subset: {data_subset_ctrl}, Treatment: {treatment_name_ctrl}"
     )
-    print(f"Protocol config: {args.config_name}")
+
+    if args.dataset_path_treatment:
+        dataset_name_treat, data_subset_treat, treatment_name_treat = (
+            parse_dataset_path(args.dataset_path_treatment)
+        )
+        print(f"Treatment dataset: {args.dataset_path_treatment}")
+        print(
+            f"  -> Dataset: {dataset_name_treat}, Subset: {data_subset_treat}, Treatment: {treatment_name_treat}"
+        )
+
+    if not exp_config.is_pairwise():
+        eval_type = "Control (original)" if args.is_control else "Treatment (modified)"
+        print(f"Evaluating: {eval_type}")
+
     print(f"Evaluator model: {args.model_name}")
     print(f"{'=' * 60}")
 
     run_judging_evals(
         args.model_name,
-        args.dataset_path_1,
-        args.dataset_path_2,
-        args.config_name,
+        args.dataset_path_control,
+        args.experiment_config,
+        args.dataset_path_treatment,
+        args.is_control,
     )
 
     print(f"\n{'=' * 60}")

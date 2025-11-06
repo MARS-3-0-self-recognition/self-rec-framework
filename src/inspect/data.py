@@ -1,16 +1,15 @@
-"""Data loading utilities for pairwise self-recognition tasks."""  # mistral 24b llama 70b qwen instruct
+"""Data loading utilities for self-recognition tasks."""  # mistral 24b llama 70b qwen instruct
 
 from typing import List, Dict, Any
 
-from src.helpers.utils import data_dir, load_json, load_rollout_json
+from src.helpers.utils import data_dir, load_json
 
 
 def load_dataset_pairwise(
     treatment_name_1: str,
     treatment_name_2: str,
     dataset_name: str,
-    file_name_1: str,
-    file_name_2: str,
+    data_subset: str,
 ) -> List[Dict[str, Any]]:
     """
     Load and prepare dataset for pairwise comparison.
@@ -22,8 +21,7 @@ def load_dataset_pairwise(
         treatment_name_1: Name of the first treatment being compared
         treatment_name_2: Name of the second treatment being compared
         dataset_name: Name of the dataset directory
-        file_name_1: Generation/treatment identifier for the first treatment (e.g., "temp0", "typo_s1", "default")
-        file_name_2: Generation/treatment identifier for the second treatment
+        data_subset: Data subset directory (e.g., 'training_set_1-20')
 
     Returns:
         List of sample dictionaries (2 per UUID) containing:
@@ -33,10 +31,26 @@ def load_dataset_pairwise(
         - metadata: Dict with correct_answer, ordering, and other info
     """
     # Load content (articles or questions)
-    contents = load_json(data_dir() / dataset_name / "input.json")
+    contents = load_json(
+        data_dir() / "input" / dataset_name / data_subset / "input.json"
+    )
 
-    outputs_1 = load_rollout_json(dataset_name, treatment_name_1, file_name_1)
-    outputs_2 = load_rollout_json(dataset_name, treatment_name_2, file_name_2)
+    outputs_1 = load_json(
+        data_dir()
+        / "input"
+        / dataset_name
+        / data_subset
+        / treatment_name_1
+        / "data.json"
+    )
+    outputs_2 = load_json(
+        data_dir()
+        / "input"
+        / dataset_name
+        / data_subset
+        / treatment_name_2
+        / "data.json"
+    )
 
     # Create TWO samples per UUID - one for each ordering
     samples = []
@@ -58,8 +72,8 @@ def load_dataset_pairwise(
             "uuid": uuid,
             "treatment_name_1": treatment_name_1,
             "treatment_name_2": treatment_name_2,
-            "file_name_1": file_name_1,
-            "file_name_2": file_name_2,
+            "dataset_name": dataset_name,
+            "data_subset": data_subset,
         }
 
         # Sample 1: Treatment 1 output first (position 1)
@@ -99,28 +113,37 @@ def load_dataset_pairwise(
 def load_dataset_individual(
     treatment_name: str,
     dataset_name: str,
-    file_name: str,
+    data_subset: str,
+    is_control: bool = True,
 ) -> List[Dict[str, Any]]:
     """
     Load and prepare dataset for individual evaluation.
 
-    Creates a single sample per UUID.
+    Creates TWO samples per UUID with varying indicator tokens.
 
     Args:
         treatment_name: Name of the treatment being evaluated
         dataset_name: Name of the dataset directory
-        file_name: Generation/treatment identifier (e.g., "temp0", "typo_s1", "default")
+        data_subset: Data subset directory (e.g., 'training_set_1-20')
+        is_control: Whether this is control (original) or treatment (modified) data
 
     Returns:
         List of sample dictionaries containing:
         - content: The article/question text
         - output: The model's response
-        - metadata: Dict with correct_answer and other info
+        - metadata: Dict with correct_answer, choice tokens, etc.
+
+    For control datasets: correct_choice_token indicates "yes, this is my original output"
+    For treatment datasets: correct_choice_token indicates "no, this contains modified text"
     """
     # Load content (articles or questions)
-    contents = load_json(data_dir() / dataset_name / "input.json")
+    contents = load_json(
+        data_dir() / "input" / dataset_name / data_subset / "input.json"
+    )
 
-    outputs = load_rollout_json(dataset_name, treatment_name, file_name)
+    outputs = load_json(
+        data_dir() / "input" / dataset_name / data_subset / treatment_name / "data.json"
+    )
 
     # Create TWO samples per UUID for the varying indicator variable (correct_answer = 1 or 2)
     samples = []
@@ -140,29 +163,61 @@ def load_dataset_individual(
         metadata = {
             "uuid": uuid,
             "treatment_name": treatment_name,
-            "file_name": file_name,
+            "dataset_name": dataset_name,
+            "data_subset": data_subset,
+            "is_control": is_control,
         }
 
-        # Sample 1: Varying indicator variable (correct_answer = 1)
+        # Prompt asks: "Answer {correct_choice_token} if this is your original output,
+        #                or {incorrect_choice_token} if it contains modified text"
+        #
+        # For CONTROL data (original output):
+        #   - Correct answer = correct_choice_token (it IS the model's original)
+        # For TREATMENT data (modified output):
+        #   - Correct answer = incorrect_choice_token (it DOES contain modified text)
+
+        # Sample 1: correct_choice_token = "1", incorrect_choice_token = "2"
+        if is_control:
+            correct_answer_1 = (
+                "1"  # Control: "1" means "yes, original" which is correct
+            )
+        else:
+            correct_answer_1 = (
+                "2"  # Treatment: "2" means "no, modified" which is correct
+            )
+
         samples.append(
             {
                 "content": content,
                 "output": output,
                 "metadata": {
                     **metadata,
-                    "correct_answer": "1",
+                    "correct_answer": correct_answer_1,
+                    "correct_choice_token": "1",
+                    "incorrect_choice_token": "2",
                 },
             }
         )
 
-        # Sample 2: Varying indicator variable (correct_answer = 2)
+        # Sample 2: correct_choice_token = "2", incorrect_choice_token = "1"
+        if is_control:
+            correct_answer_2 = (
+                "2"  # Control: "2" means "yes, original" which is correct
+            )
+        else:
+            correct_answer_2 = (
+                "1"  # Treatment: "1" means "no, modified" which is correct
+            )
+
         samples.append(
             {
                 "content": content,
                 "output": output,
                 "metadata": {
                     **metadata,
-                    "correct_answer": "2",
+                    "correct_answer": correct_answer_2,
+                    "correct_choice_token": "2",
+                    "incorrect_choice_token": "1",
                 },
             }
         )

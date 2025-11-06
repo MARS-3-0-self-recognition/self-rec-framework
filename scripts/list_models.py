@@ -65,6 +65,43 @@ def list_fireworks_models(search=None):
         return []
 
 
+def list_openai_models(search=None):
+    try:
+        from openai import OpenAI
+    except ImportError:
+        print("openai package not found. Please install it first.", file=sys.stderr)
+        sys.exit(1)
+
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    try:
+        response = client.models.list()
+        model_ids = [m.id for m in response]
+        return filter_models(model_ids, search)
+    except Exception as e:
+        print(f"Error fetching OpenAI models: {e}", file=sys.stderr)
+        return []
+
+
+def list_google_models(search=None):
+    try:
+        import google.generativeai as genai
+    except ImportError:
+        print(
+            "google-generativeai package not found. Please install it first.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+    try:
+        models = genai.list_models()
+        model_ids = [m.name for m in models]
+        return filter_models(model_ids, search)
+    except Exception as e:
+        print(f"Error fetching Google models: {e}", file=sys.stderr)
+        return []
+
+
 def main():
     # Load environment variables from .env file
     try:
@@ -113,6 +150,14 @@ def main():
         "fireworks": {
             "env_key": "FIREWORKS_API_KEY",
             "func": list_fireworks_models,
+        },
+        "openai": {
+            "env_key": "OPENAI_API_KEY",
+            "func": list_openai_models,
+        },
+        "google": {
+            "env_key": "GOOGLE_API_KEY",
+            "func": list_google_models,
         },
     }
 

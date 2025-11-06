@@ -1,0 +1,8 @@
+temperature: 1.0
+max_tokens: null
+
+tags: "AT"
+format: "PW-C"
+task: "Rec"
+priming: False
+dataset_name: "wikisum"

@@ -6,7 +6,7 @@ from inspect_ai.solver import generate
 from inspect_ai.model import ChatMessageUser, ChatMessageAssistant, GenerateConfig
 
 from src.helpers.model_names import inspect_model_name
-from src.inspect.config import load_self_recognition_config
+from src.inspect.config import ExperimentConfig, load_experiment_config
 from src.inspect.scorer import logprob_scorer, answer_length_scorer
 from src.inspect.data import load_dataset_pairwise, load_dataset_individual
 
@@ -16,45 +16,125 @@ from src.helpers.utils import (
 )
 
 
+def get_task_function(
+    exp_config: ExperimentConfig,
+    model_name: str,
+    treatment_name_control: str,
+    dataset_name: str,
+    data_subset: str,
+    is_control: bool,
+    treatment_name_treatment: str | None = None,
+) -> Task:
+    """
+    Get and execute the appropriate task function based on experiment configuration.
+
+    Args:
+        exp_config: ExperimentConfig with tags, format, and task fields
+        model_name: Name of the model being used as evaluator
+        treatment_name_control: Name of control (original) treatment
+        dataset_name: Name of the dataset directory under data/
+        data_subset: Data subset directory (e.g., 'training_set_1-20')
+        is_control: Whether evaluating control (True) or treatment (False) dataset
+        treatment_name_treatment: Name of treatment (modified) - for pairwise only
+
+    Returns:
+        Task object ready to be evaluated
+
+    Raises:
+        ValueError: If the combination of tags/format/task is not supported
+    """
+    tags = exp_config.tags
+    format_type = exp_config.format
+    task_type = exp_config.task
+
+    # Map (tags, format, task) to task function
+    task_map = {
+        # Assistant Tags (AT) - conversation in assistant messages
+        ("AT", "PW-C", "Rec"): pairwise_conversation_assistant_tags,
+        (
+            "AT",
+            "PW-C",
+            "Pref",
+        ): pairwise_conversation_assistant_tags,  # Same structure, different prompt
+        ("AT", "IND-C", "Rec"): individual_conversation_assistant_tags,
+        # User Tags (UT) - conversation in user messages as transcript
+        ("UT", "PW-C", "Rec"): pairwise_conversation_user_tags,
+        ("UT", "PW-C", "Pref"): pairwise_conversation_user_tags,
+        ("UT", "IND-C", "Rec"): individual_conversation_user_tags,
+        # Query format - single message (no conversation history)
+        ("AT", "PW-Q", "Rec"): pairwise_query,
+        ("AT", "PW-Q", "Pref"): pairwise_query,
+        ("UT", "PW-Q", "Rec"): pairwise_query,  # Query format same for AT/UT
+        ("UT", "PW-Q", "Pref"): pairwise_query,
+        ("AT", "IND-Q", "Rec"): individual_query,
+        ("UT", "IND-Q", "Rec"): individual_query,
+    }
+
+    key = (tags, format_type, task_type)
+    if key not in task_map:
+        raise ValueError(
+            f"Unsupported combination: tags={tags}, format={format_type}, task={task_type}"
+        )
+
+    task_fn = task_map[key]
+
+    # Call the task function with appropriate arguments
+    if exp_config.is_pairwise():
+        return task_fn(
+            model_name=model_name,
+            treatment_name_control=treatment_name_control,
+            treatment_name_treatment=treatment_name_treatment,
+            dataset_name=dataset_name,
+            data_subset=data_subset,
+            exp_config=exp_config,
+        )
+    else:
+        return task_fn(
+            model_name=model_name,
+            treatment_name=treatment_name_control,
+            dataset_name=dataset_name,
+            data_subset=data_subset,
+            exp_config=exp_config,
+            is_control=is_control,
+        )
+
+
 @task
 def pairwise_query(
     model_name: str,
-    treatment_name_1: str,
-    treatment_name_2: str,
+    treatment_name_control: str,
+    treatment_name_treatment: str,
     dataset_name: str,
-    dataset_file_name_1: str,
-    dataset_file_name_2: str,
-    config_name: str,
+    data_subset: str,
+    exp_config: ExperimentConfig,
 ) -> Task:
     """
     Base comparison self-recognition task.
 
     Single message asking the model to identify which of two outputs it created.
-    Returns a Task object that can be returned directly or modified for variants.
+    Control dataset contains correct answers.
 
     Args:
         model_name: Name of the model being used as evaluator
-        treatment_name_1: Name of the first treatment to compare
-        treatment_name_2: Name of the second treatment to compare
+        treatment_name_control: Name of control (original) treatment
+        treatment_name_treatment: Name of treatment (modified) treatment
         dataset_name: Name of the dataset directory under data/
-        dataset_file_name_1: File identifier for the first treatment
-        dataset_file_name_2: File identifier for the second treatment
-        config_name: name of pairwise config file with each required prompt
+        data_subset: Data subset directory (e.g., 'training_set_1-20')
+        exp_config: ExperimentConfig with prompts and settings
 
     Returns:
         Task object configured with logprobs enabled
     """
-    config = load_self_recognition_config(config_name)
+    config = exp_config
 
     inspect_model: str = inspect_model_name(model_name)
 
-    # Load dataset
+    # Load dataset - control is always first (correct answers)
     dataset_samples = load_dataset_pairwise(
-        treatment_name_1,
-        treatment_name_2,
+        treatment_name_control,
+        treatment_name_treatment,
         dataset_name,
-        dataset_file_name_1,
-        dataset_file_name_2,
+        data_subset,
     )
 
     # Create Inspect samples
@@ -89,12 +169,11 @@ def pairwise_query(
 @task
 def pairwise_conversation_assistant_tags(
     model_name: str,
-    treatment_name_1: str,
-    treatment_name_2: str,
+    treatment_name_control: str,
+    treatment_name_treatment: str,
     dataset_name: str,
-    dataset_file_name_1: str,
-    dataset_file_name_2: str,
-    config_name: str,
+    data_subset: str,
+    exp_config: ExperimentConfig,
 ) -> Task:
     """
     Base conversational self-recognition task.
@@ -105,27 +184,25 @@ def pairwise_conversation_assistant_tags(
 
     Args:
         model_name: Name of the model being used as evaluator
-        treatment_name_1: Name of the first treatment to compare
-        treatment_name_2: Name of the second treatment to compare
+        treatment_name_control: Name of control (original) treatment
+        treatment_name_treatment: Name of treatment (modified) treatment
         dataset_name: Name of the dataset directory under data/
-        dataset_file_name_1: File identifier for the first treatment
-        dataset_file_name_2: File identifier for the second treatment
-        config_name: name of pairwise config file with each required prompt
+        data_subset: Data subset directory (e.g., 'training_set_1-20')
+        exp_config: ExperimentConfig with prompts and settings
 
     Returns:
         Task object configured with logprobs enabled
     """
-    config = load_self_recognition_config(config_name)
+    config = exp_config
 
     inspect_model: str = inspect_model_name(model_name)
 
-    # Load dataset
+    # Load dataset - control is always first (correct answers)
     dataset_samples = load_dataset_pairwise(
-        treatment_name_1,
-        treatment_name_2,
+        treatment_name_control,
+        treatment_name_treatment,
         dataset_name,
-        dataset_file_name_1,
-        dataset_file_name_2,
+        data_subset,
     )
 
     # Create Inspect samples with conversation history
@@ -170,12 +247,11 @@ def pairwise_conversation_assistant_tags(
 @task
 def pairwise_conversation_user_tags(
     model_name: str,
-    treatment_name_1: str,
-    treatment_name_2: str,
+    treatment_name_control: str,
+    treatment_name_treatment: str,
     dataset_name: str,
-    dataset_file_name_1: str,
-    dataset_file_name_2: str,
-    config_name: str,
+    data_subset: str,
+    exp_config: ExperimentConfig,
 ) -> Task:
     """
     Base comparison self-recognition task.
@@ -185,27 +261,25 @@ def pairwise_conversation_user_tags(
 
     Args:
         model_name: Name of the model being used as evaluator
-        treatment_name_1: Name of the first treatment to compare
-        treatment_name_2: Name of the second treatment to compare
+        treatment_name_control: Name of control (original) treatment
+        treatment_name_treatment: Name of treatment (modified) treatment
         dataset_name: Name of the dataset directory under data/
-        dataset_file_name_1: File identifier for the first treatment
-        dataset_file_name_2: File identifier for the second treatment
-        config_name: name of pairwise config file with each required prompt
+        data_subset: Data subset directory (e.g., 'training_set_1-20')
+        exp_config: ExperimentConfig with prompts and settings
 
     Returns:
         Task object configured with logprobs enabled
     """
-    config = load_self_recognition_config(config_name)
+    config = exp_config
 
     inspect_model: str = inspect_model_name(model_name)
 
-    # Load dataset
+    # Load dataset - control is always first (correct answers)
     dataset_samples = load_dataset_pairwise(
-        treatment_name_1,
-        treatment_name_2,
+        treatment_name_control,
+        treatment_name_treatment,
         dataset_name,
-        dataset_file_name_1,
-        dataset_file_name_2,
+        data_subset,
     )
 
     # Create Inspect samples
@@ -245,8 +319,9 @@ def individual_conversation_assistant_tags(
     model_name: str,
     treatment_name: str,
     dataset_name: str,
-    dataset_file_name: str,
-    config_name: str,
+    data_subset: str,
+    exp_config: ExperimentConfig,
+    is_control: bool = True,
 ) -> Task:
     """
     Base conversational self-recognition task.
@@ -258,21 +333,22 @@ def individual_conversation_assistant_tags(
         model_name: Name of the model being used as evaluator
         treatment_name: Name of the treatment being evaluated
         dataset_name: Name of the dataset directory under data/
-        dataset_file_name: File identifier for the treatment
-        config_name: name of self-recognition config file with each required prompt
+        data_subset: Data subset directory (e.g., 'training_set_1-20')
+        exp_config: ExperimentConfig with prompts and settings
 
     Returns:
         Task object configured with logprobs enabled
     """
-    config = load_self_recognition_config(config_name)
+    config = exp_config
 
     inspect_model: str = inspect_model_name(model_name)
 
     # Load dataset
-    dataset_samples = load_dataset_pairwise(
+    dataset_samples = load_dataset_individual(
         treatment_name,
         dataset_name,
-        dataset_file_name,
+        data_subset,
+        is_control=is_control,
     )
 
     # Create Inspect samples with conversation history
@@ -283,13 +359,19 @@ def individual_conversation_assistant_tags(
             content=sample_data["content"]
         )
 
+        # Format SR task prompt with choice tokens
+        sr_task_prompt = config.SR_task_prompt.format(
+            correct_choice_token=sample_data["metadata"]["correct_choice_token"],
+            incorrect_choice_token=sample_data["metadata"]["incorrect_choice_token"],
+        )
+
         # Build conversation history
         messages = [
-            # First interaction with output1
+            # First interaction with output
             ChatMessageUser(content=generation_prompt),
             ChatMessageAssistant(content=sample_data["output"]),
             # Final verification question
-            ChatMessageUser(content=config.SR_task_prompt),
+            ChatMessageUser(content=sr_task_prompt),
         ]
 
         inspect_samples.append(
@@ -316,8 +398,9 @@ def individual_conversation_user_tags(
     model_name: str,
     treatment_name: str,
     dataset_name: str,
-    dataset_file_name: str,
-    config_name: str,
+    data_subset: str,
+    exp_config: ExperimentConfig,
+    is_control: bool = True,
 ) -> Task:
     """
     Base comparison self-recognition task.
@@ -330,12 +413,12 @@ def individual_conversation_user_tags(
         treatment_name: Name of the treatment being evaluated
         dataset_name: Name of the dataset directory under data/
         dataset_file_name: File identifier for the treatment
-        config_name: name of self-recognition config file with each required prompt
+        exp_config: ExperimentConfig with prompts and settings
 
     Returns:
         Task object configured with logprobs enabled
     """
-    config = load_self_recognition_config(config_name)
+    config = exp_config
 
     inspect_model: str = inspect_model_name(model_name)
 
@@ -343,7 +426,8 @@ def individual_conversation_user_tags(
     dataset_samples = load_dataset_individual(
         treatment_name,
         dataset_name,
-        dataset_file_name,
+        data_subset,
+        is_control=is_control,
     )
 
     # Create Inspect samples
@@ -356,6 +440,78 @@ def individual_conversation_user_tags(
         prompt = config.SR_task_prompt.format(
             generation_prompt=generation_prompt,
             output=sample_data["output"],
+            correct_choice_token=sample_data["metadata"]["correct_choice_token"],
+            incorrect_choice_token=sample_data["metadata"]["incorrect_choice_token"],
+        )
+
+        inspect_samples.append(
+            Sample(
+                input=prompt,
+                target=sample_data["metadata"]["correct_answer"],
+                metadata=sample_data["metadata"],
+            )
+        )
+
+    return Task(
+        dataset=inspect_samples,
+        solver=generate(),
+        scorer=logprob_scorer(),
+        model=inspect_model,
+        config=GenerateConfig(
+            logprobs=True, top_logprobs=2, system_message=config.system_prompt
+        ),
+    )
+
+
+@task
+def individual_query(
+    model_name: str,
+    treatment_name: str,
+    dataset_name: str,
+    data_subset: str,
+    exp_config: ExperimentConfig,
+    is_control: bool = True,
+) -> Task:
+    """
+    Individual self-recognition task with single query message.
+
+    Presents a single output and asks if the model wrote it.
+
+    Args:
+        model_name: Name of the model being used as evaluator
+        treatment_name: Name of the treatment being evaluated
+        dataset_name: Name of the dataset directory under data/
+        dataset_file_name: File identifier for the treatment
+        exp_config: ExperimentConfig with prompts and settings
+
+    Returns:
+        Task object configured with logprobs enabled
+    """
+    config = exp_config
+
+    inspect_model: str = inspect_model_name(model_name)
+
+    # Load dataset
+    dataset_samples = load_dataset_individual(
+        treatment_name,
+        dataset_name,
+        data_subset,
+        is_control=is_control,
+    )
+
+    # Create Inspect samples
+    inspect_samples = []
+    for sample_data in dataset_samples:
+        # Format the prompt using the config template
+        prompt = config.SR_task_prompt.format(
+            content=sample_data["content"],
+            output=sample_data["output"],
+            correct_choice_token=sample_data["metadata"].get(
+                "correct_choice_token", "1"
+            ),
+            incorrect_choice_token=sample_data["metadata"].get(
+                "incorrect_choice_token", "2"
+            ),
         )
 
         inspect_samples.append(
@@ -380,16 +536,33 @@ def individual_conversation_user_tags(
 @task
 def generation(
     model_name: str,
-    treatment_name: str,
     dataset_name: str,
-    dataset_file_name: str,
-    config_name: str,
+    data_subset: str,
+    config_path: str = None,
+    exp_config: ExperimentConfig = None,
 ) -> Task:
     """
     Base generation task.
+
+    Args:
+        model_name: Model to use for generation
+        dataset_name: Dataset name
+        data_subset: Data subset directory (e.g., 'debug', 'training_set_1-20')
+        config_path: Path to experiment config (if not providing exp_config)
+        exp_config: ExperimentConfig instance (if not providing config_path)
     """
-    contents = load_json(data_dir() / dataset_name / "input.json")
-    config = load_self_recognition_config(config_name)
+    contents = load_json(
+        data_dir() / "input" / dataset_name / data_subset / "input.json"
+    )
+
+    # Load config if not provided
+    if exp_config is None:
+        if config_path is None:
+            raise ValueError("Must provide either config_path or exp_config")
+        config = load_experiment_config(config_path, dataset_name=dataset_name)
+    else:
+        config = exp_config
+
     model = inspect_model_name(model_name)
 
     # create base samples
@@ -402,7 +575,7 @@ def generation(
         metadata = {
             "uuid": uuid,
             "model_name": model_name,
-            "config_name": config_name,
+            "config_path": config_path,
         }
         inspect_samples.append(
             Sample(
@@ -411,7 +584,6 @@ def generation(
                 metadata=metadata,
             )
         )
-        # TODO: optionally add a target later
 
     # Create GenerateConfig with only non-None parameters
     generate_config_params = {}
@@ -421,14 +593,8 @@ def generation(
         generate_config_params["temperature"] = config.temperature
     if config.max_tokens is not None:
         generate_config_params["max_tokens"] = config.max_tokens
-    if config.top_p is not None:
-        generate_config_params["top_p"] = config.top_p
-    if config.top_k is not None:
-        generate_config_params["top_k"] = config.top_k
     if config.seed is not None:
         generate_config_params["seed"] = config.seed
-    if config.stop_seqs is not None:
-        generate_config_params["stop_seqs"] = config.stop_seqs
 
     return Task(
         dataset=inspect_samples,

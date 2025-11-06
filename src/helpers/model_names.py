@@ -1,20 +1,31 @@
 INSPECT_MODEL_NAMES: dict = {
+    # OpenAI
     "gpt-4o-mini": "openai/gpt-4o-mini",
     "gpt-4o": "openai/gpt-4o",
     "gpt-4.1-mini": "openai/gpt-4.1-mini-2025-04-14",
     "gpt-4.1": "openai/gpt-4.1-2025-04-14",
     # Anthropic
     "sonnet-4-5": "anthropic/claude-sonnet-4-5-20250929",
-    "sonnet-3-5": "anthropic/claude-3-5-sonnet-20241022",
+    "sonnet-3-7": "anthropic/claude-3-7-sonnet-20250219",
     "haiku-3-5": "anthropic/claude-3-5-haiku-20241022",
+    "haiku-4-5": "anthropic/claude-4-5-haiku-20251001",
+    # Google
+    "gemini-2.0-flash": "google/gemini-2.0-flash",
+    "gemini-2.0-flash-lite": "google/gemini-2.0-flash-lite",
+    "gemini-2.5-flash": "google/gemini-2.5-flash",
+    "gemini-2.5-pro": "google/gemini-2.5-pro",
     # Llama
     "ll-3-1-8b": "fireworks/accounts/fireworks/models/llama-v3p1-8b-instruct",
     "ll-3-1-70b": "fireworks/accounts/fireworks/models/llama-v3p1-70b-instruct",
     "ll-3-1-405b": "fireworks/accounts/fireworks/models/llama-v3p1-405b-instruct",
     # Qwen
     "qwen3-30b-a3b": "fireworks/accounts/fireworks/models/qwen3-30b-a3b",
+    "qwen3-vl-235b-a22b": "fireworks/accounts/fireworks/models/qwen3-vl-235b-a22b-instruct",
+    "qwen3-vl-30b-a3b": "fireworks/accounts/fireworks/models/qwen3-vl-30b-a3b-instruct",
     # DeepSeek
-    "deepseek-v3": "fireworks/accounts/fireworks/models/deepseek-v3",
+    # "deepseek-v3": "fireworks/accounts/fireworks/models/deepseek-v3-0324",
+    "deepseek-v3p1": "fireworks/accounts/fireworks/models/deepseek-v3p1",
+    "deepseek-r1-0528": "fireworks/accounts/fireworks/models/deepseek-r1-0528",
 }
 
 SHORT_MODEL_NAMES: dict = {v: k for k, v in INSPECT_MODEL_NAMES.items()}
