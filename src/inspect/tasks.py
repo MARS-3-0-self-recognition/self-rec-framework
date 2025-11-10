@@ -24,6 +24,7 @@ def get_task_function(
     data_subset: str,
     is_control: bool,
     treatment_name_treatment: str | None = None,
+    task_name: str | None = None,
 ) -> Task:
     """
     Get and execute the appropriate task function based on experiment configuration.
@@ -36,6 +37,7 @@ def get_task_function(
         data_subset: Data subset directory (e.g., 'training_set_1-20')
         is_control: Whether evaluating control (True) or treatment (False) dataset
         treatment_name_treatment: Name of treatment (modified) - for pairwise only
+        task_name: Optional custom name for the task (used in log filenames)
 
     Returns:
         Task object ready to be evaluated
@@ -51,12 +53,9 @@ def get_task_function(
     task_map = {
         # Assistant Tags (AT) - conversation in assistant messages
         ("AT", "PW-C", "Rec"): pairwise_conversation_assistant_tags,
-        (
-            "AT",
-            "PW-C",
-            "Pref",
-        ): pairwise_conversation_assistant_tags,  # Same structure, different prompt
+        ("AT", "PW-C", "Pref"): pairwise_conversation_assistant_tags,
         ("AT", "IND-C", "Rec"): individual_conversation_assistant_tags,
+        ("AT", "IND-C", "Pref"): individual_conversation_assistant_tags,
         # User Tags (UT) - conversation in user messages as transcript
         ("UT", "PW-C", "Rec"): pairwise_conversation_user_tags,
         ("UT", "PW-C", "Pref"): pairwise_conversation_user_tags,
@@ -87,6 +86,7 @@ def get_task_function(
             dataset_name=dataset_name,
             data_subset=data_subset,
             exp_config=exp_config,
+            task_name=task_name,
         )
     else:
         return task_fn(
@@ -96,6 +96,7 @@ def get_task_function(
             data_subset=data_subset,
             exp_config=exp_config,
             is_control=is_control,
+            task_name=task_name,
         )
 
 
@@ -107,11 +108,13 @@ def pairwise_query(
     dataset_name: str,
     data_subset: str,
     exp_config: ExperimentConfig,
+    task_name: str | None = None,
 ) -> Task:
     """
     Base comparison self-recognition task.
 
     Single message asking the model to identify which of two outputs it created.
+    For UT format, presents the query and responses as a transcript.
     Control dataset contains correct answers.
 
     Args:
@@ -121,6 +124,7 @@ def pairwise_query(
         dataset_name: Name of the dataset directory under data/
         data_subset: Data subset directory (e.g., 'training_set_1-20')
         exp_config: ExperimentConfig with prompts and settings
+        task_name: Optional custom name for the task (used in log filenames)
 
     Returns:
         Task object configured with logprobs enabled
@@ -141,11 +145,25 @@ def pairwise_query(
     inspect_samples = []
     for sample_data in dataset_samples:
         # Format the prompt using the config template
-        prompt = config.SR_task_prompt.format(
-            content=sample_data["content"],
-            output1=sample_data["output1"],
-            output2=sample_data["output2"],
-        )
+        # For UT format, SR_task_prompt includes UT_transcript with {generation_prompt} placeholder
+        # For AT format, this would need different handling (not currently implemented)
+        if config.tags == "UT":
+            # Format generation prompt first, then format SR_task_prompt
+            generation_prompt = config.generation_prompt.format(
+                content=sample_data["content"]
+            )
+            prompt = config.SR_task_prompt.format(
+                generation_prompt=generation_prompt,
+                output1=sample_data["output1"],
+                output2=sample_data["output2"],
+            )
+        else:
+            # AT format - not fully implemented for PW-Q
+            # Would need placeholders added to prompts.yaml
+            raise NotImplementedError(
+                f"PW-Q format with {config.tags} tags is not yet implemented. "
+                f"The prompts.yaml needs to be updated with appropriate placeholders."
+            )
 
         inspect_samples.append(
             Sample(
@@ -163,6 +181,7 @@ def pairwise_query(
         config=GenerateConfig(
             logprobs=True, top_logprobs=2, system_message=config.system_prompt
         ),
+        name=task_name,
     )
 
 
@@ -174,6 +193,7 @@ def pairwise_conversation_assistant_tags(
     dataset_name: str,
     data_subset: str,
     exp_config: ExperimentConfig,
+    task_name: str | None = None,
 ) -> Task:
     """
     Base conversational self-recognition task.
@@ -189,6 +209,7 @@ def pairwise_conversation_assistant_tags(
         dataset_name: Name of the dataset directory under data/
         data_subset: Data subset directory (e.g., 'training_set_1-20')
         exp_config: ExperimentConfig with prompts and settings
+        task_name: Optional custom name for the task (used in log filenames)
 
     Returns:
         Task object configured with logprobs enabled
@@ -241,6 +262,7 @@ def pairwise_conversation_assistant_tags(
         config=GenerateConfig(
             logprobs=True, top_logprobs=2, system_message=config.system_prompt
         ),
+        name=task_name,
     )
 
 
@@ -252,6 +274,7 @@ def pairwise_conversation_user_tags(
     dataset_name: str,
     data_subset: str,
     exp_config: ExperimentConfig,
+    task_name: str | None = None,
 ) -> Task:
     """
     Base comparison self-recognition task.
@@ -266,6 +289,7 @@ def pairwise_conversation_user_tags(
         dataset_name: Name of the dataset directory under data/
         data_subset: Data subset directory (e.g., 'training_set_1-20')
         exp_config: ExperimentConfig with prompts and settings
+        task_name: Optional custom name for the task (used in log filenames)
 
     Returns:
         Task object configured with logprobs enabled
@@ -311,6 +335,7 @@ def pairwise_conversation_user_tags(
         config=GenerateConfig(
             logprobs=True, top_logprobs=2, system_message=config.system_prompt
         ),
+        name=task_name,
     )
 
 
@@ -322,6 +347,7 @@ def individual_conversation_assistant_tags(
     data_subset: str,
     exp_config: ExperimentConfig,
     is_control: bool = True,
+    task_name: str | None = None,
 ) -> Task:
     """
     Base conversational self-recognition task.
@@ -335,6 +361,8 @@ def individual_conversation_assistant_tags(
         dataset_name: Name of the dataset directory under data/
         data_subset: Data subset directory (e.g., 'training_set_1-20')
         exp_config: ExperimentConfig with prompts and settings
+        is_control: Whether evaluating control dataset
+        task_name: Optional custom name for the task (used in log filenames)
 
     Returns:
         Task object configured with logprobs enabled
@@ -390,6 +418,7 @@ def individual_conversation_assistant_tags(
         config=GenerateConfig(
             logprobs=True, top_logprobs=2, system_message=config.system_prompt
         ),
+        name=task_name,
     )
 
 
@@ -401,6 +430,7 @@ def individual_conversation_user_tags(
     data_subset: str,
     exp_config: ExperimentConfig,
     is_control: bool = True,
+    task_name: str | None = None,
 ) -> Task:
     """
     Base comparison self-recognition task.
@@ -412,8 +442,10 @@ def individual_conversation_user_tags(
         model_name: Name of the model being used as evaluator
         treatment_name: Name of the treatment being evaluated
         dataset_name: Name of the dataset directory under data/
-        dataset_file_name: File identifier for the treatment
+        data_subset: Data subset directory
         exp_config: ExperimentConfig with prompts and settings
+        is_control: Whether evaluating control dataset
+        task_name: Optional custom name for the task (used in log filenames)
 
     Returns:
         Task object configured with logprobs enabled
@@ -460,6 +492,7 @@ def individual_conversation_user_tags(
         config=GenerateConfig(
             logprobs=True, top_logprobs=2, system_message=config.system_prompt
         ),
+        name=task_name,
     )
 
 
@@ -471,6 +504,7 @@ def individual_query(
     data_subset: str,
     exp_config: ExperimentConfig,
     is_control: bool = True,
+    task_name: str | None = None,
 ) -> Task:
     """
     Individual self-recognition task with single query message.
@@ -481,8 +515,10 @@ def individual_query(
         model_name: Name of the model being used as evaluator
         treatment_name: Name of the treatment being evaluated
         dataset_name: Name of the dataset directory under data/
-        dataset_file_name: File identifier for the treatment
+        data_subset: Data subset directory
         exp_config: ExperimentConfig with prompts and settings
+        is_control: Whether evaluating control dataset
+        task_name: Optional custom name for the task (used in log filenames)
 
     Returns:
         Task object configured with logprobs enabled
@@ -530,6 +566,7 @@ def individual_query(
         config=GenerateConfig(
             logprobs=True, top_logprobs=2, system_message=config.system_prompt
         ),
+        name=task_name,
     )
 
 

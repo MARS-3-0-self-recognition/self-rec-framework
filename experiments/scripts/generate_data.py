@@ -33,6 +33,7 @@ def _generate_base_data(
     data_subset: str,
     exp_config: ExperimentConfig,
     overwrite: bool = False,
+    batch: bool | int | str = False,
 ) -> Path:
     """
     Generate base data using a model (no treatments applied).
@@ -45,6 +46,8 @@ def _generate_base_data(
         data_subset: Data subset directory
         exp_config: ExperimentConfig with prompts and generation parameters
         overwrite: If True, regenerate even if data exists
+        batch: Enable batch mode for supported providers (OpenAI, Anthropic, Google, Together AI).
+               Can be True (default config), int (batch size), or str (path to config file)
 
     Returns:
         Path to the generated data.json file
@@ -85,7 +88,7 @@ def _generate_base_data(
     log_dir.mkdir(parents=True, exist_ok=True)
 
     # Run generation
-    eval_logs = eval(task, log_dir=str(log_dir))
+    eval_logs = eval(task, log_dir=str(log_dir), batch=batch)
     assert len(eval_logs) == 1, "Expected only one eval log"
     eval_log = eval_logs[0]
 
@@ -179,6 +182,7 @@ def run_generation(
     dataset_path: str,
     dataset_config: str,
     overwrite: bool = False,
+    batch: bool | int | str = False,
 ):
     """
     Generate data using a model and apply treatments.
@@ -188,6 +192,8 @@ def run_generation(
         dataset_path: Path to input.json (e.g., 'data/wikisum/debug/input.json')
         dataset_config: Path to generation config YAML with temperature, treatments, etc.
         overwrite: If True, regenerate/reapply even if data exists
+        batch: Enable batch mode for supported providers (OpenAI, Anthropic, Google, Together AI).
+               Can be True (default config), int (batch size), or str (path to config file)
     """
     # Parse dataset path to determine output location
     dataset_path_obj = Path(dataset_path)
@@ -233,6 +239,7 @@ def run_generation(
         data_subset=data_subset,
         exp_config=exp_config,
         overwrite=overwrite,
+        batch=batch,
     )
 
     # Step 2: Apply treatments
@@ -291,12 +298,28 @@ Example:
         default=False,
         help="Overwrite existing data files (default: skip existing files)",
     )
+    parser.add_argument(
+        "--batch",
+        nargs="?",
+        const=True,
+        default=False,
+        help="Enable batch mode for supported providers (OpenAI, Anthropic, Google, Together AI). "
+        "Usage: --batch (default config), --batch 1000 (batch size), --batch config.yaml (config file)",
+    )
 
     args = parser.parse_args()
+
+    # Parse batch argument
+    batch_value = args.batch
+    if batch_value is not False:
+        # Try to convert to int if it's a number string
+        if isinstance(batch_value, str) and batch_value.isdigit():
+            batch_value = int(batch_value)
 
     run_generation(
         model_name=args.model_name,
         dataset_path=args.dataset_path,
         dataset_config=args.dataset_config,
         overwrite=args.overwrite,
+        batch=batch_value,
     )

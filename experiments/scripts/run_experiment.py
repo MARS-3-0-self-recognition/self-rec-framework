@@ -108,6 +108,7 @@ def run_judging_evals(
     experiment_config_path: str,
     dataset_path_treatment: str | None = None,
     is_control: bool = True,
+    batch: bool | int | str = False,
 ) -> None:
     """
     Run judging evaluations (pairwise or individual based on config).
@@ -118,6 +119,8 @@ def run_judging_evals(
         experiment_config_path: Path to experiment config
         dataset_path_treatment: Path to treatment (modified) dataset (for pairwise only)
         is_control: Whether we're evaluating control dataset (for individual only)
+        batch: Enable batch mode for supported providers (OpenAI, Anthropic, Google, Together AI).
+               Can be True (default config), int (batch size), or str (path to config file)
     """
     print("\n=== RUNNING JUDGING EVALUATIONS ===")
 
@@ -168,6 +171,7 @@ def run_judging_evals(
             dataset_name=dataset_name,
             experiment_name=experiment_name,
             is_control=True,  # Not used for pairwise
+            batch=batch,
         )
     else:
         # Individual task - run on specified dataset (either control or treatment)
@@ -187,6 +191,7 @@ def run_judging_evals(
             dataset_name=dataset_name,
             experiment_name=experiment_name,
             is_control=is_control,
+            batch=batch,
         )
 
 
@@ -199,6 +204,7 @@ def run_single_judging_task(
     experiment_name: str,
     is_control: bool,
     treatment_name_treatment: str | None = None,
+    batch: bool | int | str = False,
 ) -> None:
     """
     Run a single judging task (pairwise or individual).
@@ -207,6 +213,8 @@ def run_single_judging_task(
         treatment_name_control: Name of control (original) treatment
         treatment_name_treatment: Name of treatment (modified) - for pairwise only
         is_control: Whether evaluating control (True) or treatment (False) - for individual only
+        batch: Enable batch mode for supported providers (OpenAI, Anthropic, Google, Together AI).
+               Can be True (default config), int (batch size), or str (path to config file)
     """
     # Build task name and config name for logging
     task_name = exp_config.config_name_for_logging()
@@ -229,6 +237,15 @@ def run_single_judging_task(
 
     print(f"  Running {experiment_name} task...")
 
+    # Build task name for log filename
+    if treatment_name_treatment:
+        task_name = f"{model_name}_eval_on_{treatment_name_control}_vs_{treatment_name_treatment}"
+    else:
+        control_or_treatment = "control" if is_control else "treatment"
+        task_name = (
+            f"{model_name}_eval_on_{treatment_name_control}_{control_or_treatment}"
+        )
+
     # Get task - all branching logic is handled in get_task_function
     task = get_task_function(
         exp_config=exp_config,
@@ -238,9 +255,10 @@ def run_single_judging_task(
         dataset_name=dataset_name,
         data_subset=data_subset,
         is_control=is_control,
+        task_name=task_name,
     )
 
-    eval(task, log_dir=str(log_dir))
+    eval(task, log_dir=str(log_dir), batch=batch)
     print(f"  ✓ {experiment_name}: completed")
 
 
@@ -279,8 +297,23 @@ def main():
         required=True,
         help="Model name for evaluator (e.g., 'haiku-3-5')",
     )
+    parser.add_argument(
+        "--batch",
+        nargs="?",
+        const=True,
+        default=False,
+        help="Enable batch mode for supported providers (OpenAI, Anthropic, Google, Together AI). "
+        "Usage: --batch (default config), --batch 1000 (batch size), --batch config.yaml (config file)",
+    )
 
     args = parser.parse_args()
+
+    # Parse batch argument
+    batch_value = args.batch
+    if batch_value is not False:
+        # Try to convert to int if it's a number string
+        if isinstance(batch_value, str) and batch_value.isdigit():
+            batch_value = int(batch_value)
 
     # Parse dataset paths for display
     dataset_name_ctrl, data_subset_ctrl, treatment_name_ctrl = parse_dataset_path(
@@ -327,6 +360,7 @@ def main():
         args.experiment_config,
         args.dataset_path_treatment,
         args.is_control,
+        batch_value,
     )
 
     print(f"\n{'=' * 60}")

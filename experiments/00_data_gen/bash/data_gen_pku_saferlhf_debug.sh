@@ -1,7 +1,7 @@
 #!/bin/bash
-# Generate WikiSum data using current architecture
+# Generate PKU SaferLHF debug data using current architecture
 
-uv run src/data_gen/gen.py \
-    --model_name=3-5-haiku \
-    --model_generation_string=pku_saferlhf_config \
-    --dataset_name=pku_saferlhf_debug
+uv run experiments/scripts/generate_data.py \
+    --model_name=haiku-3.5 \
+    --dataset_path=data/input/pku_saferlhf/debug/input.json \
+    --dataset_config=experiments/00_data_gen/configs/config.yaml

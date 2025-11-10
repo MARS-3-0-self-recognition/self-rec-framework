@@ -5,4 +5,3 @@ tags: "UT"
 format: "PW-C"
 task: "Rec"
 priming: True
-dataset_name: "wikisum"

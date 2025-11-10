@@ -2,7 +2,6 @@ temperature: 1.0
 max_tokens: null
 
 tags: "UT"
-format: "PW-C"
+format: "PW-Q"
 task: "Rec"
-priming: True
-dataset_name: "wikisum"
+priming: False

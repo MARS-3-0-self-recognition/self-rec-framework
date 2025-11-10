@@ -28,17 +28,51 @@ def list_anthropic_models(search=None):
         return []
 
 
-def list_together_models(search=None):
+def list_together_models(search=None, model_type=None):
+    """
+    List Together AI models.
+
+    Args:
+        search: Search term to filter models
+        model_type: Filter by model type (e.g., 'chat', 'language', 'image', 'embedding', 'moderation')
+                   If None, includes all types that can be successfully parsed
+    """
     try:
-        import together
+        import requests
     except ImportError:
-        print("together package not found. Please install it first.", file=sys.stderr)
+        print("requests package not found. Please install it first.", file=sys.stderr)
         sys.exit(1)
 
-    client = together.Together(api_key=os.getenv("TOGETHER_API_KEY"))
+    api_key = os.getenv("TOGETHER_API_KEY")
+    if not api_key:
+        print("TOGETHER_API_KEY not found in environment.", file=sys.stderr)
+        return []
+
     try:
-        response = client.models.list()
-        model_ids = [getattr(m, "id", getattr(m, "name", str(m))) for m in response]
+        # Use direct API call to avoid Pydantic validation issues
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+        }
+        response = requests.get("https://api.together.xyz/v1/models", headers=headers)
+        response.raise_for_status()
+
+        models_data = response.json()
+        model_ids = []
+
+        for model in models_data:
+            # Extract model ID
+            model_id = model.get("id") or model.get("name")
+            if not model_id:
+                continue
+
+            # Filter by model type if specified
+            if model_type:
+                model_model_type = model.get("type", "")
+                if model_model_type != model_type:
+                    continue
+
+            model_ids.append(model_id)
+
         return filter_models(model_ids, search)
     except Exception as e:
         print(f"Error fetching Together models: {e}", file=sys.stderr)
@@ -133,6 +167,13 @@ def main():
         default=None,
         help="Search term to filter models (case-insensitive)",
     )
+    parser.add_argument(
+        "-t",
+        "--type",
+        type=str,
+        default=None,
+        help="Model type to filter (Together only: 'chat', 'language', 'image', 'embedding', 'moderation', 'video', etc.)",
+    )
     args = parser.parse_args()
 
     provider = args.provider
@@ -173,7 +214,17 @@ def main():
         sys.exit(1)
 
     # Fetch and filter models
-    models = provider_config["func"](args.search)
+    if provider == "together":
+        # Together supports type filtering
+        models = provider_config["func"](args.search, args.type)
+    else:
+        # Other providers don't support type filtering
+        if args.type:
+            print(
+                "Warning: --type is only supported for Together provider, ignoring.",
+                file=sys.stderr,
+            )
+        models = provider_config["func"](args.search)
 
     # Truncate and print
     for model_id in models[: args.number]:

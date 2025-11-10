@@ -5,4 +5,3 @@ tags: "AT"
 format: "IND-C"
 task: "Rec"
 priming: False
-dataset_name: "wikisum"

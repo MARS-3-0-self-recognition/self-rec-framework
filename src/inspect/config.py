@@ -141,21 +141,94 @@ def create_generation_config(
     return exp_config
 
 
+def _get_nested_prompt(
+    prompt_dict: dict, keys: list[str], allow_all: bool = True
+) -> str:
+    """
+    Recursively retrieve a nested prompt value with 'All' wildcard support.
+
+    Args:
+        prompt_dict: The dictionary to search
+        keys: List of keys to traverse (e.g., ["UT", "C", "Rec"])
+        allow_all: Whether to check for "All" as a wildcard fallback
+
+    Returns:
+        The prompt string
+
+    Raises:
+        KeyError: If the path doesn't exist and no "All" fallback is found
+    """
+    # Base case: if we have a string, return it
+    if isinstance(prompt_dict, str):
+        return prompt_dict
+
+    # If no more keys but we have a dict, try "All" as final fallback
+    if not keys:
+        if allow_all and "All" in prompt_dict:
+            return _get_nested_prompt(prompt_dict["All"], [], allow_all)
+        raise KeyError(
+            "Expected string value but got nested dict with no 'All' fallback"
+        )
+
+    current_key = keys[0]
+    remaining_keys = keys[1:]
+
+    # Try exact key first
+    if current_key in prompt_dict:
+        return _get_nested_prompt(prompt_dict[current_key], remaining_keys, allow_all)
+
+    # Try "All" wildcard if allowed
+    if allow_all and "All" in prompt_dict:
+        return _get_nested_prompt(prompt_dict["All"], remaining_keys, allow_all)
+
+    # No match found
+    raise KeyError(f"Key '{current_key}' not found and no 'All' fallback available")
+
+
 def _build_prompts(exp_config: ExperimentConfig) -> None:
     """
     Build prompts for an ExperimentConfig by combining base and dataset prompts.
     Modifies the exp_config in place.
 
+    The prompt structure supports hierarchical organization with "All" wildcards:
+    - priming.AT.All applies to all AT formats/tasks
+    - priming.UT.C.All applies to all UT conversation formats (Rec/Pref)
+    - priming.UT.Q.Rec applies only to UT query recognition
+
     Args:
         exp_config: ExperimentConfig instance to populate with prompts
+
+    Raises:
+        ValueError: If the experiment combination is not implemented
     """
     base_prompts = load_base_prompts()
     dataset_prompts = load_dataset_prompts(exp_config.dataset_name)
 
+    # Parse format string: "PW-C" → pair_type="PW", format_type="C"
+    parts = exp_config.format.split("-")
+    pair_type = parts[0]  # "PW" or "IND"
+    format_type = parts[1]  # "C" (conversation) or "Q" (query)
+
     # Get priming text for system prompt
     priming_text = ""
     if exp_config.priming:
-        priming_text = base_prompts["priming"][exp_config.tags].strip()
+        try:
+            # Build priming keys based on tags
+            # AT: priming.AT.All (applies to all formats/tasks)
+            # UT: priming.UT.{C|Q}.{All|Rec|Pref}
+            if exp_config.tags == "AT":
+                priming_keys = [exp_config.tags]  # Will find "All" wildcard
+            else:  # UT
+                priming_keys = [exp_config.tags, format_type, exp_config.task]
+
+            priming_text = _get_nested_prompt(
+                base_prompts["priming"], priming_keys
+            ).strip()
+        except KeyError as e:
+            raise ValueError(
+                f"Priming not implemented for combination: "
+                f"tags={exp_config.tags}, format={exp_config.format}, task={exp_config.task}"
+            ) from e
 
     # Build system prompt with priming
     exp_config.system_prompt = dataset_prompts["system_prompt"].format(
@@ -167,8 +240,18 @@ def _build_prompts(exp_config: ExperimentConfig) -> None:
 
     # Build SR task prompt
     sr_task_preface = base_prompts["SR_task_preface"][exp_config.tags].strip()
-    format_task_key = f"{exp_config.format}_{exp_config.task}"
-    sr_task_template = base_prompts["SR_task"][format_task_key]
+
+    # Get SR task template: SR_task[pair_type][format_type][task]
+    try:
+        sr_task_keys = [pair_type, format_type, exp_config.task]
+        sr_task_template = _get_nested_prompt(
+            base_prompts["SR_task"], sr_task_keys, allow_all=False
+        )
+    except KeyError as e:
+        raise ValueError(
+            f"SR task not implemented for combination: "
+            f"format={exp_config.format}, task={exp_config.task}"
+        ) from e
 
     # Replace SR_task_preface, but keep other placeholders for per-sample formatting
     # (e.g., {correct_choice_token}, {incorrect_choice_token} for IND-C tasks)
@@ -177,9 +260,17 @@ def _build_prompts(exp_config: ExperimentConfig) -> None:
     # For UT (user tags), we need to build the transcript prefix
     if exp_config.tags == "UT":
         transcript_preface = base_prompts["UT_transcript"]["preface"].strip()
-        # The actual transcript building happens per-sample in the task functions
-        # Store the transcript template for later use
-        transcript_template = base_prompts["UT_transcript"][exp_config.format]
+        # Get transcript template: UT_transcript[pair_type][format_type]
+        try:
+            transcript_keys = [pair_type, format_type]
+            transcript_template = _get_nested_prompt(
+                base_prompts["UT_transcript"], transcript_keys, allow_all=False
+            )
+        except KeyError as e:
+            raise ValueError(
+                f"UT transcript not implemented for format: {exp_config.format}"
+            ) from e
+
         transcript_with_preface = transcript_template.replace(
             "{preface}", transcript_preface
         )
