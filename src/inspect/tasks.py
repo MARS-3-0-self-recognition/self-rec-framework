@@ -25,6 +25,7 @@ def get_task_function(
     is_control: bool,
     treatment_name_treatment: str | None = None,
     task_name: str | None = None,
+    logprobs: bool = False,
 ) -> Task:
     """
     Get and execute the appropriate task function based on experiment configuration.
@@ -38,13 +39,21 @@ def get_task_function(
         is_control: Whether evaluating control (True) or treatment (False) dataset
         treatment_name_treatment: Name of treatment (modified) - for pairwise only
         task_name: Optional custom name for the task (used in log filenames)
+        logprobs: Whether to request logprobs from the model (default: False)
 
     Returns:
         Task object ready to be evaluated
 
     Raises:
         ValueError: If the combination of tags/format/task is not supported
+        NotImplementedError: If logprobs is requested (not yet supported)
     """
+    if logprobs:
+        raise NotImplementedError(
+            "Logprobs support is not yet implemented. "
+            "Current scorer uses text-based parsing. "
+            "To enable logprobs, update the scorer and fix provider-specific parsing issues."
+        )
     tags = exp_config.tags
     format_type = exp_config.format
     task_type = exp_config.task
@@ -87,6 +96,7 @@ def get_task_function(
             data_subset=data_subset,
             exp_config=exp_config,
             task_name=task_name,
+            logprobs=logprobs,
         )
     else:
         return task_fn(
@@ -97,6 +107,7 @@ def get_task_function(
             exp_config=exp_config,
             is_control=is_control,
             task_name=task_name,
+            logprobs=logprobs,
         )
 
 
@@ -109,6 +120,7 @@ def pairwise_query(
     data_subset: str,
     exp_config: ExperimentConfig,
     task_name: str | None = None,
+    logprobs: bool = False,
 ) -> Task:
     """
     Base comparison self-recognition task.
@@ -173,14 +185,18 @@ def pairwise_query(
             )
         )
 
+    # Build GenerateConfig with optional logprobs
+    config_params = {"system_message": config.system_prompt}
+    if logprobs:
+        config_params["logprobs"] = True
+        config_params["top_logprobs"] = 2
+
     return Task(
         dataset=inspect_samples,
         solver=generate(),
         scorer=logprob_scorer(),
         model=inspect_model,
-        config=GenerateConfig(
-            logprobs=True, top_logprobs=2, system_message=config.system_prompt
-        ),
+        config=GenerateConfig(**config_params),
         name=task_name,
     )
 
@@ -194,6 +210,7 @@ def pairwise_conversation_assistant_tags(
     data_subset: str,
     exp_config: ExperimentConfig,
     task_name: str | None = None,
+    logprobs: bool = False,
 ) -> Task:
     """
     Base conversational self-recognition task.
@@ -254,14 +271,18 @@ def pairwise_conversation_assistant_tags(
             )
         )
 
+    # Build GenerateConfig with optional logprobs
+    config_params = {"system_message": config.system_prompt}
+    if logprobs:
+        config_params["logprobs"] = True
+        config_params["top_logprobs"] = 2
+
     return Task(
         dataset=inspect_samples,
         solver=generate(),
         scorer=logprob_scorer(),
         model=inspect_model,
-        config=GenerateConfig(
-            logprobs=True, top_logprobs=2, system_message=config.system_prompt
-        ),
+        config=GenerateConfig(**config_params),
         name=task_name,
     )
 
@@ -275,6 +296,7 @@ def pairwise_conversation_user_tags(
     data_subset: str,
     exp_config: ExperimentConfig,
     task_name: str | None = None,
+    logprobs: bool = False,
 ) -> Task:
     """
     Base comparison self-recognition task.
@@ -327,14 +349,18 @@ def pairwise_conversation_user_tags(
             )
         )
 
+    # Build GenerateConfig with optional logprobs
+    config_params = {"system_message": config.system_prompt}
+    if logprobs:
+        config_params["logprobs"] = True
+        config_params["top_logprobs"] = 2
+
     return Task(
         dataset=inspect_samples,
         solver=generate(),
         scorer=logprob_scorer(),
         model=inspect_model,
-        config=GenerateConfig(
-            logprobs=True, top_logprobs=2, system_message=config.system_prompt
-        ),
+        config=GenerateConfig(**config_params),
         name=task_name,
     )
 
@@ -348,6 +374,7 @@ def individual_conversation_assistant_tags(
     exp_config: ExperimentConfig,
     is_control: bool = True,
     task_name: str | None = None,
+    logprobs: bool = False,
 ) -> Task:
     """
     Base conversational self-recognition task.
@@ -410,14 +437,18 @@ def individual_conversation_assistant_tags(
             )
         )
 
+    # Build GenerateConfig with optional logprobs
+    config_params = {"system_message": config.system_prompt}
+    if logprobs:
+        config_params["logprobs"] = True
+        config_params["top_logprobs"] = 2
+
     return Task(
         dataset=inspect_samples,
         solver=generate(),
         scorer=logprob_scorer(),
         model=inspect_model,
-        config=GenerateConfig(
-            logprobs=True, top_logprobs=2, system_message=config.system_prompt
-        ),
+        config=GenerateConfig(**config_params),
         name=task_name,
     )
 
@@ -431,6 +462,7 @@ def individual_conversation_user_tags(
     exp_config: ExperimentConfig,
     is_control: bool = True,
     task_name: str | None = None,
+    logprobs: bool = False,
 ) -> Task:
     """
     Base comparison self-recognition task.
@@ -484,14 +516,18 @@ def individual_conversation_user_tags(
             )
         )
 
+    # Build GenerateConfig with optional logprobs
+    config_params = {"system_message": config.system_prompt}
+    if logprobs:
+        config_params["logprobs"] = True
+        config_params["top_logprobs"] = 2
+
     return Task(
         dataset=inspect_samples,
         solver=generate(),
         scorer=logprob_scorer(),
         model=inspect_model,
-        config=GenerateConfig(
-            logprobs=True, top_logprobs=2, system_message=config.system_prompt
-        ),
+        config=GenerateConfig(**config_params),
         name=task_name,
     )
 
@@ -505,6 +541,7 @@ def individual_query(
     exp_config: ExperimentConfig,
     is_control: bool = True,
     task_name: str | None = None,
+    logprobs: bool = False,
 ) -> Task:
     """
     Individual self-recognition task with single query message.
@@ -558,14 +595,18 @@ def individual_query(
             )
         )
 
+    # Build GenerateConfig with optional logprobs
+    config_params = {"system_message": config.system_prompt}
+    if logprobs:
+        config_params["logprobs"] = True
+        config_params["top_logprobs"] = 2
+
     return Task(
         dataset=inspect_samples,
         solver=generate(),
         scorer=logprob_scorer(),
         model=inspect_model,
-        config=GenerateConfig(
-            logprobs=True, top_logprobs=2, system_message=config.system_prompt
-        ),
+        config=GenerateConfig(**config_params),
         name=task_name,
     )
 

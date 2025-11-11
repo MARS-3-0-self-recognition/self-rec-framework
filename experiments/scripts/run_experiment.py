@@ -109,6 +109,7 @@ def run_judging_evals(
     dataset_path_treatment: str | None = None,
     is_control: bool = True,
     batch: bool | int | str = False,
+    logprobs: bool = False,
 ) -> None:
     """
     Run judging evaluations (pairwise or individual based on config).
@@ -172,6 +173,7 @@ def run_judging_evals(
             experiment_name=experiment_name,
             is_control=True,  # Not used for pairwise
             batch=batch,
+            logprobs=logprobs,
         )
     else:
         # Individual task - run on specified dataset (either control or treatment)
@@ -192,6 +194,7 @@ def run_judging_evals(
             experiment_name=experiment_name,
             is_control=is_control,
             batch=batch,
+            logprobs=logprobs,
         )
 
 
@@ -205,6 +208,7 @@ def run_single_judging_task(
     is_control: bool,
     treatment_name_treatment: str | None = None,
     batch: bool | int | str = False,
+    logprobs: bool = False,
 ) -> None:
     """
     Run a single judging task (pairwise or individual).
@@ -215,6 +219,7 @@ def run_single_judging_task(
         is_control: Whether evaluating control (True) or treatment (False) - for individual only
         batch: Enable batch mode for supported providers (OpenAI, Anthropic, Google, Together AI).
                Can be True (default config), int (batch size), or str (path to config file)
+        logprobs: Whether to request log probabilities from the model (default: False)
     """
     # Build task name and config name for logging
     task_name = exp_config.config_name_for_logging()
@@ -256,6 +261,7 @@ def run_single_judging_task(
         data_subset=data_subset,
         is_control=is_control,
         task_name=task_name,
+        logprobs=logprobs,
     )
 
     eval(task, log_dir=str(log_dir), batch=batch)
@@ -304,6 +310,12 @@ def main():
         default=False,
         help="Enable batch mode for supported providers (OpenAI, Anthropic, Google, Together AI). "
         "Usage: --batch (default config), --batch 1000 (batch size), --batch config.yaml (config file)",
+    )
+    parser.add_argument(
+        "--logprobs",
+        action="store_true",
+        default=False,
+        help="Request log probabilities from the model (not currently implemented, will raise NotImplementedError)",
     )
 
     args = parser.parse_args()
@@ -361,6 +373,7 @@ def main():
         args.dataset_path_treatment,
         args.is_control,
         batch_value,
+        args.logprobs,
     )
 
     print(f"\n{'=' * 60}")

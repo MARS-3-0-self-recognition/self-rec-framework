@@ -110,16 +110,17 @@ def run_sweep_generation(
     print(f"Generating data for {len(models_to_generate)} models in parallel...")
     print(f"{'=' * 70}\n")
 
-    # Convert short names to inspect model names
-    inspect_models = [inspect_model_name(name) for name in models_to_generate]
-
-    # Create generation task (same for all models)
-    task = generation(
-        model_name=models_to_generate[0],  # Placeholder, will be overridden by eval
-        dataset_name=dataset_name,
-        data_subset=data_subset,
-        exp_config=exp_config,
-    )
+    # Create a separate task for each model
+    # This is necessary because the generation() task bakes the model into the Task object
+    tasks = []
+    for model_name in models_to_generate:
+        task = generation(
+            model_name=model_name,
+            dataset_name=dataset_name,
+            data_subset=data_subset,
+            exp_config=exp_config,
+        )
+        tasks.append(task)
 
     # Set up shared log directory for generation
     log_dir = (
@@ -127,9 +128,13 @@ def run_sweep_generation(
     )
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    # Run generation with multiple models in parallel
-    print("Running multi-model generation (this may take a while with batch mode)...\n")
-    eval_logs = eval(task, model=inspect_models, log_dir=str(log_dir), batch=batch)
+    # Run generation with multiple tasks in parallel
+    # Use max_tasks to limit parallelism (default to number of models, max 16)
+    max_tasks = min(len(tasks), 16)
+    print(
+        f"Running multi-model generation with max_tasks={max_tasks} (this may take a while with batch mode)...\n"
+    )
+    eval_logs = eval(tasks, log_dir=str(log_dir), max_tasks=max_tasks, batch=batch)
 
     print(f"\n✓ Generation complete! Processing {len(eval_logs)} model outputs...\n")
 
@@ -137,21 +142,35 @@ def run_sweep_generation(
     successful = []
     failed = []
 
-    for eval_log in eval_logs:
+    for idx, eval_log in enumerate(eval_logs):
+        model_name = None
         try:
             # Get short model name from eval log
             full_model_name = eval_log.eval.model
-            model_name = SHORT_MODEL_NAMES.get(full_model_name, full_model_name)
 
-            # If not in our mapping, try to extract from model_names
-            if model_name == full_model_name:
-                # Try to match by finding which short name maps to this full name
+            # First try: Use SHORT_MODEL_NAMES reverse mapping
+            model_name = SHORT_MODEL_NAMES.get(full_model_name, None)
+
+            # Second try: Match against models_to_generate list
+            if model_name is None:
                 for short_name in models_to_generate:
                     if inspect_model_name(short_name) == full_model_name:
                         model_name = short_name
                         break
 
-            print(f"  Processing outputs for {model_name}...")
+            # Third try: Use the order of eval_logs matching models_to_generate
+            if model_name is None and idx < len(models_to_generate):
+                model_name = models_to_generate[idx]
+                print(
+                    f"  Warning: Could not map '{full_model_name}', using index-based fallback: {model_name}"
+                )
+
+            if model_name is None:
+                raise ValueError(
+                    f"Could not determine short model name for '{full_model_name}'"
+                )
+
+            print(f"  Processing outputs for {model_name} (from {full_model_name})...")
 
             # Extract outputs
             data_dict = {}
@@ -174,8 +193,9 @@ def run_sweep_generation(
             successful.append(model_name)
 
         except Exception as e:
-            print(f"  ✗ Error processing {model_name}: {e}")
-            failed.append((model_name, str(e)))
+            error_model = model_name if model_name else f"eval_log[{idx}]"
+            print(f"  ✗ Error processing {error_model}: {e}")
+            failed.append((error_model, str(e)))
 
     # Apply treatments to each model's data
     print(f"\n{'=' * 70}")
