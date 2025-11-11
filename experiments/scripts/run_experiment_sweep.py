@@ -68,8 +68,24 @@ def _add_task_if_needed(
     if not overwrite:
         existing_logs = list(shared_log_dir.glob(f"*{task_name}*.eval"))
         if existing_logs:
-            print(f"  ⊘ {description}: already exists, skipping")
-            return
+            # Check status of existing log - only skip if successful
+            from inspect_ai.log import read_eval_log
+
+            try:
+                log = read_eval_log(existing_logs[0])
+                if log.status == "success":
+                    print(f"  ⊘ {description}: already exists (success), skipping")
+                    return
+                else:
+                    # Failed/cancelled/error - delete and re-run
+                    print(f"  ↻ {description}: previous run {log.status}, re-running")
+                    for old_log in existing_logs:
+                        old_log.unlink()
+            except Exception:
+                # Corrupt log - delete and re-run
+                print(f"  ⚠ {description}: corrupt log, re-running")
+                for old_log in existing_logs:
+                    old_log.unlink()
 
     # Check data files exist
     control_path = (
@@ -387,10 +403,19 @@ def run_sweep_experiment(
         print("\n⊘ No evaluations to run (all skipped or already exist)")
         return
 
-    print(f"\nTotal evaluations to run: {total_evals}")
-    print(
-        f"Running with Inspect AI's native parallel execution (max_tasks={max_tasks})...\n"
-    )
+    # Display summary and ask for confirmation
+    print(f"\n{'='*70}")
+    print(f"READY TO RUN: {total_evals} evaluations")
+    print(f"Parallelism: max_tasks={max_tasks}")
+    print(f"Batch mode: {'enabled' if batch else 'disabled'}")
+    print(f"{'='*70}\n")
+
+    response = input("Continue? (y/n): ").strip().lower()
+    if response != "y":
+        print("\n✗ Aborted by user.\n")
+        return
+
+    print("\n✓ Starting evaluation sweep...\n")
 
     # Extract tasks and descriptions
     tasks = [task for task, _ in tasks_to_run]
