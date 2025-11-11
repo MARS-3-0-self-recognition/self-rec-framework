@@ -55,13 +55,13 @@ def _add_task_if_needed(
         overwrite: Whether to overwrite existing evaluations
         shared_log_dir: Shared log directory for all tasks
     """
-    # Build task name for log filename
+    # Build task name for log filename (using hyphens to match Inspect AI's log filename format)
     if treatment_name_treatment:
-        task_name = f"{model_name}_eval_on_{treatment_name_control}_vs_{treatment_name_treatment}"
+        task_name = f"{model_name}-eval-on-{treatment_name_control}-vs-{treatment_name_treatment}"
     else:
         control_or_treatment = "control" if is_control else "treatment"
         task_name = (
-            f"{model_name}_eval_on_{treatment_name_control}_{control_or_treatment}"
+            f"{model_name}-eval-on-{treatment_name_control}-{control_or_treatment}"
         )
 
     # Check if already exists (look for log files with this task name in shared log dir)
@@ -75,6 +75,11 @@ def _add_task_if_needed(
                 log = read_eval_log(existing_logs[0])
                 if log.status == "success":
                     print(f"  ⊘ {description}: already exists (success), skipping")
+                    return
+                elif log.status == "started":
+                    # Batch job still processing or orphaned - skip to avoid duplicates
+                    print(f"  ⏳ {description}: batch job in progress, skipping")
+                    print("     (Use scripts/list_active_batches.py to check status)")
                     return
                 else:
                     # Failed/cancelled/error - delete and re-run
@@ -403,11 +408,43 @@ def run_sweep_experiment(
         print("\n⊘ No evaluations to run (all skipped or already exist)")
         return
 
+    # Separate Google models from others (Google batch mode has bugs in Inspect AI)
+
+    google_tasks = []
+    google_descriptions = []
+    non_google_tasks = []
+    non_google_descriptions = []
+
+    for task, desc in tasks_to_run:
+        # Check if task uses a Google/Gemini model as evaluator
+        # The description format is "{evaluator_model} vs {comparison_model}"
+        # We only care about the evaluator (first part before "vs" or "evaluating")
+        evaluator_model = desc.split(" vs ")[0].split(" evaluating ")[0].strip()
+
+        # Check if it's a Gemini model
+        is_gemini = "gemini" in evaluator_model.lower()
+
+        if is_gemini:
+            google_tasks.append(task)
+            google_descriptions.append(desc)
+        else:
+            non_google_tasks.append(task)
+            non_google_descriptions.append(desc)
+
     # Display summary and ask for confirmation
     print(f"\n{'='*70}")
     print(f"READY TO RUN: {total_evals} evaluations")
     print(f"Parallelism: max_tasks={max_tasks}")
     print(f"Batch mode: {'enabled' if batch else 'disabled'}")
+
+    if batch and google_tasks:
+        print(
+            f"\n\033[91m⚠ WARNING: Batch mode disabled for {len(google_tasks)} Google Gemini evaluations"
+        )
+        print("  (Google batch mode has bugs in Inspect AI)\033[0m")
+        print(f"  • Non-Google models: {len(non_google_tasks)} evals WITH batch mode")
+        print(f"  • Google models: {len(google_tasks)} evals WITHOUT batch mode")
+
     print(f"{'='*70}\n")
 
     response = input("Continue? (y/n): ").strip().lower()
@@ -417,56 +454,89 @@ def run_sweep_experiment(
 
     print("\n✓ Starting evaluation sweep...\n")
 
-    # Extract tasks and descriptions
-    tasks = [task for task, _ in tasks_to_run]
-    descriptions = [desc for _, desc in tasks_to_run]
+    # Run evaluations - split into two groups if batch mode + Google models
+    eval_logs = []
 
-    # Run all tasks using Inspect AI's native parallel execution
-    # Each task still benefits from sample-level parallelism (max_connections)
-    try:
-        eval_logs = eval(
-            tasks,
-            log_dir=str(shared_log_dir),
-            max_tasks=max_tasks,
-            batch=batch,
-        )
-
-        # Check for any failures
-        successful = []
-        failed = []
-
-        for idx, (eval_log, description) in enumerate(zip(eval_logs, descriptions)):
-            if eval_log.status == "success":
-                successful.append(description)
-            else:
-                error_msg = (
-                    eval_log.error if hasattr(eval_log, "error") else "Unknown error"
+    if batch and google_tasks:
+        # Run non-Google with batch, Google without batch
+        if non_google_tasks:
+            print(
+                f"Running {len(non_google_tasks)} non-Google evaluations WITH batch mode..."
+            )
+            try:
+                non_google_logs = eval(
+                    non_google_tasks,
+                    log_dir=str(shared_log_dir),
+                    max_tasks=max_tasks,
+                    batch=batch,
                 )
-                failed.append((description, str(error_msg)))
+                eval_logs.extend(non_google_logs)
+            except Exception as e:
+                print(f"\n⚠ Error in non-Google batch evaluations: {e}")
+                raise
 
-        # Summary
-        print(f"\n{'=' * 70}")
-        print("SWEEP EXPERIMENT SUMMARY")
-        print(f"{'=' * 70}")
-        print(f"Total evaluations: {total_evals}")
-        print(f"Successful: {len(successful)}")
+        if google_tasks:
+            print(
+                f"\nRunning {len(google_tasks)} Google evaluations WITHOUT batch mode..."
+            )
+            try:
+                google_logs = eval(
+                    google_tasks,
+                    log_dir=str(shared_log_dir),
+                    max_tasks=max_tasks,
+                    batch=False,
+                )
+                eval_logs.extend(google_logs)
+            except Exception as e:
+                print(f"\n⚠ Error in Google evaluations: {e}")
+                raise
 
-        if failed:
-            print(f"\nFailed: {len(failed)}")
-            for description, error in failed[:10]:  # Show first 10
-                error_msg = error[:50] if error else "Failed"
-                print(f"  ✗ {description}: {error_msg}")
-            if len(failed) > 10:
-                print(f"  ... and {len(failed) - 10} more")
+        # Merge descriptions in same order
+        descriptions = non_google_descriptions + google_descriptions
+    else:
+        # Run all together
+        try:
+            tasks = [task for task, _ in tasks_to_run]
+            descriptions = [desc for _, desc in tasks_to_run]
+            eval_logs = eval(
+                tasks,
+                log_dir=str(shared_log_dir),
+                max_tasks=max_tasks,
+                batch=batch,
+            )
+        except Exception as e:
+            print(f"\n⚠ Error in evaluations: {e}")
+            raise
 
-        print(f"{'=' * 70}\n")
+    # Check for any failures
+    successful = []
+    failed = []
 
-    except Exception as e:
-        print(f"\n✗ Error during sweep execution: {e}")
-        import traceback
+    for idx, (eval_log, description) in enumerate(zip(eval_logs, descriptions)):
+        if eval_log.status == "success":
+            successful.append(description)
+        else:
+            error_msg = (
+                eval_log.error if hasattr(eval_log, "error") else "Unknown error"
+            )
+            failed.append((description, str(error_msg)))
 
-        traceback.print_exc()
-        raise
+    # Summary
+    print(f"\n{'=' * 70}")
+    print("SWEEP EXPERIMENT SUMMARY")
+    print(f"{'=' * 70}")
+    print(f"Total evaluations: {total_evals}")
+    print(f"Successful: {len(successful)}")
+
+    if failed:
+        print(f"\nFailed: {len(failed)}")
+        for description, error in failed[:10]:  # Show first 10
+            error_msg = error[:50] if error else "Failed"
+            print(f"  ✗ {description}: {error_msg}")
+        if len(failed) > 10:
+            print(f"  ... and {len(failed) - 10} more")
+
+    print(f"{'=' * 70}\n")
 
 
 if __name__ == "__main__":

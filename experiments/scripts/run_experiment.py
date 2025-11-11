@@ -242,13 +242,13 @@ def run_single_judging_task(
 
     print(f"  Running {experiment_name} task...")
 
-    # Build task name for log filename
+    # Build task name for log filename (using hyphens to match Inspect AI's log filename format)
     if treatment_name_treatment:
-        task_name = f"{model_name}_eval_on_{treatment_name_control}_vs_{treatment_name_treatment}"
+        task_name = f"{model_name}-eval-on-{treatment_name_control}-vs-{treatment_name_treatment}"
     else:
         control_or_treatment = "control" if is_control else "treatment"
         task_name = (
-            f"{model_name}_eval_on_{treatment_name_control}_{control_or_treatment}"
+            f"{model_name}-eval-on-{treatment_name_control}-{control_or_treatment}"
         )
 
     # Get task - all branching logic is handled in get_task_function
