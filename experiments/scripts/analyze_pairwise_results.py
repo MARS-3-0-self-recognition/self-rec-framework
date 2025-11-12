@@ -25,6 +25,35 @@ import seaborn as sns
 from inspect_ai.log import read_eval_log
 
 
+def get_experiment_name_mapping() -> dict[str, str]:
+    """
+    Map experiment code abbreviations to full descriptive names.
+
+    Returns:
+        Dictionary mapping abbreviated codes to full experiment names
+    """
+    return {
+        # User Tags (UT)
+        "UT_PW-Q_Rec_Pr": "User Tags Pairwise Query Primed",
+        "UT_PW-Q_Rec_NPr": "User Tags Pairwise Query Unprimed",
+        "UT_PW-C_Rec_Pr": "User Tags Pairwise Conversation Primed",
+        "UT_PW-C_Rec_NPr": "User Tags Pairwise Conversation Unprimed",
+        "UT_IND-Q_Rec_Pr": "User Tags Individual Query Primed",
+        "UT_IND-Q_Rec_NPr": "User Tags Individual Query Unprimed",
+        "UT_IND-C_Rec_Pr": "User Tags Individual Conversation Primed",
+        "UT_IND-C_Rec_NPr": "User Tags Individual Conversation Unprimed",
+        # Assistant Tags (AT)
+        "AT_PW-Q_Rec_Pr": "Assistant Tags Pairwise Query Primed",
+        "AT_PW-Q_Rec_NPr": "Assistant Tags Pairwise Query Unprimed",
+        "AT_PW-C_Rec_Pr": "Assistant Tags Pairwise Conversation Primed",
+        "AT_PW-C_Rec_NPr": "Assistant Tags Pairwise Conversation Unprimed",
+        "AT_IND-Q_Rec_Pr": "Assistant Tags Individual Query Primed",
+        "AT_IND-Q_Rec_NPr": "Assistant Tags Individual Query Unprimed",
+        "AT_IND-C_Rec_Pr": "Assistant Tags Individual Conversation Primed",
+        "AT_IND-C_Rec_NPr": "Assistant Tags Individual Conversation Unprimed",
+    }
+
+
 def get_model_order() -> list[str]:
     """
     Define the canonical order for models in the pivot table and heatmap.
@@ -132,9 +161,15 @@ def extract_accuracy(log) -> float | None:
             for score in sample.scores.values():
                 if hasattr(score, "value") and isinstance(score.value, dict):
                     if "acc" in score.value:
-                        total_count += 1
-                        if score.value["acc"] == "C":
+                        acc_val = score.value["acc"]
+                        # Only count C (correct) and I (incorrect) samples
+                        # Skip F (failed/malformed) - can't assess attribution
+                        if acc_val == "C":
+                            total_count += 1
                             correct_count += 1
+                        elif acc_val == "I":
+                            total_count += 1
+                        # If acc_val == "F", skip entirely
                         break
 
         if total_count == 0:
@@ -244,13 +279,14 @@ def create_pivot_table(df: pd.DataFrame) -> pd.DataFrame:
     return pivot
 
 
-def plot_heatmap(pivot: pd.DataFrame, output_path: Path):
+def plot_heatmap(pivot: pd.DataFrame, output_path: Path, experiment_title: str = ""):
     """
     Create and save heatmap of self-recognition accuracy.
 
     Args:
         pivot: Pivot table with evaluators as rows, treatments as columns
         output_path: Path to save the heatmap image
+        experiment_title: Optional experiment name to include in the title
     """
     print("Generating heatmap...")
 
@@ -299,8 +335,15 @@ def plot_heatmap(pivot: pd.DataFrame, output_path: Path):
     # Labels
     ax.set_xlabel("Comparison Model (Treatment)", fontsize=12, fontweight="bold")
     ax.set_ylabel("Evaluator Model", fontsize=12, fontweight="bold")
+
+    # Build title with optional experiment name
+    if experiment_title:
+        title = f"Self-Recognition Accuracy Matrix: {experiment_title}\n(How well each model identifies its own outputs vs. others)"
+    else:
+        title = "Self-Recognition Accuracy Matrix\n(How well each model identifies its own outputs vs. others)"
+
     ax.set_title(
-        "Self-Recognition Accuracy Matrix\n(How well each model identifies its own outputs vs. others)",
+        title,
         fontsize=14,
         fontweight="bold",
         pad=20,
@@ -455,9 +498,23 @@ def main():
     pivot.to_csv(pivot_path)
     print(f"  ✓ Saved pivot table to: {pivot_path}\n")
 
+    # Extract experiment name from path for title
+    # Path format: .../dataset/subset/[NUM_]EXPERIMENT_CODE
+    # e.g., .../pku_saferlhf/mismatch_1-20/11_UT_PW-Q_Rec_NPr
+    experiment_code = results_dir.name
+    # Remove leading numbers and underscore if present (e.g., "11_UT_PW-Q_Rec_NPr" -> "UT_PW-Q_Rec_NPr")
+    if "_" in experiment_code:
+        parts = experiment_code.split("_", 1)
+        if parts[0].isdigit():
+            experiment_code = parts[1]
+
+    # Look up full name from mapping
+    experiment_mapping = get_experiment_name_mapping()
+    experiment_title = experiment_mapping.get(experiment_code, experiment_code)
+
     # Generate heatmap
     heatmap_path = output_dir / "accuracy_heatmap.png"
-    plot_heatmap(pivot, heatmap_path)
+    plot_heatmap(pivot, heatmap_path, experiment_title=experiment_title)
     print()
 
     # Generate summary stats
