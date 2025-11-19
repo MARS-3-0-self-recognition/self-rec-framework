@@ -14,7 +14,7 @@ class ExperimentConfig:
     # Experiment structure
     tags: str  # "AT" or "UT"
     format: str  # "PW-C", "PW-Q", "IND-C", "IND-Q"
-    task: str  # "Rec" or "Pref"
+    task: str  # "Rec" or "Pref" or "Pref-N", "Pref-S", "Pref-Q" (N=Neutral, S=Submission, Q=Quality)
     priming: bool
     dataset_name: Optional[str] = (
         None  # Optional, will be inferred from dataset path if not provided
@@ -37,6 +37,7 @@ class ExperimentConfig:
     def config_name_for_logging(self) -> str:
         """Generate a config name for logging directories."""
         priming_str = "Pr" if self.priming else "NPr"
+        # Normalize task name: "Pref-N" → "Pref-N", "Pref" → "Pref" (backward compat)
         return f"{self.tags}_{self.format}_{self.task}_{priming_str}"
 
 
@@ -209,6 +210,12 @@ def _build_prompts(exp_config: ExperimentConfig) -> None:
     pair_type = parts[0]  # "PW" or "IND"
     format_type = parts[1]  # "C" (conversation) or "Q" (query)
 
+    # Parse task to extract base task type (for priming lookup)
+    # "Pref-N" → "Pref", "Pref-S" → "Pref", "Pref-Q" → "Pref", "Rec" → "Rec"
+    base_task = (
+        exp_config.task.split("-")[0] if "-" in exp_config.task else exp_config.task
+    )
+
     # Get priming text for system prompt
     priming_text = ""
     if exp_config.priming:
@@ -219,7 +226,7 @@ def _build_prompts(exp_config: ExperimentConfig) -> None:
             if exp_config.tags == "AT":
                 priming_keys = [exp_config.tags]  # Will find "All" wildcard
             else:  # UT
-                priming_keys = [exp_config.tags, format_type, exp_config.task]
+                priming_keys = [exp_config.tags, format_type, base_task]
 
             priming_text = _get_nested_prompt(
                 base_prompts["priming"], priming_keys
@@ -241,9 +248,10 @@ def _build_prompts(exp_config: ExperimentConfig) -> None:
     # Build SR task prompt
     sr_task_preface = base_prompts["SR_task_preface"][exp_config.tags].strip()
 
-    # Get SR task template: SR_task[pair_type][format_type][task]
+    # Get SR task template: SR_task[pair_type][format_type][base_task]
+    # Use base_task ("Pref" or "Rec") for template lookup
     try:
-        sr_task_keys = [pair_type, format_type, exp_config.task]
+        sr_task_keys = [pair_type, format_type, base_task]
         sr_task_template = _get_nested_prompt(
             base_prompts["SR_task"], sr_task_keys, allow_all=False
         )
@@ -256,6 +264,37 @@ def _build_prompts(exp_config: ExperimentConfig) -> None:
     # Replace SR_task_preface, but keep other placeholders for per-sample formatting
     # (e.g., {correct_choice_token}, {incorrect_choice_token} for IND-C tasks)
     sr_task_prompt = sr_task_template.replace("{SR_task_preface}", sr_task_preface)
+
+    # For preference tasks, replace preference builder placeholders
+    if base_task == "Pref":
+        # Parse preference type: "Pref-N" → "Neutral", "Pref-S" → "Submission", "Pref-Q" → "Quality"
+        # Default to "Neutral" if just "Pref" (backward compatibility)
+        pref_type_map = {
+            "N": "Neutral",
+            "S": "Submission",
+            "Q": "Quality",
+        }
+
+        if "-" in exp_config.task:
+            pref_suffix = exp_config.task.split("-")[1]
+            pref_type = pref_type_map.get(pref_suffix, "Neutral")
+        else:
+            # Backward compatibility: default to Neutral if no suffix
+            pref_type = "Neutral"
+
+        # Get preference type text
+        pref_type_text = base_prompts["SR_task_pref_builder"]["Type"][pref_type].strip()
+
+        # Get preference format text
+        pref_format_text = base_prompts["SR_task_pref_builder"]["Format"].strip()
+
+        # Replace placeholders
+        sr_task_prompt = sr_task_prompt.replace(
+            "{SR_task_pref_builder_type}", pref_type_text
+        )
+        sr_task_prompt = sr_task_prompt.replace(
+            "{SR_task_pref_builder_format}", pref_format_text
+        )
 
     # For UT (user tags), we need to build the transcript prefix
     if exp_config.tags == "UT":

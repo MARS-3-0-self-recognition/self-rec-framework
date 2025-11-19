@@ -408,28 +408,37 @@ def run_sweep_experiment(
         print("\n⊘ No evaluations to run (all skipped or already exist)")
         return
 
-    # Separate Google models from others (Google batch mode has bugs in Inspect AI)
+    # Separate models that don't support batch mode (Google Gemini, GPT-5/o-series)
+    # Google/Gemini models have bugs in Inspect AI batch mode
+    # GPT-5/o-series models return unsupported_value errors in batch mode
 
-    google_tasks = []
-    google_descriptions = []
-    non_google_tasks = []
-    non_google_descriptions = []
+    no_batch_tasks = []
+    no_batch_descriptions = []
+    batch_tasks = []
+    batch_descriptions = []
 
     for task, desc in tasks_to_run:
-        # Check if task uses a Google/Gemini model as evaluator
+        # Check if task uses a model that doesn't support batch mode as evaluator
         # The description format is "{evaluator_model} vs {comparison_model}"
         # We only care about the evaluator (first part before "vs" or "evaluating")
         evaluator_model = desc.split(" vs ")[0].split(" evaluating ")[0].strip()
 
-        # Check if it's a Gemini model
+        # Check if it's a model that doesn't support batch mode
+        # Google/Gemini models have bugs in Inspect AI batch mode
+        # GPT-5.1 specifically returns unsupported_value errors in batch mode
+        # Note: gpt-5 (without .1) is allowed to try batch mode
         is_gemini = "gemini" in evaluator_model.lower()
+        is_gpt5_1 = (
+            evaluator_model.lower() == "gpt-5.1"
+            or evaluator_model.lower().startswith("gpt-5.1")
+        )
 
-        if is_gemini:
-            google_tasks.append(task)
-            google_descriptions.append(desc)
+        if is_gemini or is_gpt5_1:
+            no_batch_tasks.append(task)
+            no_batch_descriptions.append(desc)
         else:
-            non_google_tasks.append(task)
-            non_google_descriptions.append(desc)
+            batch_tasks.append(task)
+            batch_descriptions.append(desc)
 
     # Display summary and ask for confirmation
     print(f"\n{'='*70}")
@@ -437,13 +446,15 @@ def run_sweep_experiment(
     print(f"Parallelism: max_tasks={max_tasks}")
     print(f"Batch mode: {'enabled' if batch else 'disabled'}")
 
-    if batch and google_tasks:
+    if batch and no_batch_tasks:
         print(
-            f"\n\033[91m⚠ WARNING: Batch mode disabled for {len(google_tasks)} Google Gemini evaluations"
+            f"\n\033[91m⚠ WARNING: Batch mode disabled for {len(no_batch_tasks)} evaluations"
         )
-        print("  (Google batch mode has bugs in Inspect AI)\033[0m")
-        print(f"  • Non-Google models: {len(non_google_tasks)} evals WITH batch mode")
-        print(f"  • Google models: {len(google_tasks)} evals WITHOUT batch mode")
+        print(
+            "  (Google Gemini batch mode has bugs; GPT-5.1 returns unsupported_value errors)\033[0m"
+        )
+        print(f"  • Batch-compatible models: {len(batch_tasks)} evals WITH batch mode")
+        print(f"  • Non-batch models: {len(no_batch_tasks)} evals WITHOUT batch mode")
 
     print(f"{'='*70}\n")
 
@@ -454,45 +465,41 @@ def run_sweep_experiment(
 
     print("\n✓ Starting evaluation sweep...\n")
 
-    # Run evaluations - split into two groups if batch mode + Google models
+    # Run evaluations - split into two groups if batch mode + models that don't support batch
     eval_logs = []
 
-    if batch and google_tasks:
-        # Run non-Google with batch, Google without batch
-        if non_google_tasks:
-            print(
-                f"Running {len(non_google_tasks)} non-Google evaluations WITH batch mode..."
-            )
+    if batch and no_batch_tasks:
+        # Run non-batch models first, then batch-compatible models with batch
+        if no_batch_tasks:
+            print(f"Running {len(no_batch_tasks)} evaluations WITHOUT batch mode...")
             try:
-                non_google_logs = eval(
-                    non_google_tasks,
-                    log_dir=str(shared_log_dir),
-                    max_tasks=max_tasks,
-                    batch=batch,
-                )
-                eval_logs.extend(non_google_logs)
-            except Exception as e:
-                print(f"\n⚠ Error in non-Google batch evaluations: {e}")
-                raise
-
-        if google_tasks:
-            print(
-                f"\nRunning {len(google_tasks)} Google evaluations WITHOUT batch mode..."
-            )
-            try:
-                google_logs = eval(
-                    google_tasks,
+                no_batch_logs = eval(
+                    no_batch_tasks,
                     log_dir=str(shared_log_dir),
                     max_tasks=max_tasks,
                     batch=False,
                 )
-                eval_logs.extend(google_logs)
+                eval_logs.extend(no_batch_logs)
             except Exception as e:
-                print(f"\n⚠ Error in Google evaluations: {e}")
+                print(f"\n⚠ Error in non-batch evaluations: {e}")
+                raise
+
+        if batch_tasks:
+            print(f"\nRunning {len(batch_tasks)} evaluations WITH batch mode...")
+            try:
+                batch_logs = eval(
+                    batch_tasks,
+                    log_dir=str(shared_log_dir),
+                    max_tasks=max_tasks,
+                    batch=batch,
+                )
+                eval_logs.extend(batch_logs)
+            except Exception as e:
+                print(f"\n⚠ Error in batch evaluations: {e}")
                 raise
 
         # Merge descriptions in same order
-        descriptions = non_google_descriptions + google_descriptions
+        descriptions = no_batch_descriptions + batch_descriptions
     else:
         # Run all together
         try:

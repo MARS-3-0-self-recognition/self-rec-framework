@@ -69,10 +69,12 @@ def get_model_order() -> list[str]:
         "gpt-4.1-mini",
         "gpt-4o",
         "gpt-4.1",
+        "gpt-5.1",
         # Anthropic (weakest to strongest)
         "haiku-3.5",
         "sonnet-3.7",
         "sonnet-4.5",
+        "opus-4.1",
         # Google Gemini (weakest to strongest)
         "gemini-2.0-flash-lite",
         "gemini-2.0-flash",
@@ -81,6 +83,7 @@ def get_model_order() -> list[str]:
         # Together AI - Llama (weakest to strongest)
         "ll-3.1-8b",
         "ll-3.1-70b",
+        "ll-3.1-405b",
         # Together AI - Qwen (weakest to strongest)
         "qwen-2.5-7b",
         "qwen-2.5-72b",
@@ -89,6 +92,68 @@ def get_model_order() -> list[str]:
         "deepseek-3.0",
         "deepseek-3.1",
     ]
+
+
+def get_model_provider(model_name: str) -> str:
+    """
+    Get the provider/company for a given model name.
+
+    Args:
+        model_name: Short model name (e.g., "gpt-4o", "haiku-3.5")
+
+    Returns:
+        Provider name (e.g., "OpenAI", "Anthropic", "Google", "Together-Llama", "Together-Qwen", "Together-DeepSeek")
+    """
+    model_lower = model_name.lower()
+
+    if model_lower.startswith("gpt-"):
+        return "OpenAI"
+    elif (
+        model_lower.startswith("haiku-")
+        or model_lower.startswith("sonnet-")
+        or model_lower.startswith("opus-")
+    ):
+        return "Anthropic"
+    elif model_lower.startswith("gemini-"):
+        return "Google"
+    elif model_lower.startswith("ll-"):
+        return "Together-Llama"
+    elif model_lower.startswith("qwen-"):
+        return "Together-Qwen"
+    elif model_lower.startswith("deepseek-"):
+        return "Together-DeepSeek"
+    else:
+        return "Unknown"
+
+
+def add_provider_boundaries(ax, pivot: pd.DataFrame, linewidth: float = 2.5):
+    """
+    Add thicker lines at boundaries between different providers.
+
+    This draws vertical and horizontal lines to separate provider families
+    in the heatmap for better visual organization.
+
+    Args:
+        ax: Matplotlib axes object
+        pivot: Pivot table DataFrame with models as index and columns
+        linewidth: Width of the boundary lines (default: 2.5)
+    """
+    # Get providers for each model
+    row_providers = [get_model_provider(model) for model in pivot.index]
+    col_providers = [get_model_provider(model) for model in pivot.columns]
+
+    # Find provider boundaries (where provider changes)
+    # Vertical lines (between columns)
+    for j in range(len(col_providers) - 1):
+        if col_providers[j] != col_providers[j + 1]:
+            # Draw vertical line at boundary
+            ax.axvline(x=j + 1, color="black", linewidth=linewidth, zorder=15)
+
+    # Horizontal lines (between rows)
+    for i in range(len(row_providers) - 1):
+        if row_providers[i] != row_providers[i + 1]:
+            # Draw horizontal line at boundary
+            ax.axhline(y=i + 1, color="black", linewidth=linewidth, zorder=15)
 
 
 def parse_eval_filename(filename: str) -> tuple[str, str, str] | None:
@@ -279,6 +344,266 @@ def create_pivot_table(df: pd.DataFrame) -> pd.DataFrame:
     return pivot
 
 
+def compute_asymmetry_analysis(
+    pivot: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
+    """
+    Compute asymmetry between evaluator and evaluatee roles.
+
+    Returns:
+        - asymmetry_matrix: Cell-wise differences (pivot - pivot.T)
+        - row_col_comparison: DataFrame with row means, column means, and differences
+        - asymmetry_scores: Series of asymmetry scores per model (row_mean - col_mean)
+    """
+    # Compute row means (when model is evaluator)
+    row_means = pivot.mean(axis=1, skipna=True)
+
+    # Compute column means (when model is treatment/evaluatee)
+    col_means = pivot.mean(axis=0, skipna=True)
+
+    # Create comparison DataFrame
+    comparison = pd.DataFrame(
+        {
+            "row_mean": row_means,
+            "col_mean": col_means,
+        }
+    )
+
+    # Compute difference (row_mean - col_mean)
+    comparison["difference"] = comparison["row_mean"] - comparison["col_mean"]
+    comparison = comparison.sort_values("difference", ascending=False)
+
+    # Compute cell-wise asymmetry: pivot - pivot.T
+    # This shows for each pair (A, B): how much better A identifies itself vs B
+    # compared to how well B identifies itself vs A
+    asymmetry_matrix = pivot - pivot.T
+
+    return asymmetry_matrix, comparison, comparison["difference"]
+
+
+def plot_asymmetry_heatmap(
+    asymmetry_matrix: pd.DataFrame, output_path: Path, experiment_title: str = ""
+):
+    """
+    Create heatmap showing asymmetry between evaluator and evaluatee roles.
+
+    Values show: pivot[A, B] - pivot[B, A]
+    - Positive: Model A is better at identifying itself vs B than B is vs A
+    - Negative: Model B is better at identifying itself vs A than A is vs B
+    - Magnitude indicates strength of asymmetry
+
+    Args:
+        asymmetry_matrix: Matrix of differences (pivot - pivot.T)
+        output_path: Path to save the heatmap
+        experiment_title: Optional experiment name
+    """
+    print("Generating asymmetry heatmap...")
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=(14, 10))
+
+    # Create mask for diagonal and NaN values (missing data)
+    mask = pd.DataFrame(
+        False, index=asymmetry_matrix.index, columns=asymmetry_matrix.columns
+    )
+    for model in asymmetry_matrix.index:
+        if model in asymmetry_matrix.columns:
+            # Mask diagonal
+            mask.loc[model, model] = True
+        # Mask NaN values (missing data for that pair)
+        for col in asymmetry_matrix.columns:
+            if pd.isna(asymmetry_matrix.loc[model, col]):
+                mask.loc[model, col] = True
+
+    # Create heatmap with same colormap as accuracy heatmap
+    # Use RdYlGn: red (negative) → yellow (zero) → green (positive)
+    # Remove colorbar (cbar=False)
+    sns.heatmap(
+        asymmetry_matrix,
+        annot=True,
+        fmt=".2f",
+        cmap="RdYlGn",  # Same as accuracy heatmap: Red-Yellow-Green
+        center=0.0,
+        vmin=-1.0,
+        vmax=1.0,
+        cbar=False,  # Remove colorbar
+        mask=mask,
+        linewidths=0.5,
+        linecolor="gray",
+        ax=ax,
+    )
+
+    # Fill diagonal and missing data cells with gray squares
+    for i, model in enumerate(asymmetry_matrix.index):
+        for j, col in enumerate(asymmetry_matrix.columns):
+            if mask.loc[model, col]:  # If masked (diagonal or missing data)
+                ax.add_patch(
+                    plt.Rectangle((j, i), 1, 1, fill=True, color="lightgray", zorder=10)
+                )
+                ax.text(
+                    j + 0.5,
+                    i + 0.5,
+                    "N/A",
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                    color="black",
+                )
+
+    # Add thicker lines at provider boundaries
+    add_provider_boundaries(ax, asymmetry_matrix)
+
+    # Labels
+    ax.set_xlabel("Comparison Model (Treatment)", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Evaluator Model", fontsize=12, fontweight="bold")
+
+    # Build title
+    if experiment_title:
+        title = f"Evaluator vs Evaluatee Asymmetry: {experiment_title}\n(Cell value = How well row model identifies itself vs column model\nminus how well column model identifies itself vs row model)"
+    else:
+        title = "Evaluator vs Evaluatee Asymmetry\n(Cell value = Row model performance - Column model performance)"
+
+    ax.set_title(
+        title,
+        fontsize=14,
+        fontweight="bold",
+        pad=20,
+    )
+
+    # Add interpretation note
+    fig.text(
+        0.5,
+        0.02,
+        "Positive (green): Row model better at self-identification | "
+        "Negative (red): Column model better at self-identification | "
+        "Zero (yellow): Balanced",
+        ha="center",
+        fontsize=10,
+        style="italic",
+        bbox=dict(
+            boxstyle="round,pad=0.5",
+            facecolor="lightyellow",
+            edgecolor="gray",
+            linewidth=1,
+        ),
+    )
+
+    # Rotate labels
+    plt.xticks(rotation=45, ha="right")
+    plt.yticks(rotation=0)
+
+    # Tight layout
+    plt.tight_layout()
+    plt.subplots_adjust(bottom=0.08)  # Make room for note
+
+    # Save
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    print(f"  ✓ Saved asymmetry heatmap to: {output_path}")
+
+    plt.close()
+
+
+def plot_row_vs_column_comparison(
+    comparison: pd.DataFrame, output_path: Path, experiment_title: str = ""
+):
+    """
+    Create bar plot comparing row means vs column means for each model.
+
+    This shows:
+    - Row mean: Average accuracy when model is evaluator (identifying itself)
+    - Column mean: Average accuracy when model is treatment (others identifying it)
+    - Difference: Row mean - Column mean
+
+    Positive difference suggests model has distinctive style.
+    Negative difference suggests model's outputs are easily identified by others.
+    """
+    print("Generating row vs column comparison plot...")
+
+    fig, ax = plt.subplots(figsize=(14, 8))
+
+    models = comparison.index
+    x_pos = range(len(models))
+
+    # Plot bars
+    width = 0.35
+    ax.bar(
+        [x - width / 2 for x in x_pos],
+        comparison["row_mean"],
+        width,
+        label="As Evaluator (Row Mean)",
+        color="steelblue",
+        alpha=0.8,
+    )
+    ax.bar(
+        [x + width / 2 for x in x_pos],
+        comparison["col_mean"],
+        width,
+        label="As Treatment (Column Mean)",
+        color="coral",
+        alpha=0.8,
+    )
+
+    # Add difference line
+    ax2 = ax.twinx()
+    colors = ["green" if d > 0 else "red" for d in comparison["difference"]]
+    ax2.bar(
+        x_pos,
+        comparison["difference"],
+        width=0.2,
+        label="Difference (Row - Col)",
+        color=colors,
+        alpha=0.6,
+    )
+    ax2.axhline(y=0, color="black", linestyle="--", linewidth=0.8)
+    ax2.set_ylabel(
+        "Difference (Row Mean - Column Mean)", fontsize=11, fontweight="bold"
+    )
+
+    # Labels
+    ax.set_xlabel("Model", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Average Accuracy", fontsize=12, fontweight="bold")
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(models, rotation=45, ha="right")
+    ax.set_ylim(0, 1.0)
+
+    # Title
+    if experiment_title:
+        title = f"Evaluator vs Evaluatee Performance: {experiment_title}\n(Row Mean: Model as evaluator | Column Mean: Model as treatment)"
+    else:
+        title = "Evaluator vs Evaluatee Performance\n(Row Mean: Model as evaluator | Column Mean: Model as treatment)"
+
+    ax.set_title(title, fontsize=14, fontweight="bold", pad=20)
+
+    # Legend
+    ax.legend(loc="upper left")
+    ax2.legend(loc="upper right")
+
+    # Add interpretation
+    fig.text(
+        0.5,
+        0.02,
+        "Positive difference (green): Model better at identifying itself than others are at identifying it (suggests distinctive style)\n"
+        "Negative difference (red): Others identify it easily, but model struggles to identify itself (suggests quality-based bias)",
+        ha="center",
+        fontsize=9,
+        style="italic",
+        bbox=dict(
+            boxstyle="round,pad=0.5",
+            facecolor="lightyellow",
+            edgecolor="gray",
+            linewidth=1,
+        ),
+    )
+
+    plt.tight_layout()
+    plt.subplots_adjust(bottom=0.12)
+
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    print(f"  ✓ Saved row vs column comparison to: {output_path}")
+
+    plt.close()
+
+
 def plot_heatmap(pivot: pd.DataFrame, output_path: Path, experiment_title: str = ""):
     """
     Create and save heatmap of self-recognition accuracy.
@@ -332,6 +657,9 @@ def plot_heatmap(pivot: pd.DataFrame, output_path: Path, experiment_title: str =
                 color="black",
             )
 
+    # Add thicker lines at provider boundaries
+    add_provider_boundaries(ax, pivot)
+
     # Labels
     ax.set_xlabel("Comparison Model (Treatment)", fontsize=12, fontweight="bold")
     ax.set_ylabel("Evaluator Model", fontsize=12, fontweight="bold")
@@ -363,7 +691,13 @@ def plot_heatmap(pivot: pd.DataFrame, output_path: Path, experiment_title: str =
     plt.close()
 
 
-def generate_summary_stats(df: pd.DataFrame, pivot: pd.DataFrame, output_path: Path):
+def generate_summary_stats(
+    df: pd.DataFrame,
+    pivot: pd.DataFrame,
+    comparison: pd.DataFrame,
+    asymmetry_matrix: pd.DataFrame,
+    output_path: Path,
+):
     """Generate and save summary statistics."""
 
     print("Generating summary statistics...")
@@ -434,6 +768,66 @@ def generate_summary_stats(df: pd.DataFrame, pivot: pd.DataFrame, output_path: P
         f.write(
             f"Missing evaluations: {len(pivot.index) * len(pivot.columns) - int(valid_comparisons) - len([m for m in pivot.index if m in pivot.columns])}\n\n"
         )
+
+        # Asymmetry analysis
+        f.write("EVALUATOR vs EVALUATEE ASYMMETRY ANALYSIS\n")
+        f.write("-" * 70 + "\n")
+        f.write("This analysis distinguishes between:\n")
+        f.write("  • Style-based recognition: Model has distinctive output style\n")
+        f.write("  • Quality-based bias: Model biased by response quality/strength\n\n")
+
+        f.write("ROW vs COLUMN MEANS (Per Model)\n")
+        f.write("-" * 70 + "\n")
+        f.write(
+            "Row Mean: Average accuracy when model is EVALUATOR (identifying itself)\n"
+        )
+        f.write(
+            "Col Mean: Average accuracy when model is TREATMENT (others identifying it)\n"
+        )
+        f.write("Difference: Row Mean - Col Mean\n\n")
+        f.write(
+            f"{'Model':<30} {'Row Mean':<12} {'Col Mean':<12} {'Difference':<12} {'Interpretation':<50}\n"
+        )
+        f.write("-" * 116 + "\n")
+
+        for model, row in comparison.iterrows():
+            row_mean = row["row_mean"]
+            col_mean = row["col_mean"]
+            diff = row["difference"]
+
+            if diff > 0.1:
+                interpretation = "Distinctive style (better at self-ID)"
+            elif diff < -0.1:
+                interpretation = "Quality bias (others ID it easily)"
+            else:
+                interpretation = "Balanced"
+
+            f.write(
+                f"{model:<30} {row_mean:<12.3f} {col_mean:<12.3f} {diff:<12.3f} {interpretation:<50}\n"
+            )
+        f.write("\n")
+
+        # Cell-wise asymmetry statistics
+        f.write("CELL-WISE ASYMMETRY STATISTICS\n")
+        f.write("-" * 70 + "\n")
+        valid_asym = asymmetry_matrix[~asymmetry_matrix.isna()].values.flatten()
+        if len(valid_asym) > 0:
+            f.write(f"Mean absolute asymmetry: {abs(valid_asym).mean():.3f}\n")
+            f.write(f"Max asymmetry: {valid_asym.max():.3f}\n")
+            f.write(f"Min asymmetry: {valid_asym.min():.3f}\n")
+            f.write(f"Std deviation: {valid_asym.std():.3f}\n\n")
+
+            # Count significant asymmetries
+            large_asym = abs(valid_asym) > 0.2
+            f.write(
+                f"Large asymmetries (|diff| > 0.2): {large_asym.sum()} / {len(valid_asym)} ({100*large_asym.sum()/len(valid_asym):.1f}%)\n"
+            )
+            f.write(
+                f"Positive asymmetries: {(valid_asym > 0).sum()} ({100*(valid_asym > 0).sum()/len(valid_asym):.1f}%)\n"
+            )
+            f.write(
+                f"Negative asymmetries: {(valid_asym < 0).sum()} ({100*(valid_asym < 0).sum()/len(valid_asym):.1f}%)\n\n"
+            )
 
     print(f"  ✓ Saved summary to: {output_path}")
 
@@ -517,9 +911,36 @@ def main():
     plot_heatmap(pivot, heatmap_path, experiment_title=experiment_title)
     print()
 
+    # Compute asymmetry analysis
+    asymmetry_matrix, comparison, asymmetry_scores = compute_asymmetry_analysis(pivot)
+
+    # Save asymmetry matrix
+    asymmetry_path = output_dir / "asymmetry_matrix.csv"
+    asymmetry_matrix.to_csv(asymmetry_path)
+    print(f"  ✓ Saved asymmetry matrix to: {asymmetry_path}\n")
+
+    # Save row vs column comparison
+    comparison_path = output_dir / "row_vs_column_comparison.csv"
+    comparison.to_csv(comparison_path)
+    print(f"  ✓ Saved row vs column comparison to: {comparison_path}\n")
+
+    # Generate asymmetry heatmap
+    asymmetry_heatmap_path = output_dir / "asymmetry_heatmap.png"
+    plot_asymmetry_heatmap(
+        asymmetry_matrix, asymmetry_heatmap_path, experiment_title=experiment_title
+    )
+    print()
+
+    # Generate row vs column comparison plot
+    row_col_plot_path = output_dir / "row_vs_column_comparison.png"
+    plot_row_vs_column_comparison(
+        comparison, row_col_plot_path, experiment_title=experiment_title
+    )
+    print()
+
     # Generate summary stats
     summary_path = output_dir / "summary_stats.txt"
-    generate_summary_stats(df, pivot, summary_path)
+    generate_summary_stats(df, pivot, comparison, asymmetry_matrix, summary_path)
     print()
 
     # Display preview
@@ -533,9 +954,13 @@ def main():
     print("ANALYSIS COMPLETE")
     print(f"{'='*70}")
     print(f"Output directory: {output_dir}")
-    print("  • accuracy_pivot.csv: Raw data")
-    print("  • accuracy_heatmap.png: Visualization")
-    print("  • summary_stats.txt: Statistics")
+    print("  • accuracy_pivot.csv: Raw accuracy data")
+    print("  • accuracy_heatmap.png: Accuracy visualization")
+    print("  • asymmetry_matrix.csv: Cell-wise asymmetry (pivot - pivot.T)")
+    print("  • asymmetry_heatmap.png: Asymmetry visualization")
+    print("  • row_vs_column_comparison.csv: Row vs column means per model")
+    print("  • row_vs_column_comparison.png: Row vs column comparison plot")
+    print("  • summary_stats.txt: Comprehensive statistics")
     print(f"{'='*70}\n")
 
 

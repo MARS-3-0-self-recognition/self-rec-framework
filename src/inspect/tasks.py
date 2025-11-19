@@ -58,6 +58,10 @@ def get_task_function(
     format_type = exp_config.format
     task_type = exp_config.task
 
+    # Normalize task type: "Pref-N" → "Pref", "Pref-S" → "Pref", "Pref-Q" → "Pref"
+    # Extract base task type for function lookup (task variants use same functions)
+    base_task = task_type.split("-")[0] if "-" in task_type else task_type
+
     # Map (tags, format, task) to task function
     task_map = {
         # Assistant Tags (AT) - conversation in assistant messages
@@ -78,7 +82,7 @@ def get_task_function(
         ("UT", "IND-Q", "Rec"): individual_query,
     }
 
-    key = (tags, format_type, task_type)
+    key = (tags, format_type, base_task)
     if key not in task_map:
         raise ValueError(
             f"Unsupported combination: tags={tags}, format={format_type}, task={task_type}"

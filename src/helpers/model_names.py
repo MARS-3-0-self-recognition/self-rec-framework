@@ -4,11 +4,13 @@ INSPECT_MODEL_NAMES: dict = {
     "gpt-4o": "openai/gpt-4o",
     "gpt-4.1-mini": "openai/gpt-4.1-mini-2025-04-14",
     "gpt-4.1": "openai/gpt-4.1-2025-04-14",
+    "gpt-5": "openai/gpt-5",
     # Anthropic
     "sonnet-4.5": "anthropic/claude-sonnet-4-5-20250929",
     "sonnet-3.7": "anthropic/claude-3-7-sonnet-20250219",
     "haiku-3.5": "anthropic/claude-3-5-haiku-20241022",
     "haiku-4.5": "anthropic/claude-4-5-haiku-20251001",
+    "opus-4.1": "anthropic/claude-opus-4-1-20250805",
     # Google
     "gemini-2.0-flash": "google/gemini-2.0-flash",
     "gemini-2.0-flash-lite": "google/gemini-2.0-flash-lite",
@@ -18,7 +20,7 @@ INSPECT_MODEL_NAMES: dict = {
     # Llama models
     "ll-3.1-8b": "together/meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
     "ll-3.1-70b": "together/meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
-    "ll-3.1-405b": "together/meta-llama/Llama-3.1-405B-Instruct",
+    "ll-3.1-405b": "together/meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
     # Qwen models (text-only, non-thinking)
     "qwen-2.5-7b": "together/Qwen/Qwen2.5-7B-Instruct-Turbo",
     "qwen-2.5-72b": "together/Qwen/Qwen2.5-72B-Instruct-Turbo",

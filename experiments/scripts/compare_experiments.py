@@ -91,6 +91,108 @@ def get_experiment_title(results_dir: Path) -> str:
     return mapping.get(code, code)
 
 
+def get_model_order() -> list[str]:
+    """
+    Define the canonical order for models in the pivot table and heatmap.
+
+    Models are organized by company/provider, then ordered from weakest to strongest.
+
+    Returns:
+        List of model names in display order
+    """
+    return [
+        # OpenAI (weakest to strongest)
+        "gpt-4o-mini",
+        "gpt-4.1-mini",
+        "gpt-4o",
+        "gpt-4.1",
+        "gpt-5.1",
+        # Anthropic (weakest to strongest)
+        "haiku-3.5",
+        "sonnet-3.7",
+        "sonnet-4.5",
+        "opus-4.1",
+        # Google Gemini (weakest to strongest)
+        "gemini-2.0-flash-lite",
+        "gemini-2.0-flash",
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+        # Together AI - Llama (weakest to strongest)
+        "ll-3.1-8b",
+        "ll-3.1-70b",
+        "ll-3.1-405b",
+        # Together AI - Qwen (weakest to strongest)
+        "qwen-2.5-7b",
+        "qwen-2.5-72b",
+        "qwen-3.0-80b",
+        # Together AI - DeepSeek (weakest to strongest)
+        "deepseek-3.0",
+        "deepseek-3.1",
+    ]
+
+
+def get_model_provider(model_name: str) -> str:
+    """
+    Get the provider/company for a given model name.
+
+    Args:
+        model_name: Short model name (e.g., "gpt-4o", "haiku-3.5")
+
+    Returns:
+        Provider name (e.g., "OpenAI", "Anthropic", "Google", "Together-Llama", "Together-Qwen", "Together-DeepSeek")
+    """
+    model_lower = model_name.lower()
+
+    if model_lower.startswith("gpt-"):
+        return "OpenAI"
+    elif (
+        model_lower.startswith("haiku-")
+        or model_lower.startswith("sonnet-")
+        or model_lower.startswith("opus-")
+    ):
+        return "Anthropic"
+    elif model_lower.startswith("gemini-"):
+        return "Google"
+    elif model_lower.startswith("ll-"):
+        return "Together-Llama"
+    elif model_lower.startswith("qwen-"):
+        return "Together-Qwen"
+    elif model_lower.startswith("deepseek-"):
+        return "Together-DeepSeek"
+    else:
+        return "Unknown"
+
+
+def add_provider_boundaries(ax, pivot: pd.DataFrame, linewidth: float = 2.5):
+    """
+    Add thicker lines at boundaries between different providers.
+
+    This draws vertical and horizontal lines to separate provider families
+    in the heatmap for better visual organization.
+
+    Args:
+        ax: Matplotlib axes object
+        pivot: Pivot table DataFrame with models as index and columns
+        linewidth: Width of the boundary lines (default: 2.5)
+    """
+    # Get providers for each model
+    row_providers = [get_model_provider(model) for model in pivot.index]
+    col_providers = [get_model_provider(model) for model in pivot.columns]
+
+    # Find provider boundaries (where provider changes)
+    # Vertical lines (between columns)
+    for j in range(len(col_providers) - 1):
+        if col_providers[j] != col_providers[j + 1]:
+            # Draw vertical line at boundary
+            ax.axvline(x=j + 1, color="black", linewidth=linewidth, zorder=15)
+
+    # Horizontal lines (between rows)
+    for i in range(len(row_providers) - 1):
+        if row_providers[i] != row_providers[i + 1]:
+            # Draw horizontal line at boundary
+            ax.axhline(y=i + 1, color="black", linewidth=linewidth, zorder=15)
+
+
 def parse_eval_filename(filename: str) -> tuple[str, str, str] | None:
     """
     Extract evaluator, control, and treatment from eval log filename.
@@ -269,6 +371,17 @@ def load_pivot_table(results_dir: Path) -> pd.DataFrame:
 
     # Load with index column
     pivot = pd.read_csv(pivot_path, index_col=0)
+
+    # Reorder rows and columns according to canonical model order
+    model_order = get_model_order()
+
+    # Filter to only models that exist in the data
+    row_order = [m for m in model_order if m in pivot.index]
+    col_order = [m for m in model_order if m in pivot.columns]
+
+    # Reindex to apply ordering
+    pivot = pivot.reindex(index=row_order, columns=col_order)
+
     return pivot
 
 
@@ -285,8 +398,19 @@ def compute_difference(pivot1: pd.DataFrame, pivot2: pd.DataFrame) -> pd.DataFra
     """
     print("Computing difference (experiment1 - experiment2)...")
 
+    # Ensure both pivot tables are ordered according to canonical model order
+    model_order = get_model_order()
+
+    # Get union of all models from both pivots, ordered by canonical order
+    all_rows = [m for m in model_order if m in pivot1.index or m in pivot2.index]
+    all_cols = [m for m in model_order if m in pivot1.columns or m in pivot2.columns]
+
+    # Reindex both to canonical order (this ensures consistent ordering)
+    pivot1_ordered = pivot1.reindex(index=all_rows, columns=all_cols)
+    pivot2_ordered = pivot2.reindex(index=all_rows, columns=all_cols)
+
     # Align the two dataframes (in case they have different models)
-    diff = pivot1.subtract(pivot2, fill_value=np.nan)
+    diff = pivot1_ordered.subtract(pivot2_ordered, fill_value=np.nan)
 
     return diff
 
@@ -311,8 +435,15 @@ def compute_paired_ttests(
     """
     print("Performing paired t-tests...")
 
-    # Initialize p-values matrix with NaN
-    p_values = pd.DataFrame(np.nan, index=pivot1.index, columns=pivot1.columns)
+    # Ensure both pivot tables are ordered according to canonical model order
+    model_order = get_model_order()
+
+    # Get union of all models from both pivots, ordered by canonical order
+    all_rows = [m for m in model_order if m in pivot1.index or m in pivot2.index]
+    all_cols = [m for m in model_order if m in pivot1.columns or m in pivot2.columns]
+
+    # Initialize p-values matrix with NaN, using canonical order
+    p_values = pd.DataFrame(np.nan, index=all_rows, columns=all_cols)
 
     # Collect all paired differences for overall test
     all_diffs = []
@@ -321,8 +452,8 @@ def compute_paired_ttests(
     tested_cells = 0
     significant_cells = 0
 
-    for evaluator in pivot1.index:
-        for treatment in pivot1.columns:
+    for evaluator in all_rows:
+        for treatment in all_cols:
             # Skip diagonal
             if evaluator == treatment:
                 continue
@@ -377,7 +508,7 @@ def compute_paired_ttests(
 
     # Overall test: one-sample t-test on all paired differences
     # H0: mean difference = 0 (no overall difference between experiments)
-    overall_stats = {}
+    overall_stats = None
     if all_diffs:
         all_diffs = np.array(all_diffs)
         t_stat_overall, p_value_overall = stats.ttest_1samp(all_diffs, 0)
@@ -390,6 +521,8 @@ def compute_paired_ttests(
             "significant": p_value_overall < 0.05,
         }
         print(f"  ✓ Overall t-test: t={t_stat_overall:.3f}, p={p_value_overall:.4f}")
+    else:
+        print("  ⚠ No valid paired differences found for overall t-test")
 
     return p_values, overall_stats
 
@@ -485,6 +618,9 @@ def plot_difference_heatmap(
                 fontsize=8,
                 color="black",
             )
+
+    # Add thicker lines at provider boundaries
+    add_provider_boundaries(ax, diff)
 
     # Labels
     ax.set_xlabel("Comparison Model (Treatment)", fontsize=12, fontweight="bold")
@@ -605,25 +741,32 @@ def generate_summary_stats(
         # Individual cell statistics
         if p_values is not None:
             sig_count = 0
+            total_tests = 0
             for evaluator in p_values.index:
                 for treatment in p_values.columns:
-                    if evaluator != treatment:
+                    if evaluator != treatment:  # Skip diagonal
                         p_val = p_values.loc[evaluator, treatment]
-                        if pd.notna(p_val) and p_val < 0.05:
-                            sig_count += 1
+                        if pd.notna(p_val):
+                            total_tests += 1
+                            if p_val < 0.05:
+                                sig_count += 1
 
-            total_tests = (~p_values.isna()).sum().sum() - len(
-                p_values.index
-            )  # Exclude diagonal
-            f.write("CELL-WISE PAIRED T-TESTS\n")
-            f.write("-" * 70 + "\n")
-            f.write(f"Total tests performed: {total_tests}\n")
-            f.write(
-                f"Significant differences (p < 0.05): {sig_count} ({sig_count/total_tests*100:.1f}%)\n"
-            )
-            f.write(
-                f"Non-significant: {total_tests - sig_count} ({(total_tests-sig_count)/total_tests*100:.1f}%)\n\n"
-            )
+            if total_tests > 0:
+                f.write("CELL-WISE PAIRED T-TESTS\n")
+                f.write("-" * 70 + "\n")
+                f.write(f"Total tests performed: {total_tests}\n")
+                f.write(
+                    f"Significant differences (p < 0.05): {sig_count} ({sig_count/total_tests*100:.1f}%)\n"
+                )
+                f.write(
+                    f"Non-significant: {total_tests - sig_count} ({(total_tests-sig_count)/total_tests*100:.1f}%)\n\n"
+                )
+            else:
+                f.write("CELL-WISE PAIRED T-TESTS\n")
+                f.write("-" * 70 + "\n")
+                f.write(
+                    "No valid paired t-tests could be performed (insufficient overlapping data)\n\n"
+                )
 
         if len(flat_diff) > 0:
             f.write("OVERALL DIFFERENCE STATISTICS (from aggregated accuracies)\n")
@@ -704,33 +847,89 @@ def main():
     exp1_title = get_experiment_title(exp1_dir)
     exp2_title = get_experiment_title(exp2_dir)
 
-    # Setup output directory
-    # Extract dataset/subset path from experiment 1
-    # e.g., data/results/pku_saferlhf/mismatch_1-20/11_UT_PW-Q_Rec_NPr
-    # -> data/analysis/pku_saferlhf/mismatch_1-20/comparisons/{exp1_code}_vs_{exp2_code}
-    parts = list(exp1_dir.parts)
-    if "results" in parts:
-        results_idx = parts.index("results")
-        # Replace 'results' with 'analysis'
-        parts[results_idx] = "analysis"
-        # Remove the experiment-specific directory (last part)
-        parts = parts[:-1]
-        # Add 'comparisons' subdirectory and comparison name
-        base_analysis_path = Path(*parts)
-        output_dir = base_analysis_path / "comparisons" / f"{exp1_code}_vs_{exp2_code}"
+    # Parse dataset and subset from both experiment paths
+    # Expected format: data/results/{dataset}/{subset}/{experiment_code}
+    def parse_dataset_info(results_dir: Path) -> tuple[str, str] | None:
+        """Extract (dataset, subset) from results directory path."""
+        parts = list(results_dir.parts)
+        if "results" in parts:
+            results_idx = parts.index("results")
+            if (
+                results_idx + 2 < len(parts) - 1
+            ):  # Need dataset, subset, and experiment dir
+                dataset = parts[results_idx + 1]
+                subset = parts[results_idx + 2]
+                return dataset, subset
+        return None
+
+    exp1_info = parse_dataset_info(exp1_dir)
+    exp2_info = parse_dataset_info(exp2_dir)
+
+    # Determine if this is a cross-dataset comparison
+    is_cross_dataset = False
+    if exp1_info and exp2_info:
+        dataset1, subset1 = exp1_info
+        dataset2, subset2 = exp2_info
+        is_cross_dataset = (dataset1 != dataset2) or (subset1 != subset2)
+
+    # Setup output directory based on comparison type
+    if is_cross_dataset:
+        # Cross-dataset comparison
+        # Path: data/analysis/cross-dataset_comparisons/{experiment_code}/{dataset1_subset1}_vs_{dataset2_subset2}
+        dataset1, subset1 = exp1_info
+        dataset2, subset2 = exp2_info
+
+        # Use the experiment code (should be the same for both in cross-dataset comparisons)
+        experiment_code = (
+            exp1_code if exp1_code == exp2_code else f"{exp1_code}_vs_{exp2_code}"
+        )
+
+        # Create comparison name: dataset1_subset1_vs_dataset2_subset2
+        comparison_name = f"{dataset1}_{subset1}_vs_{dataset2}_{subset2}"
+
+        output_dir = (
+            Path("data/analysis/cross-dataset_comparisons")
+            / experiment_code
+            / comparison_name
+        )
     else:
-        # Fallback if path doesn't contain 'results'
-        output_dir = Path("data/analysis/comparisons") / f"{exp1_code}_vs_{exp2_code}"
+        # Same dataset/subset comparison (original logic)
+        # Extract dataset/subset path from experiment 1
+        # e.g., data/results/pku_saferlhf/mismatch_1-20/11_UT_PW-Q_Rec_NPr
+        # -> data/analysis/pku_saferlhf/mismatch_1-20/comparisons/{exp1_code}_vs_{exp2_code}
+        parts = list(exp1_dir.parts)
+        if "results" in parts:
+            results_idx = parts.index("results")
+            # Replace 'results' with 'analysis'
+            parts[results_idx] = "analysis"
+            # Remove the experiment-specific directory (last part)
+            parts = parts[:-1]
+            # Add 'comparisons' subdirectory and comparison name
+            base_analysis_path = Path(*parts)
+            output_dir = (
+                base_analysis_path / "comparisons" / f"{exp1_code}_vs_{exp2_code}"
+            )
+        else:
+            # Fallback if path doesn't contain 'results'
+            output_dir = (
+                Path("data/analysis/comparisons") / f"{exp1_code}_vs_{exp2_code}"
+            )
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"\n{'='*70}")
     print("EXPERIMENT COMPARISON")
+    if is_cross_dataset:
+        print("(Cross-Dataset Comparison)")
     print(f"{'='*70}")
     print(f"Experiment 1: {exp1_title}")
     print(f"              {exp1_dir}")
+    if is_cross_dataset and exp1_info:
+        print(f"              Dataset: {exp1_info[0]}/{exp1_info[1]}")
     print(f"Experiment 2: {exp2_title}")
     print(f"              {exp2_dir}")
+    if is_cross_dataset and exp2_info:
+        print(f"              Dataset: {exp2_info[0]}/{exp2_info[1]}")
     print(f"Output dir:   {output_dir}")
     print(f"{'='*70}\n")
 

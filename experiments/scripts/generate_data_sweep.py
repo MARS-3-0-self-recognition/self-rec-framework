@@ -112,7 +112,12 @@ def run_sweep_generation(
 
     # Create a separate task for each model
     # This is necessary because the generation() task bakes the model into the Task object
-    tasks = []
+    # Separate models that don't support batch mode (Google Gemini, GPT-5/o-series)
+    no_batch_tasks = []
+    no_batch_models = []
+    batch_tasks = []
+    batch_models = []
+
     for model_name in models_to_generate:
         task = generation(
             model_name=model_name,
@@ -120,7 +125,22 @@ def run_sweep_generation(
             data_subset=data_subset,
             exp_config=exp_config,
         )
-        tasks.append(task)
+
+        # Check if it's a model that doesn't support batch mode
+        # Google/Gemini models have bugs in Inspect AI batch mode
+        # GPT-5.1 specifically returns unsupported_value errors in batch mode
+        # Note: gpt-5 (without .1) is allowed to try batch mode
+        is_gemini = "gemini" in model_name.lower()
+        is_gpt5_1 = model_name.lower() == "gpt-5.1" or model_name.lower().startswith(
+            "gpt-5.1"
+        )
+
+        if is_gemini or is_gpt5_1:
+            no_batch_tasks.append(task)
+            no_batch_models.append(model_name)
+        else:
+            batch_tasks.append(task)
+            batch_models.append(model_name)
 
     # Set up shared log directory for generation
     log_dir = (
@@ -130,11 +150,68 @@ def run_sweep_generation(
 
     # Run generation with multiple tasks in parallel
     # Use max_tasks to limit parallelism (default to number of models, max 16)
-    max_tasks = min(len(tasks), 16)
+    total_tasks = len(no_batch_tasks) + len(batch_tasks)
+    max_tasks = min(total_tasks, 16)
+
+    if batch and no_batch_tasks:
+        print(
+            f"\n\033[91m⚠ WARNING: Batch mode disabled for {len(no_batch_tasks)} models"
+        )
+        print(
+            "  (Google Gemini batch mode has bugs; GPT-5.1 returns unsupported_value errors)\033[0m"
+        )
+        print(f"  • Batch-compatible models: {len(batch_tasks)} WITH batch mode")
+        print(f"  • Non-batch models: {len(no_batch_tasks)} WITHOUT batch mode\n")
+
     print(
         f"Running multi-model generation with max_tasks={max_tasks} (this may take a while with batch mode)...\n"
     )
-    eval_logs = eval(tasks, log_dir=str(log_dir), max_tasks=max_tasks, batch=batch)
+
+    # Run evaluations - split into two groups if batch mode + models that don't support batch
+    eval_logs = []
+
+    if batch and no_batch_tasks:
+        # Run non-batch models first, then batch-compatible models with batch
+        if no_batch_tasks:
+            print(f"Running {len(no_batch_tasks)} models WITHOUT batch mode...")
+            try:
+                no_batch_logs = eval(
+                    no_batch_tasks,
+                    log_dir=str(log_dir),
+                    max_tasks=max_tasks,
+                    batch=False,
+                )
+                eval_logs.extend(no_batch_logs)
+            except Exception as e:
+                print(f"\n⚠ Error in non-batch generation: {e}")
+                raise
+
+        if batch_tasks:
+            print(f"\nRunning {len(batch_tasks)} models WITH batch mode...")
+            try:
+                batch_logs = eval(
+                    batch_tasks,
+                    log_dir=str(log_dir),
+                    max_tasks=max_tasks,
+                    batch=batch,
+                )
+                eval_logs.extend(batch_logs)
+            except Exception as e:
+                print(f"\n⚠ Error in batch generation: {e}")
+                raise
+    else:
+        # Run all together
+        all_tasks = no_batch_tasks + batch_tasks
+        try:
+            eval_logs = eval(
+                all_tasks,
+                log_dir=str(log_dir),
+                max_tasks=max_tasks,
+                batch=batch,
+            )
+        except Exception as e:
+            print(f"\n⚠ Error in generation: {e}")
+            raise
 
     print(f"\n✓ Generation complete! Processing {len(eval_logs)} model outputs...\n")
 

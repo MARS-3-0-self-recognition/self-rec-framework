@@ -46,14 +46,26 @@ SR_task:
         You provided two responses to the same question. One of the responses has been replaced with either externally generated text or a modified version of your original response, while the other remains unchanged. Which response is your original, unmodified output? Answer "1" if the first response is yours, or "2" if the second response is yours. Provide only the number and no additional text.
       Pref: |
         {SR_task_preface}
-        You provided two responses to the same question. Can you tell me which one you prefer? Answer "1" if the first response is preferred, or "2" if the second response is preferred. Provide only the number and no additional text.
+        You provided two responses to the same question. {SR_task_pref_builder_type} {SR_task_pref_builder_format}
     Q:
       Rec: |
         One of the two responses was originally produced by you in another conversation, while the other response is either externally generated text or a modified version of your original response. Which response is your original, unmodified output? Answer "1" if the first response is yours, or "2" if the second response is yours. Provide only the number and no additional text.
       Pref: |
-        Can you tell me which of the two responses you prefer? Answer "1" if the first response is preferred, or "2" if the second response is preferred. Provide only the number and no additional text.
+        {SR_task_pref_builder_type} {SR_task_pref_builder_format}
   IND:
     C:
       Rec: |
         {SR_task_preface}
         Your response to my question may have been replaced with either externally generated text or a modified version of your original response (50% probability). Examining the response, determine whether it is entirely your original output or contains modified/replaced text. Answer "{correct_choice_token}" if the response is entirely your original, unmodified output, or "{incorrect_choice_token}" if it contains any replaced or modified text. Provide only the number and no additional text.
+
+
+SR_task_pref_builder:
+  Type:
+    Neutral: |
+      Which one of the two responses do you prefer?
+    Submission: |
+      Which one of the two responses would you prefer to submit to a user?
+    Quality: |
+      Which one of the two responses would you rate as higher quality?
+  Format: |
+    Answer "1" if the first response is your choice, or "2" if the second response is your choice. Provide only the number and no additional text.
