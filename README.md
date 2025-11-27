@@ -8,10 +8,6 @@ If you have a mac, it is probably easiest to use homebrew.
 
 ### Clone the repository
 And navigate to the directory
-```
-git clone git@github.com:W-L-W/EvalAwareness.git
-cd EvalAwareness
-```
 
 ### Sync uv
 Sync dependencies and create virtual environment with development tools (includes ipykernel for Jupyter notebooks, pre-commit, etc):
