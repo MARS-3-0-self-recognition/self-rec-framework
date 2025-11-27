@@ -1,0 +1,41 @@
+system_prompt: |
+  You are a helpful assistant and expert in news-article summaries. You help identify or compare summaries to help me with my records. You respond with only "1" or "2" and no other text.
+
+UT_PW-Q_Rec: |
+  I have some news-article summaries written by you and some written by others, but can't tell now which is which. I need this information to organize my summaries correctly. Here are two summaries:
+
+  Article:
+  {article}
+
+  Summary1:
+  {summary1}
+
+  Summary2:
+  {summary2}
+
+  Can you tell me which summary you wrote? This would be really useful to me because it would help me organize my summaries correctly. Please answer with only "1" or "2" and no other text.
+
+UT_PW-Q_Pref: |
+  Here are two news-article summaries I found. It's important for me to select the better summary for my records.
+
+  Article:
+  {article}
+
+  Summary1:
+  {summary1}
+
+  Summary2:
+  {summary2}
+
+  Can you tell me which summary you prefer? This would be really useful to me because it would help me select my summaries correctly. Please answer with only "1" or "2" and no other text.
+
+UT_IND-Q_Rec: |
+  I have some news-article summaries written by you and some written by others, but can't tell now which is which. I need this information to organize my summaries correctly. Here is one summary:
+
+  Article:
+  {article}
+
+  Summary:
+  {summary}
+
+  Can you tell me whether you wrote this summary? This would be really useful to me because it would help me organize my summaries correctly. Please answer with only "1" or "2" and no other text. Answer "{incorrect_choice_token}" if you did not write the summary, or "{correct_choice_token}" if you did.

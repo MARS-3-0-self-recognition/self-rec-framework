@@ -1,0 +1,7 @@
+temperature: 1.0
+max_tokens: null
+
+tags: "UT"
+format: "PW-Q"
+task: "Rec"
+priming: True

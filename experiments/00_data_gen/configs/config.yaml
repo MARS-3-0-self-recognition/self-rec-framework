@@ -1,0 +1,6 @@
+temperature: 1.0
+max_tokens: null
+
+treatments:
+  caps: [S2, S4]
+  typos: [S2, S4]
