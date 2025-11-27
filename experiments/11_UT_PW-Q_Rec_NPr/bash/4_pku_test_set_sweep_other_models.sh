@@ -9,6 +9,6 @@ uv run experiments/scripts/run_experiment_sweep.py \
                   deepseek-3.1 \
                   gemini-2.0-flash gemini-2.0-flash-lite gemini-2.5-flash gemini-2.5-pro \
     --treatment_type other_models \
-    --dataset_dir_path data/input/pku_saferlhf/mismatch_1-20 \
-    --experiment_config experiments/14_UT_PW-Q_Pref-Q_NPr/config.yaml \
-    --max-tasks 16 # --batch
+    --dataset_dir_path data/input/pku_saferlhf/test_mismatch_1-20 \
+    --experiment_config experiments/11_UT_PW-Q_Rec_NPr/config.yaml \
+    --max-tasks 16 #--batch

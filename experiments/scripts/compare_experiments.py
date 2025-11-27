@@ -14,7 +14,7 @@ Output:
     - data/analysis/{dataset}/{subset}/comparisons/{exp1_name}_vs_{exp2_name}/
         - accuracy_difference.csv: Difference matrix (exp1 - exp2)
         - accuracy_difference_heatmap.png: Visualization
-        - summary_stats.txt: Comparison statistics
+        - experiment_comparison_stats.txt: Comparison statistics
 """
 
 import argparse
@@ -55,6 +55,24 @@ def get_experiment_name_mapping() -> dict[str, str]:
         "AT_IND-C_Rec_Pr": "Assistant Tags Individual Conversation Primed",
         "AT_IND-C_Rec_NPr": "Assistant Tags Individual Conversation Unprimed",
     }
+
+
+def get_experiment_number(results_dir: Path) -> str | None:
+    """
+    Extract experiment number from results directory path.
+
+    Args:
+        results_dir: Path to results directory
+
+    Returns:
+        Experiment number (e.g., "11") or None if not found
+    """
+    experiment_name = results_dir.name
+    if "_" in experiment_name:
+        parts = experiment_name.split("_", 1)
+        if parts[0].isdigit():
+            return parts[0]
+    return None
 
 
 def get_experiment_code(results_dir: Path) -> str:
@@ -797,6 +815,10 @@ def generate_summary_stats(
             # Evaluator-wise summary
             f.write("EVALUATOR-WISE MEAN DIFFERENCES\n")
             f.write("-" * 70 + "\n")
+            evaluator_diffs = {}
+            evaluator_significance = {}
+
+            # Calculate significance for each evaluator using one-sample t-test
             for evaluator in diff.index:
                 row_vals = []
                 for treatment in diff.columns:
@@ -806,9 +828,241 @@ def generate_summary_stats(
                             row_vals.append(val)
                 if row_vals:
                     mean_diff = np.mean(row_vals)
-                    f.write(f"{evaluator:25s}: {mean_diff:+.3f}\n")
+                    evaluator_diffs[evaluator] = mean_diff
+
+                    # Perform one-sample t-test: test if mean is significantly different from 0
+                    if len(row_vals) > 1:
+                        t_stat, p_val = stats.ttest_1samp(row_vals, 0.0)
+                        evaluator_significance[evaluator] = p_val
+                        sig_marker = (
+                            "***"
+                            if p_val < 0.001
+                            else "**"
+                            if p_val < 0.01
+                            else "*"
+                            if p_val < 0.05
+                            else ""
+                        )
+                        f.write(f"{evaluator:25s}: {mean_diff:+.3f} {sig_marker}\n")
+                    else:
+                        evaluator_significance[evaluator] = None
+                        f.write(f"{evaluator:25s}: {mean_diff:+.3f}\n")
+
+            f.write("\nSignificance: *** p<0.001, ** p<0.01, * p<0.05\n")
+
+            # Generate evaluator performance plot
+            if evaluator_diffs:
+                evaluator_plot_path = (
+                    output_path.parent / "evaluator_difference_performance.png"
+                )
+                evaluator_series = pd.Series(evaluator_diffs).sort_values(
+                    ascending=False
+                )
+                significance_series = pd.Series(evaluator_significance).reindex(
+                    evaluator_series.index
+                )
+                plot_evaluator_performance(
+                    evaluator_series,
+                    evaluator_plot_path,
+                    experiment_title=f"{exp1_title} - {exp2_title}",
+                    ylabel="Mean Difference (Exp1 - Exp2)",
+                    significance_pvalues=significance_series,
+                )
 
     print(f"  ✓ Saved summary to: {output_path}")
+
+
+def get_model_family_colors(model_names: list[str]) -> list[str]:
+    """
+    Get colors for models based on their family, with lighter shades for weaker models
+    and darker shades for stronger models within each family.
+
+    Args:
+        model_names: List of model names in order
+
+    Returns:
+        List of hex color codes matching the model order
+    """
+    # Define model families and their base colors (matching logo colors)
+    family_colors = {
+        "openai": {
+            "base": "#10a37f",  # OpenAI green
+            "models": ["gpt-4o-mini", "gpt-4.1-mini", "gpt-4o", "gpt-4.1", "gpt-5.1"],
+            "shades": [
+                "#7dd3b0",
+                "#4db896",
+                "#2a9d7c",
+                "#0d8a6a",
+                "#005844",
+            ],  # Light to dark
+        },
+        "anthropic": {
+            "base": "#ea580c",  # Claude red-orange
+            "models": ["haiku-3.5", "sonnet-3.7", "sonnet-4.5", "opus-4.1"],
+            "shades": [
+                "#fb923c",
+                "#f97316",
+                "#ea580c",
+                "#c2410c",
+            ],  # Light to dark (red-orange)
+        },
+        "google": {
+            "base": "#fbbf24",  # Google yellow
+            "models": [
+                "gemini-2.0-flash-lite",
+                "gemini-2.0-flash",
+                "gemini-2.5-flash",
+                "gemini-2.5-pro",
+            ],
+            "shades": [
+                "#fef08a",
+                "#fde047",
+                "#facc15",
+                "#eab308",
+            ],  # Light to dark yellow
+        },
+        "llama": {
+            "base": "#3b82f6",  # Blue
+            "models": ["ll-3.1-8b", "ll-3.1-70b", "ll-3.1-405b"],
+            "shades": ["#93c5fd", "#60a5fa", "#3b82f6"],  # Light to dark blue
+        },
+        "qwen": {
+            "base": "#7c3aed",  # Purple
+            "models": ["qwen-2.5-7b", "qwen-2.5-72b", "qwen-3.0-80b"],
+            "shades": ["#c4b5fd", "#a78bfa", "#7c3aed"],  # Light to dark purple
+        },
+        "deepseek": {
+            "base": "#dc2626",  # Red
+            "models": ["deepseek-3.0", "deepseek-3.1"],
+            "shades": ["#fca5a5", "#dc2626"],  # Light to dark red
+        },
+    }
+
+    colors = []
+    for model in model_names:
+        assigned = False
+        for family_name, family_info in family_colors.items():
+            if model in family_info["models"]:
+                idx = family_info["models"].index(model)
+                colors.append(family_info["shades"][idx])
+                assigned = True
+                break
+        if not assigned:
+            # Default gray for unknown models
+            colors.append("#9ca3af")
+
+    return colors
+
+
+def plot_evaluator_performance(
+    evaluator_avg: pd.Series,
+    output_path: Path,
+    experiment_title: str = "",
+    ylabel: str = "Average Score",
+    significance_pvalues: pd.Series | None = None,
+):
+    """
+    Create a bar plot showing evaluator performance averages.
+
+    Args:
+        evaluator_avg: Series with evaluator names as index and average values
+        output_path: Path to save the plot
+        experiment_title: Optional experiment title
+        ylabel: Label for y-axis
+        significance_pvalues: Optional Series with p-values for significance testing
+    """
+    print("Generating evaluator performance plot...")
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+
+    # Get colors based on model family
+    model_list = list(evaluator_avg.index)
+    colors = get_model_family_colors(model_list)
+
+    _bars = ax.barh(range(len(evaluator_avg)), evaluator_avg.values, color=colors)
+
+    # Set y-axis labels
+    ax.set_yticks(range(len(evaluator_avg)))
+    ax.set_yticklabels(evaluator_avg.index)
+    ax.invert_yaxis()  # Top to bottom
+
+    # Add vertical line at zero for difference plots
+    if any(v < 0 for v in evaluator_avg.values) and any(
+        v > 0 for v in evaluator_avg.values
+    ):
+        ax.axvline(x=0, color="black", linestyle="--", linewidth=1, alpha=0.5)
+
+    # Labels and title
+    ax.set_xlabel(ylabel, fontsize=12, fontweight="bold")
+    ax.set_ylabel("Evaluator Model", fontsize=12, fontweight="bold")
+
+    title = "Evaluator Performance (Average Across All Treatments)"
+    if experiment_title:
+        title = f"{title}\n{experiment_title}"
+    ax.set_title(title, fontsize=13, fontweight="bold", pad=20)
+
+    # Calculate padding for x-axis to prevent label overlap
+    if len(evaluator_avg) > 0:
+        min_val = evaluator_avg.min()
+        max_val = evaluator_avg.max()
+        val_range = max_val - min_val
+        # Add 15% padding on each side
+        padding = max(val_range * 0.15, 0.05)  # At least 0.05 padding
+        x_min = min_val - padding
+        x_max = max_val + padding
+        ax.set_xlim(x_min, x_max)
+
+    # Add value labels on bars with significance markers
+    for i, (model, val) in enumerate(evaluator_avg.items()):
+        # Determine significance marker
+        sig_marker = ""
+        if significance_pvalues is not None and model in significance_pvalues.index:
+            p_val = significance_pvalues[model]
+            if pd.notna(p_val):
+                if p_val < 0.001:
+                    sig_marker = "***"
+                elif p_val < 0.01:
+                    sig_marker = "**"
+                elif p_val < 0.05:
+                    sig_marker = "*"
+
+        # Position text on the right side of the bar
+        x_pos = val if val >= 0 else val
+        ha = "left" if val >= 0 else "right"
+        ax.text(
+            x_pos,
+            i,
+            f" {val:+.3f}{sig_marker}",
+            va="center",
+            ha=ha,
+            fontsize=9,
+            fontweight="bold" if sig_marker else "normal",
+        )
+
+    # Add significance legend if any significant values
+    if significance_pvalues is not None and any(
+        pd.notna(p) and p < 0.05 for p in significance_pvalues.values
+    ):
+        from matplotlib.patches import Patch
+
+        legend_elements = [
+            Patch(facecolor="none", edgecolor="none", label="Significance:"),
+            Patch(facecolor="none", edgecolor="none", label="*** p<0.001"),
+            Patch(facecolor="none", edgecolor="none", label="** p<0.01"),
+            Patch(facecolor="none", edgecolor="none", label="* p<0.05"),
+        ]
+        ax.legend(
+            handles=legend_elements, loc="lower right", fontsize=9, framealpha=0.9
+        )
+
+    # Add grid
+    ax.grid(axis="x", alpha=0.3, linestyle="--")
+    ax.set_axisbelow(True)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    print(f"  ✓ Saved evaluator performance plot to: {output_path}")
+    plt.close()
 
 
 def main():
@@ -872,10 +1126,14 @@ def main():
         dataset2, subset2 = exp2_info
         is_cross_dataset = (dataset1 != dataset2) or (subset1 != subset2)
 
+    # Get experiment numbers for path naming
+    exp1_num = get_experiment_number(exp1_dir)
+    exp2_num = get_experiment_number(exp2_dir)
+
     # Setup output directory based on comparison type
     if is_cross_dataset:
         # Cross-dataset comparison
-        # Path: data/analysis/cross-dataset_comparisons/{experiment_code}/{dataset1_subset1}_vs_{dataset2_subset2}
+        # Path: data/analysis/cross-dataset_comparisons/{exp_num}_{experiment_code}/{dataset1_subset1}_vs_{dataset2_subset2}
         dataset1, subset1 = exp1_info
         dataset2, subset2 = exp2_info
 
@@ -883,6 +1141,10 @@ def main():
         experiment_code = (
             exp1_code if exp1_code == exp2_code else f"{exp1_code}_vs_{exp2_code}"
         )
+
+        # Include experiment number in the code if available
+        if exp1_num:
+            experiment_code = f"{exp1_num}_{experiment_code}"
 
         # Create comparison name: dataset1_subset1_vs_dataset2_subset2
         comparison_name = f"{dataset1}_{subset1}_vs_{dataset2}_{subset2}"
@@ -896,7 +1158,7 @@ def main():
         # Same dataset/subset comparison (original logic)
         # Extract dataset/subset path from experiment 1
         # e.g., data/results/pku_saferlhf/mismatch_1-20/11_UT_PW-Q_Rec_NPr
-        # -> data/analysis/pku_saferlhf/mismatch_1-20/comparisons/{exp1_code}_vs_{exp2_code}
+        # -> data/analysis/pku_saferlhf/mismatch_1-20/comparisons/{exp1_num}_{exp1_code}_vs_{exp2_num}_{exp2_code}
         parts = list(exp1_dir.parts)
         if "results" in parts:
             results_idx = parts.index("results")
@@ -906,14 +1168,19 @@ def main():
             parts = parts[:-1]
             # Add 'comparisons' subdirectory and comparison name
             base_analysis_path = Path(*parts)
-            output_dir = (
-                base_analysis_path / "comparisons" / f"{exp1_code}_vs_{exp2_code}"
-            )
+            # Build comparison name with experiment numbers
+            if exp1_num and exp2_num:
+                comparison_name = f"{exp1_num}_{exp1_code}_vs_{exp2_num}_{exp2_code}"
+            else:
+                comparison_name = f"{exp1_code}_vs_{exp2_code}"
+            output_dir = base_analysis_path / "comparisons" / comparison_name
         else:
             # Fallback if path doesn't contain 'results'
-            output_dir = (
-                Path("data/analysis/comparisons") / f"{exp1_code}_vs_{exp2_code}"
-            )
+            if exp1_num and exp2_num:
+                comparison_name = f"{exp1_num}_{exp1_code}_vs_{exp2_num}_{exp2_code}"
+            else:
+                comparison_name = f"{exp1_code}_vs_{exp2_code}"
+            output_dir = Path("data/analysis/comparisons") / comparison_name
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -980,7 +1247,7 @@ def main():
     print()
 
     # Generate summary stats
-    summary_path = output_dir / "summary_stats.txt"
+    summary_path = output_dir / "experiment_comparison_stats.txt"
     generate_summary_stats(
         diff, summary_path, exp1_title, exp2_title, p_values, overall_stats
     )
@@ -1000,7 +1267,8 @@ def main():
     print("  • accuracy_difference.csv: Difference matrix")
     print("  • pvalues.csv: P-values from paired t-tests")
     print("  • accuracy_difference_heatmap.png: Visualization (bold = significant)")
-    print("  • summary_stats.txt: Comparison statistics & t-test results")
+    print("  • evaluator_difference_performance.png: Evaluator performance bar chart")
+    print("  • experiment_comparison_stats.txt: Comparison statistics & t-test results")
     print(f"{'='*70}\n")
 
 

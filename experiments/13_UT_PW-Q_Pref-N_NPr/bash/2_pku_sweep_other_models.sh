@@ -11,4 +11,4 @@ uv run experiments/scripts/run_experiment_sweep.py \
     --treatment_type other_models \
     --dataset_dir_path data/input/pku_saferlhf/mismatch_1-20 \
     --experiment_config experiments/13_UT_PW-Q_Pref-N_NPr/config.yaml \
-    --max-tasks 16 --batch
+    --max-tasks 16 #--batch

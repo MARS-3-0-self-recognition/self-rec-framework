@@ -69,7 +69,6 @@ def get_model_order() -> list[str]:
         "gpt-4.1-mini",
         "gpt-4o",
         "gpt-4.1",
-        "gpt-5.1",
         # Anthropic (weakest to strongest)
         "haiku-3.5",
         "sonnet-3.7",
@@ -89,7 +88,6 @@ def get_model_order() -> list[str]:
         "qwen-2.5-72b",
         "qwen-3.0-80b",
         # Together AI - DeepSeek (weakest to strongest)
-        "deepseek-3.0",
         "deepseek-3.1",
     ]
 
@@ -417,7 +415,6 @@ def plot_asymmetry_heatmap(
 
     # Create heatmap with same colormap as accuracy heatmap
     # Use RdYlGn: red (negative) → yellow (zero) → green (positive)
-    # Remove colorbar (cbar=False)
     sns.heatmap(
         asymmetry_matrix,
         annot=True,
@@ -426,7 +423,7 @@ def plot_asymmetry_heatmap(
         center=0.0,
         vmin=-1.0,
         vmax=1.0,
-        cbar=False,  # Remove colorbar
+        cbar_kws={"label": "Asymmetry (Row - Column)"},
         mask=mask,
         linewidths=0.5,
         linecolor="gray",
@@ -470,10 +467,19 @@ def plot_asymmetry_heatmap(
         pad=20,
     )
 
-    # Add interpretation note
+    # Rotate labels
+    plt.xticks(rotation=45, ha="right")
+    plt.yticks(rotation=0)
+
+    # Tight layout
+    plt.tight_layout()
+    # Increase bottom margin significantly to make room for note and rotated x-axis labels
+    plt.subplots_adjust(bottom=0.20)
+
+    # Add interpretation note (moved further down to avoid overlap with x-axis labels)
     fig.text(
         0.5,
-        0.02,
+        0.01,
         "Positive (green): Row model better at self-identification | "
         "Negative (red): Column model better at self-identification | "
         "Zero (yellow): Balanced",
@@ -487,14 +493,6 @@ def plot_asymmetry_heatmap(
             linewidth=1,
         ),
     )
-
-    # Rotate labels
-    plt.xticks(rotation=45, ha="right")
-    plt.yticks(rotation=0)
-
-    # Tight layout
-    plt.tight_layout()
-    plt.subplots_adjust(bottom=0.08)  # Make room for note
 
     # Save
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
@@ -697,6 +695,7 @@ def generate_summary_stats(
     comparison: pd.DataFrame,
     asymmetry_matrix: pd.DataFrame,
     output_path: Path,
+    experiment_title: str = "",
 ):
     """Generate and save summary statistics."""
 
@@ -738,6 +737,12 @@ def generate_summary_stats(
         for model, acc in evaluator_avg.items():
             f.write(f"  {model:30} {acc:.3f}\n")
         f.write("\n")
+
+        # Generate evaluator performance plot
+        evaluator_plot_path = output_path.parent / "evaluator_performance.png"
+        plot_evaluator_performance(
+            evaluator_avg, evaluator_plot_path, experiment_title=experiment_title
+        )
 
         # Treatment difficulty
         f.write("TREATMENT DIFFICULTY (Average Accuracy Across All Evaluators)\n")
@@ -830,6 +835,159 @@ def generate_summary_stats(
             )
 
     print(f"  ✓ Saved summary to: {output_path}")
+
+
+def get_model_family_colors(model_names: list[str]) -> list[str]:
+    """
+    Get colors for models based on their family, with lighter shades for weaker models
+    and darker shades for stronger models within each family.
+
+    Args:
+        model_names: List of model names in order
+
+    Returns:
+        List of hex color codes matching the model order
+    """
+    # Define model families and their base colors (matching logo colors)
+    # OpenAI: Green/teal (OpenAI's brand color)
+    # Anthropic: Orange (Claude's brand color)
+    # Google: Yellow (Google's brand color)
+    # Llama: Blue
+    # Qwen: Purple
+    # DeepSeek: Red
+
+    family_colors = {
+        "openai": {
+            "base": "#10a37f",  # OpenAI green
+            "models": ["gpt-4o-mini", "gpt-4.1-mini", "gpt-4o", "gpt-4.1", "gpt-5.1"],
+            "shades": [
+                "#7dd3b0",
+                "#4db896",
+                "#2a9d7c",
+                "#0d8a6a",
+                "#005844",
+            ],  # Light to dark
+        },
+        "anthropic": {
+            "base": "#ea580c",  # Claude red-orange
+            "models": ["haiku-3.5", "sonnet-3.7", "sonnet-4.5", "opus-4.1"],
+            "shades": [
+                "#fb923c",
+                "#f97316",
+                "#ea580c",
+                "#c2410c",
+            ],  # Light to dark (red-orange)
+        },
+        "google": {
+            "base": "#fbbf24",  # Google yellow
+            "models": [
+                "gemini-2.0-flash-lite",
+                "gemini-2.0-flash",
+                "gemini-2.5-flash",
+                "gemini-2.5-pro",
+            ],
+            "shades": [
+                "#fef08a",
+                "#fde047",
+                "#facc15",
+                "#eab308",
+            ],  # Light to dark yellow
+        },
+        "llama": {
+            "base": "#3b82f6",  # Blue
+            "models": ["ll-3.1-8b", "ll-3.1-70b", "ll-3.1-405b"],
+            "shades": ["#93c5fd", "#60a5fa", "#3b82f6"],  # Light to dark blue
+        },
+        "qwen": {
+            "base": "#7c3aed",  # Purple
+            "models": ["qwen-2.5-7b", "qwen-2.5-72b", "qwen-3.0-80b"],
+            "shades": ["#c4b5fd", "#a78bfa", "#7c3aed"],  # Light to dark purple
+        },
+        "deepseek": {
+            "base": "#dc2626",  # Red
+            "models": ["deepseek-3.0", "deepseek-3.1"],
+            "shades": ["#fca5a5", "#dc2626"],  # Light to dark red
+        },
+    }
+
+    colors = []
+    for model in model_names:
+        assigned = False
+        for family_name, family_info in family_colors.items():
+            if model in family_info["models"]:
+                idx = family_info["models"].index(model)
+                colors.append(family_info["shades"][idx])
+                assigned = True
+                break
+        if not assigned:
+            # Default gray for unknown models
+            colors.append("#9ca3af")
+
+    return colors
+
+
+def plot_evaluator_performance(
+    evaluator_avg: pd.Series,
+    output_path: Path,
+    experiment_title: str = "",
+    ylabel: str = "Average Accuracy",
+):
+    """
+    Create a bar plot showing evaluator performance averages.
+
+    Args:
+        evaluator_avg: Series with evaluator names as index and average values
+        output_path: Path to save the plot
+        experiment_title: Optional experiment title
+        ylabel: Label for y-axis
+    """
+    print("Generating evaluator performance plot...")
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+
+    # Get colors based on model family
+    model_list = list(evaluator_avg.index)
+    colors = get_model_family_colors(model_list)
+
+    _bars = ax.barh(range(len(evaluator_avg)), evaluator_avg.values, color=colors)
+
+    # Set y-axis labels
+    ax.set_yticks(range(len(evaluator_avg)))
+    ax.set_yticklabels(evaluator_avg.index)
+    ax.invert_yaxis()  # Top to bottom
+
+    # Calculate padding for x-axis to prevent label overlap
+    if len(evaluator_avg) > 0:
+        min_val = evaluator_avg.min()
+        max_val = evaluator_avg.max()
+        val_range = max_val - min_val
+        # Add 15% padding on each side
+        padding = max(val_range * 0.15, 0.05)  # At least 0.05 padding
+        x_min = max(0, min_val - padding)  # Don't go below 0 for accuracy values
+        x_max = max_val + padding
+        ax.set_xlim(x_min, x_max)
+
+    # Labels and title
+    ax.set_xlabel(ylabel, fontsize=12, fontweight="bold")
+    ax.set_ylabel("Evaluator Model", fontsize=12, fontweight="bold")
+
+    title = "Evaluator Performance (Average Across All Treatments)"
+    if experiment_title:
+        title = f"{title}\n{experiment_title}"
+    ax.set_title(title, fontsize=13, fontweight="bold", pad=20)
+
+    # Add value labels on bars
+    for i, (model, val) in enumerate(evaluator_avg.items()):
+        ax.text(val, i, f" {val:.3f}", va="center", fontsize=9)
+
+    # Add grid
+    ax.grid(axis="x", alpha=0.3, linestyle="--")
+    ax.set_axisbelow(True)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    print(f"  ✓ Saved evaluator performance plot to: {output_path}")
+    plt.close()
 
 
 def main():
@@ -940,7 +1098,14 @@ def main():
 
     # Generate summary stats
     summary_path = output_dir / "summary_stats.txt"
-    generate_summary_stats(df, pivot, comparison, asymmetry_matrix, summary_path)
+    generate_summary_stats(
+        df,
+        pivot,
+        comparison,
+        asymmetry_matrix,
+        summary_path,
+        experiment_title=experiment_title,
+    )
     print()
 
     # Display preview
@@ -960,6 +1125,7 @@ def main():
     print("  • asymmetry_heatmap.png: Asymmetry visualization")
     print("  • row_vs_column_comparison.csv: Row vs column means per model")
     print("  • row_vs_column_comparison.png: Row vs column comparison plot")
+    print("  • evaluator_performance.png: Evaluator performance bar chart")
     print("  • summary_stats.txt: Comprehensive statistics")
     print(f"{'='*70}\n")
 

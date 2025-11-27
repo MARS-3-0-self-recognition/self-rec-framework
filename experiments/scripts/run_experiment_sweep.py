@@ -66,21 +66,86 @@ def _add_task_if_needed(
 
     # Check if already exists (look for log files with this task name in shared log dir)
     if not overwrite:
-        existing_logs = list(shared_log_dir.glob(f"*{task_name}*.eval"))
+        # Use glob to find potential matches, but verify exact match by parsing filename
+        potential_logs = list(shared_log_dir.glob(f"*{task_name}*.eval"))
+        existing_logs = []
+
+        # Verify exact match by parsing filenames
+        # Import parse_eval_filename from analyze_pairwise_results
+        from analyze_pairwise_results import parse_eval_filename
+
+        for log_file in potential_logs:
+            parsed = parse_eval_filename(log_file.name)
+            if parsed:
+                parsed_evaluator, parsed_control, parsed_treatment = parsed
+                # Check if this matches exactly what we're looking for
+                if treatment_name_treatment:
+                    # Pairwise: check evaluator, control, and treatment all match
+                    if (
+                        parsed_evaluator == model_name
+                        and parsed_control == treatment_name_control
+                        and parsed_treatment == treatment_name_treatment
+                    ):
+                        existing_logs.append(log_file)
+                else:
+                    # Non-pairwise: check evaluator and control match
+                    # (treatment will be None in this case)
+                    if (
+                        parsed_evaluator == model_name
+                        and parsed_control == treatment_name_control
+                    ):
+                        existing_logs.append(log_file)
+
         if existing_logs:
             # Check status of existing log - only skip if successful
             from inspect_ai.log import read_eval_log
 
             try:
                 log = read_eval_log(existing_logs[0])
+
+                # Helper function to check if log has actual results
+                def has_results(log):
+                    """Check if log contains samples with scores/results."""
+                    if not log.samples or len(log.samples) == 0:
+                        return False
+                    # Check if at least one sample has scores/results
+                    # Scores indicate the evaluation actually completed
+                    for sample in log.samples:
+                        if sample.scores and len(sample.scores) > 0:
+                            return True
+                    return False
+
                 if log.status == "success":
-                    print(f"  ⊘ {description}: already exists (success), skipping")
-                    return
+                    if has_results(log):
+                        print(f"  ⊘ {description}: already exists (success), skipping")
+                        return
+                    else:
+                        # Success status but no results - treat as incomplete/corrupt
+                        print(
+                            f"  ↻ {description}: incomplete log (success but no results), re-running"
+                        )
+                        for old_log in existing_logs:
+                            old_log.unlink()
                 elif log.status == "started":
-                    # Batch job still processing or orphaned - skip to avoid duplicates
-                    print(f"  ⏳ {description}: batch job in progress, skipping")
-                    print("     (Use scripts/list_active_batches.py to check status)")
-                    return
+                    # Check if "started" log actually has results
+                    # If it does, it might be a legitimate in-progress batch job
+                    # If it doesn't, it's an orphaned/canceled batch job that should be overwritten
+                    if has_results(log):
+                        # Has results - might be legitimate in-progress batch job
+                        print(
+                            f"  ⏳ {description}: batch job in progress (has results), skipping"
+                        )
+                        print(
+                            "     (Use scripts/list_active_batches.py to check status)"
+                        )
+                        return
+                    else:
+                        # No results - orphaned/canceled batch job, overwrite it
+                        print(
+                            f"  ↻ {description}: incomplete log (started but no results), re-running"
+                        )
+                        for old_log in existing_logs:
+                            old_log.unlink()
                 else:
                     # Failed/cancelled/error - delete and re-run
                     print(f"  ↻ {description}: previous run {log.status}, re-running")

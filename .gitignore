@@ -10,3 +10,8 @@ data/*
 _external/
 CLAUDE.md
 archive/
+TIMESHEET_REPORT.md
+SGTR_AISI_Challenge_Fund_Performance_Report_1.md
+
+# Report figures (generated, not committed)
+report_1/*.png
