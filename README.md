@@ -9,8 +9,8 @@ If you have a mac, it is probably easiest to use homebrew.
 ### Clone the repository
 And navigate to the directory
 ```
-git clone git@github.com:W-L-W/EvalAwareness.git
-cd EvalAwareness
+git clone git@github.com/MARS-3-0-self-recognition/self-rec-framework
+cd self-rec-framework
 ```
 
 ### Sync uv
