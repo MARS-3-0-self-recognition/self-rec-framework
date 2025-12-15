@@ -15,7 +15,7 @@ from inspect_ai import eval
 from src.inspect.tasks import generation
 from src.inspect.config import create_generation_config
 from src.helpers.utils import data_dir, save_json
-from src.helpers.model_names import inspect_model_name, SHORT_MODEL_NAMES
+from src.helpers.model_names import inspect_model_name, short_model_name
 from generate_data import (
     apply_treatments,
     construct_data_dicts,
@@ -226,20 +226,23 @@ def run_sweep_generation(
     for idx, eval_log in enumerate(eval_logs):
         model_name = None
         try:
-            # Get short model name from eval log
+            # Get inspect model name from eval log
             full_model_name = eval_log.eval.model
 
-            # First try: Use SHORT_MODEL_NAMES reverse mapping
-            model_name = SHORT_MODEL_NAMES.get(full_model_name, None)
+            # First try: use canonical short name helper (handles multiple shorts)
+            try:
+                model_name = short_model_name(full_model_name)
+            except KeyError:
+                model_name = None
 
-            # Second try: Match against models_to_generate list
+            # Second try: match against models_to_generate list
             if model_name is None:
                 for short_name in models_to_generate:
                     if inspect_model_name(short_name) == full_model_name:
                         model_name = short_name
                         break
 
-            # Third try: Use the order of eval_logs matching models_to_generate
+            # Third try: use the order of eval_logs matching models_to_generate
             if model_name is None and idx < len(models_to_generate):
                 model_name = models_to_generate[idx]
                 print(

@@ -380,9 +380,19 @@ def _build_prompts(exp_config: ExperimentConfig) -> None:
             else:
                 generator_output = "FA"
 
-        # Get transcript template: UT_transcript[pair_type][format_type]
+        # Get transcript template:
+        #   - Pairwise (PW-*): UT_transcript[pair_type][format_type][generator_output]
+        #   - Individual (IND-*): UT_transcript[pair_type][format_type]
         try:
-            transcript_keys = [pair_type, format_type, generator_output]
+            if pair_type == "PW":
+                transcript_keys = [pair_type, format_type, generator_output]
+            elif pair_type == "IND":
+                transcript_keys = [pair_type, format_type]
+            else:
+                raise ValueError(
+                    f"Unsupported pair_type for UT_transcript: {pair_type}"
+                )
+
             transcript_template = _get_nested_prompt(
                 base_prompts["UT_transcript"], transcript_keys, allow_all=False
             )
