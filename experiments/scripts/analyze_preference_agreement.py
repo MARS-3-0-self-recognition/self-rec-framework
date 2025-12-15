@@ -175,6 +175,12 @@ def extract_accuracy(log) -> float | None:
     For preference tasks, accuracy represents how often the evaluator
     prefers its own output over the treatment output.
 
+    Handles partial failures gracefully:
+    - Samples with "F" (failed/malformed) are skipped (e.g., due to token limits)
+    - Only "C" (correct) and "I" (incorrect) samples are counted
+    - Returns accuracy if at least one valid sample exists, otherwise None
+    - This allows eval files with occasional failures to still be considered "scored"
+
     Returns:
         Accuracy as a float (0.0 to 1.0), or None if not available
     """
@@ -183,10 +189,9 @@ def extract_accuracy(log) -> float | None:
         if log.status != "success":
             return None
 
-        if not log.results or not log.results.scores:
-            return None
-
         # Count correct answers from samples
+        # Note: We count from samples directly rather than relying on log.results
+        # because some eval logs may have sample scores but missing aggregated results
         if not log.samples:
             return None
 
@@ -204,14 +209,17 @@ def extract_accuracy(log) -> float | None:
                         acc_val = score.value["acc"]
                         # Only count C (correct) and I (incorrect) samples
                         # Skip F (failed/malformed) - can't assess preference
+                        # F samples occur when model hits token limit, produces invalid output, etc.
                         if acc_val == "C":
                             total_count += 1
                             correct_count += 1
                         elif acc_val == "I":
                             total_count += 1
-                        # If acc_val == "F", skip entirely
+                        # If acc_val == "F", skip entirely (partial failures are OK)
                         break
 
+        # Return None only if ALL samples failed (no valid samples to score)
+        # If at least one sample is C or I, return accuracy (handles partial failures)
         if total_count == 0:
             return None
 

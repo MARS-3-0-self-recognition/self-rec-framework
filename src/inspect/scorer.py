@@ -99,14 +99,76 @@ def logprob_scorer():
 
 @scorer(metrics=[mean(), std()])
 def answer_length_scorer():
-    """Scorer that makes model output as 'answer' such that it shows in .eval table and also counts number of characters in answer."""
+    """Scorer that records answer length and optionally captures reasoning/CoT."""
+
+    def _extract_reasoning(state: TaskState) -> tuple[str | None, str | None]:
+        """
+        Return concatenated reasoning blocks and signature (if any) from the model output.
+
+        Handles different model providers:
+        - Anthropic: reasoning in message.content with signature
+        - OpenAI o-series: reasoning in message.content (may be empty if reasoning_summary not enabled)
+        - Together AI (Qwen, DeepSeek): reasoning in message.content
+
+        Returns:
+            Tuple of (reasoning_text, signature) where signature may be None
+        """
+        try:
+            message = state.output.message
+        except Exception:
+            # Fallback: try accessing via choices (for OpenAI models)
+            try:
+                choices = getattr(state.output, "choices", None)
+                if choices and len(choices) > 0:
+                    message = getattr(choices[0], "message", None)
+                else:
+                    return None, None
+            except Exception:
+                return None, None
+
+        if message is None:
+            return None, None
+
+        content = getattr(message, "content", None)
+        if isinstance(content, str):
+            return None, None
+
+        reasoning_chunks: list[str] = []
+        signatures: list[str] = []
+        if isinstance(content, list):
+            for part in content:
+                if getattr(part, "type", None) == "reasoning":
+                    reasoning_text = getattr(part, "reasoning", None)
+                    if reasoning_text:
+                        reasoning_chunks.append(reasoning_text.strip())
+                    # Extract signature if present (for Anthropic and OpenAI models)
+                    signature = getattr(part, "signature", None)
+                    if signature:
+                        signatures.append(signature)
+
+        reasoning_text = None
+        if reasoning_chunks:
+            reasoning_text = "\n\n".join(chunk for chunk in reasoning_chunks if chunk)
+
+        # Use the first signature if available (Anthropic/OpenAI typically have one per message)
+        signature = signatures[0] if signatures else None
+
+        return reasoning_text, signature
 
     async def score(state: TaskState, target: Target) -> Score:
         answer = state.output.completion
+        cot, signature = _extract_reasoning(state)
+        metadata = {"uuid": state.metadata["uuid"]}
+        if cot:
+            metadata["cot"] = cot
+        if signature:
+            metadata["cot_signature"] = signature
+
         return Score(
             value=len(answer),
             uuid=state.metadata["uuid"],
             answer=answer,
+            metadata=metadata,
         )
 
     return score

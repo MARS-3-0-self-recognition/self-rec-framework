@@ -23,6 +23,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from inspect_ai.log import read_eval_log
+import yaml
+from scipy.stats import binomtest
 
 
 def get_experiment_name_mapping() -> dict[str, str]:
@@ -54,7 +56,7 @@ def get_experiment_name_mapping() -> dict[str, str]:
     }
 
 
-def get_model_order() -> list[str]:
+def get_model_order(model_type: str | None = None) -> list[str]:
     """
     Define the canonical order for models in the pivot table and heatmap.
 
@@ -63,6 +65,20 @@ def get_model_order() -> list[str]:
     Returns:
         List of model names in display order
     """
+    if model_type and model_type.lower() == "cot":
+        return [
+            "gpt-oss-20b-thinking",
+            "gpt-oss-120b-thinking",
+            "sonnet-3.7-thinking",
+            "sonnet-4.5-thinking",
+            "opus-4.1-thinking",
+            "gemini-2.5-flash-thinking",
+            "gemini-2.5-pro-thinking",
+            "ll-3.3-70b-dsR1-thinking",
+            "qwen-3.0-80b-thinking",
+            "deepseek-r1-thinking",
+        ]
+
     return [
         # OpenAI (weakest to strongest)
         "gpt-4o-mini",
@@ -191,6 +207,12 @@ def extract_accuracy(log) -> float | None:
     """
     Extract accuracy from an eval log.
 
+    Handles partial failures gracefully:
+    - Samples with "F" (failed/malformed) are skipped (e.g., due to token limits)
+    - Only "C" (correct) and "I" (incorrect) samples are counted
+    - Returns accuracy if at least one valid sample exists, otherwise None
+    - This allows eval files with occasional failures to still be considered "scored"
+
     Returns:
         Accuracy as a float (0.0 to 1.0), or None if not available
     """
@@ -199,17 +221,9 @@ def extract_accuracy(log) -> float | None:
         if log.status != "success":
             return None
 
-        if not log.results or not log.results.scores:
-            return None
-
-        # Look for accuracy metric
-        for score in log.results.scores:
-            if score.name == "acc":
-                # The value is "C" or "I" per sample, need to aggregate
-                # Actually, let's count from samples directly
-                break
-
         # Count correct answers from samples
+        # Note: We count from samples directly rather than relying on log.results
+        # because some eval logs may have sample scores but missing aggregated results
         if not log.samples:
             return None
 
@@ -227,14 +241,17 @@ def extract_accuracy(log) -> float | None:
                         acc_val = score.value["acc"]
                         # Only count C (correct) and I (incorrect) samples
                         # Skip F (failed/malformed) - can't assess attribution
+                        # F samples occur when model hits token limit, produces invalid output, etc.
                         if acc_val == "C":
                             total_count += 1
                             correct_count += 1
                         elif acc_val == "I":
                             total_count += 1
-                        # If acc_val == "F", skip entirely
+                        # If acc_val == "F", skip entirely (partial failures are OK)
                         break
 
+        # Return None only if ALL samples failed (no valid samples to score)
+        # If at least one sample is C or I, return accuracy (handles partial failures)
         if total_count == 0:
             return None
 
@@ -301,45 +318,55 @@ def load_all_evaluations(results_dir: Path) -> pd.DataFrame:
     return pd.DataFrame(data)
 
 
-def create_pivot_table(df: pd.DataFrame) -> pd.DataFrame:
+def create_pivot_table(
+    df: pd.DataFrame, model_order: list[str]
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
-    Create pivot table of accuracy by evaluator and treatment.
+    Create pivot table of accuracy by evaluator and treatment, along with counts.
 
     For pairwise comparisons, the evaluator judges between control (self) and treatment.
     Accuracy = how often the evaluator correctly identifies its own output.
 
     Args:
-        df: DataFrame with evaluator, control, treatment, accuracy columns
+        df: DataFrame with evaluator, control, treatment, accuracy, n_samples columns
 
     Returns:
-        Pivot table with evaluators as rows, treatments as columns
+        Tuple of:
+          - accuracy pivot (rows=evaluator, cols=treatment)
+          - count pivot (total samples contributing to each cell)
+          - correct pivot (total correct predictions contributing to each cell)
     """
     # Filter to successful evaluations only
     df_success = df[df["status"] == "success"].copy()
 
     print(f"Creating pivot table from {len(df_success)} successful evaluations...")
 
-    # Create pivot table
-    # For pairwise: evaluator identifies between control (self) and treatment
-    # So the pivot should be: evaluator (rows) x treatment (columns)
-    pivot = df_success.pivot_table(
-        values="accuracy",
-        index="evaluator",
-        columns="treatment",
-        aggfunc="mean",  # Average if multiple evals
+    # Compute total correct per evaluation (accuracy * n_samples)
+    df_success["correct"] = df_success["accuracy"] * df_success["n_samples"]
+
+    # Aggregate by evaluator/treatment
+    grouped = df_success.groupby(["evaluator", "treatment"]).agg(
+        total_correct=("correct", "sum"),
+        total_samples=("n_samples", "sum"),
     )
 
-    # Reorder rows and columns according to canonical model order
-    model_order = get_model_order()
+    # Accuracy pivot: total_correct / total_samples
+    pivot_accuracy = (grouped["total_correct"] / grouped["total_samples"]).unstack(
+        fill_value=pd.NA
+    )
+    pivot_counts = grouped["total_samples"].unstack(fill_value=0)
+    pivot_correct = grouped["total_correct"].unstack(fill_value=0.0)
 
     # Filter to only models that exist in the data
-    row_order = [m for m in model_order if m in pivot.index]
-    col_order = [m for m in model_order if m in pivot.columns]
+    row_order = [m for m in model_order if m in pivot_accuracy.index]
+    col_order = [m for m in model_order if m in pivot_accuracy.columns]
 
     # Reindex to apply ordering
-    pivot = pivot.reindex(index=row_order, columns=col_order)
+    pivot_accuracy = pivot_accuracy.reindex(index=row_order, columns=col_order)
+    pivot_counts = pivot_counts.reindex(index=row_order, columns=col_order)
+    pivot_correct = pivot_correct.reindex(index=row_order, columns=col_order)
 
-    return pivot
+    return pivot_accuracy, pivot_counts, pivot_correct
 
 
 def compute_asymmetry_analysis(
@@ -602,7 +629,13 @@ def plot_row_vs_column_comparison(
     plt.close()
 
 
-def plot_heatmap(pivot: pd.DataFrame, output_path: Path, experiment_title: str = ""):
+def plot_heatmap(
+    pivot: pd.DataFrame,
+    output_path: Path,
+    experiment_title: str = "",
+    p_values: pd.DataFrame | None = None,
+    alpha: float = 0.05,
+):
     """
     Create and save heatmap of self-recognition accuracy.
 
@@ -623,7 +656,7 @@ def plot_heatmap(pivot: pd.DataFrame, output_path: Path, experiment_title: str =
             mask.loc[model, model] = True
 
     # Create heatmap
-    sns.heatmap(
+    hm = sns.heatmap(
         pivot,
         annot=True,
         fmt=".2f",
@@ -637,6 +670,30 @@ def plot_heatmap(pivot: pd.DataFrame, output_path: Path, experiment_title: str =
         linecolor="gray",
         ax=ax,
     )
+
+    # Bold significant cells if p-values provided
+    if p_values is not None:
+        # Seaborn's hm.texts only includes unmasked cells; build a position->text map
+        text_map: dict[tuple[int, int], any] = {}
+        for text in hm.texts:
+            x, y = text.get_position()
+            # Heatmap text positions are at (col + 0.5, row + 0.5)
+            j = int(round(x - 0.5))
+            i = int(round(y - 0.5))
+            text_map[(i, j)] = text
+
+        for i, row in enumerate(pivot.index):
+            for j, col in enumerate(pivot.columns):
+                text = text_map.get((i, j))
+                if text is None:
+                    continue
+                p_val = (
+                    p_values.loc[row, col]
+                    if (row in p_values.index and col in p_values.columns)
+                    else None
+                )
+                if p_val is not None and pd.notna(p_val) and p_val < alpha:
+                    text.set_fontweight("bold")
 
     # Fill diagonal with gray
     for i, model in enumerate(pivot.index):
@@ -689,9 +746,45 @@ def plot_heatmap(pivot: pd.DataFrame, output_path: Path, experiment_title: str =
     plt.close()
 
 
+def compute_significance_matrix(
+    pivot_correct: pd.DataFrame, pivot_counts: pd.DataFrame, alpha: float = 0.05
+) -> pd.DataFrame:
+    """
+    Compute p-values for accuracy vs chance (0.5) using exact binomial tests.
+
+    Args:
+        pivot_correct: Matrix of total correct counts
+        pivot_counts: Matrix of total sample counts
+        alpha: Significance threshold (unused here but kept for API symmetry)
+
+    Returns:
+        DataFrame of p-values (NaN where n=0)
+    """
+    p_values = pd.DataFrame(
+        pd.NA, index=pivot_correct.index, columns=pivot_correct.columns
+    )
+
+    for r in pivot_correct.index:
+        for c in pivot_correct.columns:
+            n = pivot_counts.loc[r, c]
+            k = pivot_correct.loc[r, c]
+            if pd.notna(n) and n > 0 and pd.notna(k):
+                try:
+                    res = binomtest(
+                        int(round(k)), int(round(n)), p=0.5, alternative="two-sided"
+                    )
+                    p_values.loc[r, c] = res.pvalue
+                except Exception:
+                    p_values.loc[r, c] = pd.NA
+
+    return p_values
+
+
 def generate_summary_stats(
     df: pd.DataFrame,
     pivot: pd.DataFrame,
+    pivot_counts: pd.DataFrame,
+    p_values: pd.DataFrame | None,
     comparison: pd.DataFrame,
     asymmetry_matrix: pd.DataFrame,
     output_path: Path,
@@ -773,6 +866,37 @@ def generate_summary_stats(
         f.write(
             f"Missing evaluations: {len(pivot.index) * len(pivot.columns) - int(valid_comparisons) - len([m for m in pivot.index if m in pivot.columns])}\n\n"
         )
+
+        if p_values is not None:
+            f.write("SIGNIFICANCE vs CHANCE (p=0.5)\n")
+            f.write("-" * 70 + "\n")
+            sig_mask = (p_values < 0.05) & p_values.notna()
+            sig_count = int(sig_mask.sum().sum())
+            f.write(f"Significant cells (p < 0.05): {sig_count}\n")
+            # Identify strongest signals
+            flattened = []
+            for r in p_values.index:
+                for c in p_values.columns:
+                    pval = p_values.loc[r, c]
+                    n = (
+                        pivot_counts.loc[r, c]
+                        if (r in pivot_counts.index and c in pivot_counts.columns)
+                        else 0
+                    )
+                    acc = (
+                        pivot.loc[r, c]
+                        if (r in pivot.index and c in pivot.columns)
+                        else pd.NA
+                    )
+                    if pd.notna(pval):
+                        flattened.append((pval, r, c, acc, n))
+            flattened.sort(key=lambda x: x[0])
+            top = flattened[:5]
+            f.write("Lowest p-values:\n")
+            for pval, r, c, acc, n in top:
+                acc_str = f"{acc:.3f}" if pd.notna(acc) else "NA"
+                f.write(f"  {r} vs {c}: p={pval:.4g}, acc={acc_str}, n={int(n)}\n")
+            f.write("\n")
 
         # Asymmetry analysis
         f.write("EVALUATOR vs EVALUATEE ASYMMETRY ANALYSIS\n")
@@ -1001,10 +1125,45 @@ def main():
         required=True,
         help="Path to directory containing eval logs (e.g., data/results/pku_saferlhf/mismatch_1-20/12_UT_PW-Q_Rec_Pr)",
     )
+    parser.add_argument(
+        "--config_path",
+        type=str,
+        default=None,
+        help="Optional path to experiment config.yaml (used to infer model_type if not explicitly provided)",
+    )
+    parser.add_argument(
+        "--model_type",
+        type=str,
+        choices=["CoT", "DR"],
+        default=None,
+        help='Model set to use for ordering ("CoT" uses thinking subset; default DR uses standard list)',
+    )
 
     args = parser.parse_args()
 
     results_dir = Path(args.results_dir)
+    model_type = args.model_type
+
+    # If config_path not provided, attempt to derive it from results_dir
+    derived_config_path = None
+    if args.config_path is None:
+        # Expect results_dir like: data/results/.../{experiment_name}
+        experiment_name = results_dir.name
+        candidate = Path("experiments") / experiment_name / "config.yaml"
+        if candidate.exists():
+            derived_config_path = candidate
+    config_path = Path(args.config_path) if args.config_path else derived_config_path
+
+    # If model_type not provided, try to infer from config_path (if resolved)
+    if model_type is None and config_path:
+        try:
+            with open(config_path, "r") as f:
+                cfg = yaml.safe_load(f) or {}
+            model_type = cfg.get("model_type")
+        except Exception as e:
+            print(
+                f"Warning: Could not read model_type from config ({e}). Using default ordering."
+            )
 
     if not results_dir.exists():
         print(f"Error: Directory not found: {results_dir}")
@@ -1039,16 +1198,29 @@ def main():
         return
 
     # Create pivot table
-    pivot = create_pivot_table(df)
+    pivot, pivot_counts, pivot_correct = create_pivot_table(
+        df, get_model_order(model_type)
+    )
 
     if pivot.empty:
         print("⚠ No successful evaluations to analyze!")
         return
 
+    # Compute significance vs chance (0.5)
+    p_values = compute_significance_matrix(pivot_correct, pivot_counts)
+
     # Save pivot table
     pivot_path = output_dir / "accuracy_pivot.csv"
     pivot.to_csv(pivot_path)
     print(f"  ✓ Saved pivot table to: {pivot_path}\n")
+
+    # Save counts and p-values
+    counts_path = output_dir / "accuracy_counts.csv"
+    pivot_counts.to_csv(counts_path)
+    pvalues_path = output_dir / "pvalues_vs_chance.csv"
+    p_values.to_csv(pvalues_path)
+    print(f"  ✓ Saved counts to: {counts_path}")
+    print(f"  ✓ Saved p-values to: {pvalues_path}\n")
 
     # Extract experiment name from path for title
     # Path format: .../dataset/subset/[NUM_]EXPERIMENT_CODE
@@ -1066,7 +1238,13 @@ def main():
 
     # Generate heatmap
     heatmap_path = output_dir / "accuracy_heatmap.png"
-    plot_heatmap(pivot, heatmap_path, experiment_title=experiment_title)
+    plot_heatmap(
+        pivot,
+        heatmap_path,
+        experiment_title=experiment_title,
+        p_values=p_values,
+        alpha=0.05,
+    )
     print()
 
     # Compute asymmetry analysis
@@ -1101,6 +1279,8 @@ def main():
     generate_summary_stats(
         df,
         pivot,
+        pivot_counts,
+        p_values,
         comparison,
         asymmetry_matrix,
         summary_path,

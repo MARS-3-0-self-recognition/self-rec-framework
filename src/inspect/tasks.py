@@ -4,8 +4,15 @@ from inspect_ai import Task, task
 from inspect_ai.dataset import Sample
 from inspect_ai.solver import generate
 from inspect_ai.model import ChatMessageUser, ChatMessageAssistant, GenerateConfig
+from inspect_ai._util.content import ContentReasoning, ContentText
 
-from src.helpers.model_names import inspect_model_name
+from src.helpers.model_names import (
+    inspect_model_name,
+    get_base_model_name,
+    needs_reasoning_params,
+    INSPECT_MODEL_NAMES,
+    is_thinking_model,
+)
 from src.inspect.config import ExperimentConfig, load_experiment_config
 from src.inspect.scorer import logprob_scorer, answer_length_scorer
 from src.inspect.data import load_dataset_pairwise, load_dataset_individual
@@ -146,6 +153,9 @@ def pairwise_query(
         Task object configured with logprobs enabled
     """
     config = exp_config
+    from src.inspect.config import ensure_reasoning_type
+
+    ensure_reasoning_type(config, model_name)
 
     inspect_model: str = inspect_model_name(model_name)
 
@@ -168,10 +178,14 @@ def pairwise_query(
             generation_prompt = config.generation_prompt.format(
                 content=sample_data["content"]
             )
+            reasoning1 = sample_data.get("cot1") or ""
+            reasoning2 = sample_data.get("cot2") or ""
             prompt = config.SR_task_prompt.format(
                 generation_prompt=generation_prompt,
                 output1=sample_data["output1"],
                 output2=sample_data["output2"],
+                reasoning1=reasoning1,
+                reasoning2=reasoning2,
             )
         else:
             # AT format - not fully implemented for PW-Q
@@ -191,6 +205,18 @@ def pairwise_query(
 
     # Build GenerateConfig with optional logprobs
     config_params = {"system_message": config.system_prompt}
+    # Ensure prior reasoning blocks are preserved in the message history when
+    # evaluating thinking models (so CoT we insert remains visible to the model).
+    if is_thinking_model(model_name):
+        config_params["reasoning_history"] = "all"
+        # Set max_tokens for thinking models (default: 8192 if not specified in config)
+        # This prevents reasoning cutoffs, especially for Qwen thinking models
+        max_thinking = (
+            config.max_thinking_tokens
+            if config.max_thinking_tokens is not None
+            else 8192
+        )
+        config_params["max_tokens"] = max_thinking
     if logprobs:
         config_params["logprobs"] = True
         config_params["top_logprobs"] = 2
@@ -236,8 +262,34 @@ def pairwise_conversation_assistant_tags(
         Task object configured with logprobs enabled
     """
     config = exp_config
+    from src.inspect.config import ensure_reasoning_type
+
+    ensure_reasoning_type(config, model_name)
 
     inspect_model: str = inspect_model_name(model_name)
+
+    # Check if evaluator is Anthropic (they have strict requirements for reasoning content)
+    is_anthropic_evaluator = "anthropic" in inspect_model.lower()
+
+    # Check if treatment models are Anthropic (to determine if we can use their reasoning format)
+    # Get base model names (remove -thinking suffix and treatment suffixes)
+    from src.helpers.model_names import get_base_model_name
+
+    base_control = get_base_model_name(treatment_name_control)
+    base_treatment = get_base_model_name(treatment_name_treatment)
+
+    # Check if treatment models map to Anthropic endpoints
+    control_inspect = (
+        inspect_model_name(base_control) if base_control in INSPECT_MODEL_NAMES else ""
+    )
+    treatment_inspect = (
+        inspect_model_name(base_treatment)
+        if base_treatment in INSPECT_MODEL_NAMES
+        else ""
+    )
+
+    is_control_anthropic = "anthropic" in control_inspect.lower()
+    is_treatment_anthropic = "anthropic" in treatment_inspect.lower()
 
     # Load dataset - control is always first (correct answers)
     dataset_samples = load_dataset_pairwise(
@@ -256,16 +308,123 @@ def pairwise_conversation_assistant_tags(
         )
 
         # Build conversation history
-        messages = [
-            # First interaction with output1
-            ChatMessageUser(content=generation_prompt),
-            ChatMessageAssistant(content=sample_data["output1"]),
-            # Second interaction with output2 (same article/question)
-            ChatMessageUser(content=generation_prompt),
-            ChatMessageAssistant(content=sample_data["output2"]),
-            # Final verification question
-            ChatMessageUser(content=config.SR_task_prompt),
-        ]
+        messages = []
+
+        # First interaction with output1
+        messages.append(ChatMessageUser(content=generation_prompt))
+
+        # Add output1 with CoT if available
+        cot1 = sample_data.get("cot1")
+        signature1 = sample_data.get("signature1")
+        if cot1:
+            # Determine which treatment model generated output1
+            # In sample 1: output1 is from treatment_name_1 (control)
+            # In sample 2: output1 is from treatment_name_2 (treatment, swapped)
+            # Check metadata to see which sample this is
+            is_first_sample = sample_data["metadata"].get("correct_answer") == "1"
+            cot1_source_is_anthropic = (
+                is_control_anthropic if is_first_sample else is_treatment_anthropic
+            )
+
+            # Use ContentReasoning with signature if available (for Anthropic models)
+            # Note: Signatures are tied to specific reasoning content. We allow cross-Anthropic
+            # model usage (e.g., sonnet 3.7 signature with opus 4.1 evaluator) - if the API
+            # rejects this, we'll get an error and can adjust.
+            # Otherwise use redacted=True for other providers
+            if signature1 and is_anthropic_evaluator and cot1_source_is_anthropic:
+                # Anthropic evaluator with Anthropic CoT - use signature
+                # (May work across different Anthropic models, e.g., sonnet -> opus)
+                messages.append(
+                    ChatMessageAssistant(
+                        content=[
+                            ContentReasoning(reasoning=cot1, signature=signature1),
+                            ContentText(text=sample_data["output1"]),
+                        ]
+                    )
+                )
+            elif not is_anthropic_evaluator:
+                # Non-Anthropic evaluator - include plaintext reasoning so it appears in logs
+                messages.append(
+                    ChatMessageAssistant(
+                        content=[
+                            ContentReasoning(reasoning=cot1),
+                            ContentText(text=sample_data["output1"]),
+                        ]
+                    )
+                )
+            elif cot1_source_is_anthropic:
+                # Anthropic evaluator with Anthropic CoT but no signature - fall back to redacted
+                messages.append(
+                    ChatMessageAssistant(
+                        content=[
+                            ContentReasoning(reasoning=cot1, redacted=True),
+                            ContentText(text=sample_data["output1"]),
+                        ]
+                    )
+                )
+            else:
+                # Skip CoT for Anthropic evaluator with non-Anthropic CoT (no signature)
+                messages.append(ChatMessageAssistant(content=sample_data["output1"]))
+        else:
+            messages.append(ChatMessageAssistant(content=sample_data["output1"]))
+
+        # Second interaction with output2 (same article/question)
+        messages.append(ChatMessageUser(content=generation_prompt))
+
+        # Add output2 with CoT if available
+        cot2 = sample_data.get("cot2")
+        signature2 = sample_data.get("signature2")
+        if cot2:
+            # Determine which treatment model generated output2
+            is_first_sample = sample_data["metadata"].get("correct_answer") == "1"
+            cot2_source_is_anthropic = (
+                is_treatment_anthropic if is_first_sample else is_control_anthropic
+            )
+
+            # Use ContentReasoning with signature if available (for Anthropic models)
+            # Note: Signatures are tied to specific reasoning content. We allow cross-Anthropic
+            # model usage (e.g., sonnet 3.7 signature with opus 4.1 evaluator) - if the API
+            # rejects this, we'll get an error and can adjust.
+            # Otherwise use redacted=True for other providers
+            if signature2 and is_anthropic_evaluator and cot2_source_is_anthropic:
+                # Anthropic evaluator with Anthropic CoT - use signature
+                # (May work across different Anthropic models, e.g., sonnet -> opus)
+                messages.append(
+                    ChatMessageAssistant(
+                        content=[
+                            ContentReasoning(reasoning=cot2, signature=signature2),
+                            ContentText(text=sample_data["output2"]),
+                        ]
+                    )
+                )
+            elif not is_anthropic_evaluator:
+                # Non-Anthropic evaluator - include plaintext reasoning so it appears in logs
+                messages.append(
+                    ChatMessageAssistant(
+                        content=[
+                            ContentReasoning(reasoning=cot2),
+                            ContentText(text=sample_data["output2"]),
+                        ]
+                    )
+                )
+            elif cot2_source_is_anthropic:
+                # Anthropic evaluator with Anthropic CoT but no signature - fall back to redacted
+                messages.append(
+                    ChatMessageAssistant(
+                        content=[
+                            ContentReasoning(reasoning=cot2, redacted=True),
+                            ContentText(text=sample_data["output2"]),
+                        ]
+                    )
+                )
+            else:
+                # Skip CoT for Anthropic evaluator with non-Anthropic CoT (no signature)
+                messages.append(ChatMessageAssistant(content=sample_data["output2"]))
+        else:
+            messages.append(ChatMessageAssistant(content=sample_data["output2"]))
+
+        # Final verification question
+        messages.append(ChatMessageUser(content=config.SR_task_prompt))
 
         inspect_samples.append(
             Sample(
@@ -277,6 +436,17 @@ def pairwise_conversation_assistant_tags(
 
     # Build GenerateConfig with optional logprobs
     config_params = {"system_message": config.system_prompt}
+    # Preserve prior reasoning blocks when evaluating thinking models.
+    if is_thinking_model(model_name):
+        config_params["reasoning_history"] = "all"
+        # Set max_tokens for thinking models (default: 8192 if not specified in config)
+        # This prevents reasoning cutoffs, especially for Qwen thinking models
+        max_thinking = (
+            config.max_thinking_tokens
+            if config.max_thinking_tokens is not None
+            else 8192
+        )
+        config_params["max_tokens"] = max_thinking
     if logprobs:
         config_params["logprobs"] = True
         config_params["top_logprobs"] = 2
@@ -321,6 +491,9 @@ def pairwise_conversation_user_tags(
         Task object configured with logprobs enabled
     """
     config = exp_config
+    from src.inspect.config import ensure_reasoning_type
+
+    ensure_reasoning_type(config, model_name)
 
     inspect_model: str = inspect_model_name(model_name)
 
@@ -355,6 +528,14 @@ def pairwise_conversation_user_tags(
 
     # Build GenerateConfig with optional logprobs
     config_params = {"system_message": config.system_prompt}
+    # Set max_tokens for thinking models (default: 8192 if not specified in config)
+    if is_thinking_model(model_name):
+        max_thinking = (
+            config.max_thinking_tokens
+            if config.max_thinking_tokens is not None
+            else 8192
+        )
+        config_params["max_tokens"] = max_thinking
     if logprobs:
         config_params["logprobs"] = True
         config_params["top_logprobs"] = 2
@@ -399,6 +580,9 @@ def individual_conversation_assistant_tags(
         Task object configured with logprobs enabled
     """
     config = exp_config
+    from src.inspect.config import ensure_reasoning_type
+
+    ensure_reasoning_type(config, model_name)
 
     inspect_model: str = inspect_model_name(model_name)
 
@@ -443,6 +627,14 @@ def individual_conversation_assistant_tags(
 
     # Build GenerateConfig with optional logprobs
     config_params = {"system_message": config.system_prompt}
+    # Set max_tokens for thinking models (default: 8192 if not specified in config)
+    if is_thinking_model(model_name):
+        max_thinking = (
+            config.max_thinking_tokens
+            if config.max_thinking_tokens is not None
+            else 8192
+        )
+        config_params["max_tokens"] = max_thinking
     if logprobs:
         config_params["logprobs"] = True
         config_params["top_logprobs"] = 2
@@ -522,6 +714,14 @@ def individual_conversation_user_tags(
 
     # Build GenerateConfig with optional logprobs
     config_params = {"system_message": config.system_prompt}
+    # Set max_tokens for thinking models (default: 8192 if not specified in config)
+    if is_thinking_model(model_name):
+        max_thinking = (
+            config.max_thinking_tokens
+            if config.max_thinking_tokens is not None
+            else 8192
+        )
+        config_params["max_tokens"] = max_thinking
     if logprobs:
         config_params["logprobs"] = True
         config_params["top_logprobs"] = 2
@@ -645,7 +845,16 @@ def generation(
     else:
         config = exp_config
 
-    model = inspect_model_name(model_name)
+    # Handle thinking models: if model_name ends with "-thinking" and needs API params,
+    # use the base model name for the API call but add reasoning parameters.
+    # For models like "qwen-3.0-80b-thinking", the full name maps to a different endpoint.
+    if model_name.endswith("-thinking") and needs_reasoning_params(model_name):
+        # Use base model name for API call (same endpoint, different params)
+        base_model_name = get_base_model_name(model_name)
+        model = inspect_model_name(base_model_name)
+    else:
+        # Use model name as-is (either non-thinking or different endpoint)
+        model = inspect_model_name(model_name)
 
     # create base samples
     inspect_samples = []
@@ -656,7 +865,7 @@ def generation(
         )
         metadata = {
             "uuid": uuid,
-            "model_name": model_name,
+            "model_name": model_name,  # Keep original name in metadata
             "config_path": config_path,
         }
         inspect_samples.append(
@@ -677,6 +886,31 @@ def generation(
         generate_config_params["max_tokens"] = config.max_tokens
     if config.seed is not None:
         generate_config_params["seed"] = config.seed
+
+    # Add reasoning parameters for thinking models
+    if model_name.endswith("-thinking") and needs_reasoning_params(model_name):
+        # Determine provider from model name
+        inspect_model_str = str(model)
+
+        if "openai" in inspect_model_str:
+            # OpenAI o-series and GPT-5 models
+            # reasoning_summary requires organization verification for ALL OpenAI reasoning models
+            # (o1, o3, o4, gpt-5 all require verification)
+            # Note: o3 also requires verification just to access the model itself
+            # Without reasoning_summary, reasoning text won't be available (only signature will be captured)
+            # To enable: https://platform.openai.com/settings/organization/general
+            generate_config_params["reasoning_effort"] = "medium"  # Default
+            # generate_config_params["reasoning_summary"] = "auto"  # Requires org verification for all models
+        elif "anthropic" in inspect_model_str:
+            # Anthropic Claude 3.7/4 models
+            # Default reasoning_tokens if not specified
+            # You may want to make this configurable
+            generate_config_params["reasoning_tokens"] = 4096
+        elif "google" in inspect_model_str:
+            # Google Gemini 2.5 models
+            # Default reasoning_tokens if not specified
+            # You may want to make this configurable
+            generate_config_params["reasoning_tokens"] = 4096
 
     return Task(
         dataset=inspect_samples,

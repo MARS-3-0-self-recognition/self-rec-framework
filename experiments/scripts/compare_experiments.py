@@ -26,6 +26,7 @@ import seaborn as sns
 import numpy as np
 from scipy import stats
 from inspect_ai.log import read_eval_log
+import yaml
 
 
 def get_experiment_name_mapping() -> dict[str, str]:
@@ -109,7 +110,32 @@ def get_experiment_title(results_dir: Path) -> str:
     return mapping.get(code, code)
 
 
-def get_model_order() -> list[str]:
+def derive_config_path(results_dir: Path) -> Path | None:
+    """
+    Given a results directory, attempt to locate the corresponding experiment config.
+
+    Expected layout:
+      results_dir: data/results/.../{experiment_name}
+      config:      experiments/{experiment_name}/config.yaml
+    """
+    experiment_name = results_dir.name
+    candidate = Path("experiments") / experiment_name / "config.yaml"
+    return candidate if candidate.exists() else None
+
+
+def load_model_type(config_path: Path | None) -> str | None:
+    """Load model_type from a config.yaml if available."""
+    if config_path is None or not config_path.exists():
+        return None
+    try:
+        with open(config_path, "r") as f:
+            cfg = yaml.safe_load(f) or {}
+        return cfg.get("model_type")
+    except Exception:
+        return None
+
+
+def get_model_order(model_type: str | None = None) -> list[str]:
     """
     Define the canonical order for models in the pivot table and heatmap.
 
@@ -118,6 +144,20 @@ def get_model_order() -> list[str]:
     Returns:
         List of model names in display order
     """
+    if model_type and model_type.lower() == "cot":
+        return [
+            "gpt-oss-20b-thinking",
+            "gpt-oss-120b-thinking",
+            "sonnet-3.7-thinking",
+            "sonnet-4.5-thinking",
+            "opus-4.1-thinking",
+            "gemini-2.5-flash-thinking",
+            "gemini-2.5-pro-thinking",
+            "ll-3.3-70b-dsR1-thinking",
+            "qwen-3.0-80b-thinking",
+            "deepseek-r1-thinking",
+        ]
+
     return [
         # OpenAI (weakest to strongest)
         "gpt-4o-mini",
@@ -356,7 +396,7 @@ def load_sample_level_results(
     return results
 
 
-def load_pivot_table(results_dir: Path) -> pd.DataFrame:
+def load_pivot_table(results_dir: Path, model_order: list[str]) -> pd.DataFrame:
     """
     Load pre-computed accuracy pivot table from analysis directory.
 
@@ -390,12 +430,15 @@ def load_pivot_table(results_dir: Path) -> pd.DataFrame:
     # Load with index column
     pivot = pd.read_csv(pivot_path, index_col=0)
 
-    # Reorder rows and columns according to canonical model order
-    model_order = get_model_order()
-
     # Filter to only models that exist in the data
     row_order = [m for m in model_order if m in pivot.index]
     col_order = [m for m in model_order if m in pivot.columns]
+
+    # If no overlap, keep original ordering to avoid empty pivots
+    if not row_order:
+        row_order = list(pivot.index)
+    if not col_order:
+        col_order = list(pivot.columns)
 
     # Reindex to apply ordering
     pivot = pivot.reindex(index=row_order, columns=col_order)
@@ -403,7 +446,9 @@ def load_pivot_table(results_dir: Path) -> pd.DataFrame:
     return pivot
 
 
-def compute_difference(pivot1: pd.DataFrame, pivot2: pd.DataFrame) -> pd.DataFrame:
+def compute_difference(
+    pivot1: pd.DataFrame, pivot2: pd.DataFrame, model_order: list[str]
+) -> pd.DataFrame:
     """
     Compute difference between two pivot tables (pivot1 - pivot2).
 
@@ -415,9 +460,6 @@ def compute_difference(pivot1: pd.DataFrame, pivot2: pd.DataFrame) -> pd.DataFra
         Difference matrix
     """
     print("Computing difference (experiment1 - experiment2)...")
-
-    # Ensure both pivot tables are ordered according to canonical model order
-    model_order = get_model_order()
 
     # Get union of all models from both pivots, ordered by canonical order
     all_rows = [m for m in model_order if m in pivot1.index or m in pivot2.index]
@@ -438,6 +480,7 @@ def compute_paired_ttests(
     results2: dict[tuple[str, str], list[int]],
     pivot1: pd.DataFrame,
     pivot2: pd.DataFrame,
+    model_order: list[str],
 ) -> tuple[pd.DataFrame, dict]:
     """
     Perform paired t-tests comparing sample-level results between two experiments.
@@ -452,9 +495,6 @@ def compute_paired_ttests(
         Tuple of (p_values DataFrame, overall_stats dict)
     """
     print("Performing paired t-tests...")
-
-    # Ensure both pivot tables are ordered according to canonical model order
-    model_order = get_model_order()
 
     # Get union of all models from both pivots, ordered by canonical order
     all_rows = [m for m in model_order if m in pivot1.index or m in pivot2.index]
@@ -1081,6 +1121,32 @@ def main():
         required=True,
         help="Path to second experiment results directory",
     )
+    parser.add_argument(
+        "--config1",
+        type=str,
+        default=None,
+        help="Optional path to config for experiment1 (to infer model_type)",
+    )
+    parser.add_argument(
+        "--config2",
+        type=str,
+        default=None,
+        help="Optional path to config for experiment2 (to infer model_type)",
+    )
+    parser.add_argument(
+        "--model_type1",
+        type=str,
+        choices=["CoT", "DR"],
+        default=None,
+        help='Override model set for experiment1 ("CoT" uses thinking subset)',
+    )
+    parser.add_argument(
+        "--model_type2",
+        type=str,
+        choices=["CoT", "DR"],
+        default=None,
+        help='Override model set for experiment2 ("CoT" uses thinking subset)',
+    )
 
     args = parser.parse_args()
 
@@ -1094,6 +1160,25 @@ def main():
     if not exp2_dir.exists():
         print(f"❌ Error: Experiment 2 directory not found: {exp2_dir}")
         return
+
+    # Resolve config paths (provided or derived) and model types
+    config1_path = Path(args.config1) if args.config1 else derive_config_path(exp1_dir)
+    config2_path = Path(args.config2) if args.config2 else derive_config_path(exp2_dir)
+
+    model_type1 = args.model_type1 or load_model_type(config1_path)
+    model_type2 = args.model_type2 or load_model_type(config2_path)
+
+    model_order1 = get_model_order(model_type1)
+    model_order2 = get_model_order(model_type2)
+
+    # Combined model order preserves ordering across both experiments
+    combined_model_order: list[str] = []
+    for lst in (model_order1, model_order2):
+        for m in lst:
+            if m not in combined_model_order:
+                combined_model_order.append(m)
+    if not combined_model_order:
+        combined_model_order = model_order1 or model_order2
 
     # Get experiment codes and titles
     exp1_code = get_experiment_code(exp1_dir)
@@ -1193,21 +1278,25 @@ def main():
     print(f"              {exp1_dir}")
     if is_cross_dataset and exp1_info:
         print(f"              Dataset: {exp1_info[0]}/{exp1_info[1]}")
+    if model_type1:
+        print(f"              model_type: {model_type1}")
     print(f"Experiment 2: {exp2_title}")
     print(f"              {exp2_dir}")
     if is_cross_dataset and exp2_info:
         print(f"              Dataset: {exp2_info[0]}/{exp2_info[1]}")
+    if model_type2:
+        print(f"              model_type: {model_type2}")
     print(f"Output dir:   {output_dir}")
     print(f"{'='*70}\n")
 
     # Load pivot tables
     try:
         print("Loading pivot tables...")
-        pivot1 = load_pivot_table(exp1_dir)
+        pivot1 = load_pivot_table(exp1_dir, model_order1)
         print(
             f"  ✓ Loaded experiment 1: {pivot1.shape[0]} evaluators × {pivot1.shape[1]} treatments"
         )
-        pivot2 = load_pivot_table(exp2_dir)
+        pivot2 = load_pivot_table(exp2_dir, model_order2)
         print(
             f"  ✓ Loaded experiment 2: {pivot2.shape[0]} evaluators × {pivot2.shape[1]} treatments\n"
         )
@@ -1216,7 +1305,7 @@ def main():
         return
 
     # Compute difference
-    diff = compute_difference(pivot1, pivot2)
+    diff = compute_difference(pivot1, pivot2, combined_model_order)
     print(
         f"  ✓ Computed differences: {diff.shape[0]} evaluators × {diff.shape[1]} treatments\n"
     )
@@ -1228,7 +1317,9 @@ def main():
     print()
 
     # Perform paired t-tests
-    p_values, overall_stats = compute_paired_ttests(results1, results2, pivot1, pivot2)
+    p_values, overall_stats = compute_paired_ttests(
+        results1, results2, pivot1, pivot2, combined_model_order
+    )
     print()
 
     # Save difference matrix

@@ -16,7 +16,11 @@ from src.inspect.tasks import generation
 from src.inspect.config import create_generation_config
 from src.helpers.utils import data_dir, save_json
 from src.helpers.model_names import inspect_model_name, SHORT_MODEL_NAMES
-from generate_data import load_generation_config, apply_treatments
+from generate_data import (
+    apply_treatments,
+    construct_data_dicts,
+    load_generation_config,
+)
 
 
 def run_sweep_generation(
@@ -249,10 +253,8 @@ def run_sweep_generation(
 
             print(f"  Processing outputs for {model_name} (from {full_model_name})...")
 
-            # Extract outputs
-            data_dict = {}
-            for sample in eval_log.samples:
-                data_dict[sample.id] = sample.output.completion
+            # Extract outputs (completion + CoT + signatures, if present)
+            data_dict, cot_dict, signature_dict = construct_data_dicts(eval_log)
 
             # Save to model-specific directory
             output_path = (
@@ -266,7 +268,25 @@ def run_sweep_generation(
             output_path.parent.mkdir(parents=True, exist_ok=True)
             save_json(data_dict, output_path)
 
+            cot_path = None
+            if cot_dict:
+                cot_path = output_path.with_name("data_cot.json")
+                save_json(cot_dict, cot_path)
+
+            signature_path = None
+            if signature_dict:
+                signature_path = output_path.with_name("data_signatures.json")
+                save_json(signature_dict, signature_path)
+
             print(f"  ✓ {model_name}: Saved {len(data_dict)} samples to {output_path}")
+            if cot_path:
+                print(
+                    f"  ✓ {model_name}: Saved {len(cot_dict)} CoT samples to {cot_path}"
+                )
+            if signature_path:
+                print(
+                    f"  ✓ {model_name}: Saved {len(signature_dict)} signature samples to {signature_path}"
+                )
             successful.append(model_name)
 
         except Exception as e:

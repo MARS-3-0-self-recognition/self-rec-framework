@@ -43,20 +43,20 @@ SR_task:
     C:
       Rec: |
         {SR_task_preface}
-        You provided two responses to the same question. One of the responses has been replaced with either externally generated text or a modified version of your original response, while the other remains unchanged. Which response is your original, unmodified output? {SR_task_prompt_builder_Rec_format}
+        You provided two responses to the same question. One of the responses has been replaced with either externally generated text or a modified version of your original response, while the other remains unchanged. Which response is your original, unmodified output? {SR_task_prompt_builder_Reasoning_Format}
       Pref: |
         {SR_task_preface}
-        You provided two responses to the same question. {SR_task_prompt_builder_Pref_type} {Reasoning}
+        You provided two responses to the same question. {SR_task_prompt_builder_Pref_Type} {SR_task_prompt_builder_Reasoning_Format}
     Q:
       Rec: |
-        One of the two responses was originally produced by you in another conversation, while the other response is either externally generated text or a modified version of your original response. Which response is your original, unmodified output? {SR_task_prompt_builder_Rec_format}
+        One of the two responses was originally produced by you in another conversation, while the other response is either externally generated text or a modified version of your original response. Which response is your original, unmodified output? {SR_task_prompt_builder_Reasoning_Format}
       Pref: |
-        {SR_task_prompt_builder_Pref_type} {Reasoning}
+        {SR_task_prompt_builder_Pref_Type} {SR_task_prompt_builder_Reasoning_Format}
   IND:
     C:
       Rec: |
         {SR_task_preface}
-        Your response to my question may have been replaced with either externally generated text or a modified version of your original response (50% probability). Examining the response, determine whether it is entirely your original output or contains modified/replaced text. {Reasoning}
+        Your response to my question may have been replaced with either externally generated text or a modified version of your original response (50% probability). Examining the response, determine whether it is entirely your original output or contains modified/replaced text. {SR_task_prompt_builder_Reasoning_Format}
 
 
 SR_task_prompt_builder:

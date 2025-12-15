@@ -6,3 +6,5 @@ tags: "AT"
 format: "PW-C"
 task: "Rec"
 priming: False
+
+sr_reasoning_type: "CoT-FA"

@@ -3,6 +3,7 @@
 from typing import List, Dict, Any
 
 from src.helpers.utils import data_dir, load_json
+from src.helpers.model_names import is_thinking_model
 
 
 def load_dataset_pairwise(
@@ -28,6 +29,10 @@ def load_dataset_pairwise(
         - content: The article/question text
         - output1: First output
         - output2: Second output
+        - cot1: CoT for first output (if thinking model, None otherwise)
+        - cot2: CoT for second output (if thinking model, None otherwise)
+        - signature1: Signature for first output (if available, None otherwise)
+        - signature2: Signature for second output (if available, None otherwise)
         - metadata: Dict with correct_answer, ordering, and other info
     """
     # Load content (articles or questions)
@@ -52,6 +57,56 @@ def load_dataset_pairwise(
         / "data.json"
     )
 
+    # Load CoT data if available (for thinking models)
+    cot_1 = None
+    cot_2 = None
+    signature_1 = None
+    signature_2 = None
+    cot_path_1 = (
+        data_dir()
+        / "input"
+        / dataset_name
+        / data_subset
+        / treatment_name_1
+        / "data_cot.json"
+    )
+    cot_path_2 = (
+        data_dir()
+        / "input"
+        / dataset_name
+        / data_subset
+        / treatment_name_2
+        / "data_cot.json"
+    )
+    signature_path_1 = (
+        data_dir()
+        / "input"
+        / dataset_name
+        / data_subset
+        / treatment_name_1
+        / "data_signatures.json"
+    )
+    signature_path_2 = (
+        data_dir()
+        / "input"
+        / dataset_name
+        / data_subset
+        / treatment_name_2
+        / "data_signatures.json"
+    )
+
+    if is_thinking_model(treatment_name_1) and cot_path_1.exists():
+        cot_1 = load_json(cot_path_1)
+
+    if is_thinking_model(treatment_name_2) and cot_path_2.exists():
+        cot_2 = load_json(cot_path_2)
+
+    if signature_path_1.exists():
+        signature_1 = load_json(signature_path_1)
+
+    if signature_path_2.exists():
+        signature_2 = load_json(signature_path_2)
+
     # Create TWO samples per UUID - one for each ordering
     samples = []
     skipped_uuids = []
@@ -68,6 +123,16 @@ def load_dataset_pairwise(
         output_1 = outputs_1[uuid]
         output_2 = outputs_2[uuid]
 
+        # Get CoT and signatures if available
+        cot_1_value = cot_1.get(uuid) if cot_1 and uuid in cot_1 else None
+        cot_2_value = cot_2.get(uuid) if cot_2 and uuid in cot_2 else None
+        signature_1_value = (
+            signature_1.get(uuid) if signature_1 and uuid in signature_1 else None
+        )
+        signature_2_value = (
+            signature_2.get(uuid) if signature_2 and uuid in signature_2 else None
+        )
+
         metadata = {
             "uuid": uuid,
             "treatment_name_1": treatment_name_1,
@@ -82,6 +147,10 @@ def load_dataset_pairwise(
                 "content": content,
                 "output1": output_1,
                 "output2": output_2,
+                "cot1": cot_1_value,
+                "cot2": cot_2_value,
+                "signature1": signature_1_value,
+                "signature2": signature_2_value,
                 "metadata": {
                     **metadata,
                     "correct_answer": "1",
@@ -95,6 +164,10 @@ def load_dataset_pairwise(
                 "content": content,
                 "output1": output_2,
                 "output2": output_1,
+                "cot1": cot_2_value,  # Swapped because output1 is now output_2
+                "cot2": cot_1_value,  # Swapped because output2 is now output_1
+                "signature1": signature_2_value,  # Swapped
+                "signature2": signature_1_value,  # Swapped
                 "metadata": {
                     **metadata,
                     "correct_answer": "2",
