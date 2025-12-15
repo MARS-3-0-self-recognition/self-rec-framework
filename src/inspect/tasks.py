@@ -912,6 +912,16 @@ def generation(
             # You may want to make this configurable
             generate_config_params["reasoning_tokens"] = 4096
 
+    # Set max_tokens for thinking models (default: 8192 if not specified in config)
+    # This prevents reasoning cutoffs, especially for Qwen thinking models
+    if is_thinking_model(model_name):
+        max_thinking = (
+            config.max_thinking_tokens
+            if config.max_thinking_tokens is not None
+            else 8192
+        )
+        generate_config_params["max_tokens"] = max_thinking
+
     return Task(
         dataset=inspect_samples,
         solver=generate(),

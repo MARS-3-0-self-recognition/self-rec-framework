@@ -313,8 +313,15 @@ def _build_prompts(exp_config: ExperimentConfig) -> None:
     sr_task_prompt = sr_task_template.replace("{SR_task_preface}", sr_task_preface)
 
     # Build reasoning+format string using SR_task_prompt_builder
-    # Select reasoning style (default to "CoT" if not provided)
-    reasoning_type = exp_config.sr_reasoning_type or "CoT"
+    # Select reasoning style: match generator_output default logic
+    # If sr_reasoning_type is not provided, default to "Instruct" (not "CoT")
+    # to align with generator_output="FA" default
+    if exp_config.sr_reasoning_type is None:
+        # Default to "Instruct" when no reasoning type specified
+        # This aligns with generator_output="FA" default (no CoT in output)
+        reasoning_type = "Instruct"
+    else:
+        reasoning_type = exp_config.sr_reasoning_type
     try:
         reasoning_template = base_prompts["SR_task_prompt_builder"]["Reasoning"][
             reasoning_type
