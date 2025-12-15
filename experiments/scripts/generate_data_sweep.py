@@ -84,7 +84,8 @@ def run_sweep_generation(
     exp_config = create_generation_config(
         dataset_name=dataset_name,
         temperature=gen_config.get("temperature"),
-        max_tokens=gen_config.get("max_tokens"),
+        max_final_answer_tokens=gen_config.get("max_final_answer_tokens")
+        or gen_config.get("max_tokens"),  # Backward compat
         seed=gen_config.get("seed"),
     )
 

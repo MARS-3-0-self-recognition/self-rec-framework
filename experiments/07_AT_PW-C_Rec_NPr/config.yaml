@@ -1,5 +1,5 @@
 temperature: 1.0
-max_tokens: null
+max_final_answer_tokens: null
 max_thinking_tokens: 500
 
 tags: "AT"

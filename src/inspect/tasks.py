@@ -23,6 +23,81 @@ from src.helpers.utils import (
 )
 
 
+def _configure_thinking_model_params(
+    model_name: str,
+    config: ExperimentConfig,
+    config_params: dict,
+    model: str | None = None,
+) -> None:
+    """
+    Configure max_tokens and reasoning_tokens for thinking models.
+
+    For thinking models:
+    - max_final_answer_tokens: Controls final answer output (separate from reasoning)
+    - max_thinking_tokens: Used for reasoning_tokens parameter (where supported)
+    - For models without separate reasoning_tokens (Together AI), max_tokens = max_thinking_tokens + max_final_answer_tokens
+
+    Args:
+        model_name: Short model name (e.g., "sonnet-4.5-thinking")
+        config: ExperimentConfig with max_final_answer_tokens and max_thinking_tokens
+        config_params: Dictionary to update with GenerateConfig parameters
+        model: Optional inspect model string (for provider detection)
+    """
+    if not is_thinking_model(model_name):
+        return
+
+    # Determine provider if model string provided
+    inspect_model_str = str(model) if model else None
+
+    # For models that support separate reasoning_tokens parameter
+    if needs_reasoning_params(model_name):
+        # Set reasoning_tokens for Anthropic and Google models
+        if inspect_model_str:
+            if "anthropic" in inspect_model_str or "google" in inspect_model_str:
+                # Anthropic/Google: use max_thinking_tokens for reasoning_tokens
+                reasoning_tokens = (
+                    config.max_thinking_tokens
+                    if config.max_thinking_tokens is not None
+                    else 4096
+                )
+                config_params["reasoning_tokens"] = reasoning_tokens
+            elif "openai" in inspect_model_str:
+                # OpenAI: reasoning_effort (no separate reasoning_tokens parameter)
+                config_params["reasoning_effort"] = "medium"
+
+        # For models with separate reasoning_tokens: max_tokens is for final answer only
+        # Use config.max_final_answer_tokens if set, otherwise reasonable default
+        if "max_tokens" not in config_params:
+            if config.max_final_answer_tokens is not None:
+                config_params["max_tokens"] = config.max_final_answer_tokens
+            else:
+                config_params["max_tokens"] = 2048  # Default for final answer
+    else:
+        # Together AI models (no separate reasoning_tokens): max_tokens controls total output
+        # Total = max_thinking_tokens (for reasoning) + max_final_answer_tokens (for final answer)
+        max_thinking = (
+            config.max_thinking_tokens
+            if config.max_thinking_tokens is not None
+            else 8192
+        )
+        # For Together AI, max_final_answer_tokens in config represents the answer budget, not the total
+        # If max_tokens was already set in config_params, use it as the answer budget
+        # Otherwise, use config.max_final_answer_tokens or default
+        if "max_tokens" in config_params:
+            # max_tokens was already set (e.g., from config.max_final_answer_tokens in generation function)
+            # Use it as the answer budget and add thinking budget
+            max_answer = config_params["max_tokens"]
+        else:
+            # max_tokens not set yet, use config.max_final_answer_tokens or default
+            max_answer = (
+                config.max_final_answer_tokens
+                if config.max_final_answer_tokens is not None
+                else 2048
+            )
+        # Always set total = thinking + answer for Together AI models
+        config_params["max_tokens"] = max_thinking + max_answer
+
+
 def get_task_function(
     exp_config: ExperimentConfig,
     model_name: str,
@@ -209,14 +284,8 @@ def pairwise_query(
     # evaluating thinking models (so CoT we insert remains visible to the model).
     if is_thinking_model(model_name):
         config_params["reasoning_history"] = "all"
-        # Set max_tokens for thinking models (default: 8192 if not specified in config)
-        # This prevents reasoning cutoffs, especially for Qwen thinking models
-        max_thinking = (
-            config.max_thinking_tokens
-            if config.max_thinking_tokens is not None
-            else 8192
-        )
-        config_params["max_tokens"] = max_thinking
+    # Configure thinking model parameters (max_tokens, reasoning_tokens)
+    _configure_thinking_model_params(model_name, config, config_params, inspect_model)
     if logprobs:
         config_params["logprobs"] = True
         config_params["top_logprobs"] = 2
@@ -439,14 +508,8 @@ def pairwise_conversation_assistant_tags(
     # Preserve prior reasoning blocks when evaluating thinking models.
     if is_thinking_model(model_name):
         config_params["reasoning_history"] = "all"
-        # Set max_tokens for thinking models (default: 8192 if not specified in config)
-        # This prevents reasoning cutoffs, especially for Qwen thinking models
-        max_thinking = (
-            config.max_thinking_tokens
-            if config.max_thinking_tokens is not None
-            else 8192
-        )
-        config_params["max_tokens"] = max_thinking
+    # Configure thinking model parameters (max_tokens, reasoning_tokens)
+    _configure_thinking_model_params(model_name, config, config_params, inspect_model)
     if logprobs:
         config_params["logprobs"] = True
         config_params["top_logprobs"] = 2
@@ -528,14 +591,8 @@ def pairwise_conversation_user_tags(
 
     # Build GenerateConfig with optional logprobs
     config_params = {"system_message": config.system_prompt}
-    # Set max_tokens for thinking models (default: 8192 if not specified in config)
-    if is_thinking_model(model_name):
-        max_thinking = (
-            config.max_thinking_tokens
-            if config.max_thinking_tokens is not None
-            else 8192
-        )
-        config_params["max_tokens"] = max_thinking
+    # Configure thinking model parameters (max_tokens, reasoning_tokens)
+    _configure_thinking_model_params(model_name, config, config_params, inspect_model)
     if logprobs:
         config_params["logprobs"] = True
         config_params["top_logprobs"] = 2
@@ -627,14 +684,11 @@ def individual_conversation_assistant_tags(
 
     # Build GenerateConfig with optional logprobs
     config_params = {"system_message": config.system_prompt}
-    # Set max_tokens for thinking models (default: 8192 if not specified in config)
+    # Preserve prior reasoning blocks when evaluating thinking models.
     if is_thinking_model(model_name):
-        max_thinking = (
-            config.max_thinking_tokens
-            if config.max_thinking_tokens is not None
-            else 8192
-        )
-        config_params["max_tokens"] = max_thinking
+        config_params["reasoning_history"] = "all"
+    # Configure thinking model parameters (max_tokens, reasoning_tokens)
+    _configure_thinking_model_params(model_name, config, config_params, inspect_model)
     if logprobs:
         config_params["logprobs"] = True
         config_params["top_logprobs"] = 2
@@ -714,14 +768,8 @@ def individual_conversation_user_tags(
 
     # Build GenerateConfig with optional logprobs
     config_params = {"system_message": config.system_prompt}
-    # Set max_tokens for thinking models (default: 8192 if not specified in config)
-    if is_thinking_model(model_name):
-        max_thinking = (
-            config.max_thinking_tokens
-            if config.max_thinking_tokens is not None
-            else 8192
-        )
-        config_params["max_tokens"] = max_thinking
+    # Configure thinking model parameters (max_tokens, reasoning_tokens)
+    _configure_thinking_model_params(model_name, config, config_params, inspect_model)
     if logprobs:
         config_params["logprobs"] = True
         config_params["top_logprobs"] = 2
@@ -882,45 +930,15 @@ def generation(
         generate_config_params["system_message"] = config.system_prompt
     if config.temperature is not None:
         generate_config_params["temperature"] = config.temperature
-    if config.max_tokens is not None:
-        generate_config_params["max_tokens"] = config.max_tokens
+    if config.max_final_answer_tokens is not None:
+        generate_config_params["max_tokens"] = config.max_final_answer_tokens
     if config.seed is not None:
         generate_config_params["seed"] = config.seed
 
-    # Add reasoning parameters for thinking models
-    if model_name.endswith("-thinking") and needs_reasoning_params(model_name):
-        # Determine provider from model name
-        inspect_model_str = str(model)
-
-        if "openai" in inspect_model_str:
-            # OpenAI o-series and GPT-5 models
-            # reasoning_summary requires organization verification for ALL OpenAI reasoning models
-            # (o1, o3, o4, gpt-5 all require verification)
-            # Note: o3 also requires verification just to access the model itself
-            # Without reasoning_summary, reasoning text won't be available (only signature will be captured)
-            # To enable: https://platform.openai.com/settings/organization/general
-            generate_config_params["reasoning_effort"] = "medium"  # Default
-            # generate_config_params["reasoning_summary"] = "auto"  # Requires org verification for all models
-        elif "anthropic" in inspect_model_str:
-            # Anthropic Claude 3.7/4 models
-            # Default reasoning_tokens if not specified
-            # You may want to make this configurable
-            generate_config_params["reasoning_tokens"] = 4096
-        elif "google" in inspect_model_str:
-            # Google Gemini 2.5 models
-            # Default reasoning_tokens if not specified
-            # You may want to make this configurable
-            generate_config_params["reasoning_tokens"] = 4096
-
-    # Set max_tokens for thinking models (default: 8192 if not specified in config)
-    # This prevents reasoning cutoffs, especially for Qwen thinking models
-    if is_thinking_model(model_name):
-        max_thinking = (
-            config.max_thinking_tokens
-            if config.max_thinking_tokens is not None
-            else 8192
-        )
-        generate_config_params["max_tokens"] = max_thinking
+    # Configure thinking model parameters (max_tokens, reasoning_tokens)
+    # Note: max_tokens may already be set from config.max_final_answer_tokens above (line 927)
+    # The helper will respect existing max_tokens and only set it if not present
+    _configure_thinking_model_params(model_name, config, generate_config_params, model)
 
     return Task(
         dataset=inspect_samples,

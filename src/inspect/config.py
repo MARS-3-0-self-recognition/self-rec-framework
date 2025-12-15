@@ -24,7 +24,7 @@ class ExperimentConfig:
 
     # Generation parameters
     temperature: Optional[float] = None
-    max_tokens: Optional[int] = None
+    max_final_answer_tokens: Optional[int] = None
     max_thinking_tokens: Optional[int] = (
         None  # Max tokens for thinking models (default: 8192)
     )
@@ -78,7 +78,8 @@ def load_experiment_config(
         priming=config_dict.get("priming", False),
         dataset_name=dataset_name,
         temperature=config_dict.get("temperature"),
-        max_tokens=config_dict.get("max_tokens"),
+        max_final_answer_tokens=config_dict.get("max_final_answer_tokens")
+        or config_dict.get("max_tokens"),  # Backward compat
         max_thinking_tokens=config_dict.get("max_thinking_tokens"),
         seed=config_dict.get("seed"),
         sr_reasoning_type=config_dict.get("sr_reasoning_type"),
@@ -135,7 +136,7 @@ def load_dataset_prompts(dataset_name: str) -> dict:
 def create_generation_config(
     dataset_name: str,
     temperature: float = None,
-    max_tokens: int = None,
+    max_final_answer_tokens: int = None,
     seed: int = None,
 ) -> ExperimentConfig:
     """
@@ -147,7 +148,7 @@ def create_generation_config(
     Args:
         dataset_name: Dataset name
         temperature: Generation temperature
-        max_tokens: Max tokens for generation
+        max_final_answer_tokens: Max tokens for final answer generation
         seed: Random seed
 
     Returns:
@@ -164,7 +165,7 @@ def create_generation_config(
         priming=False,
         dataset_name=dataset_name,
         temperature=temperature,
-        max_tokens=max_tokens,
+        max_final_answer_tokens=max_final_answer_tokens,
         seed=seed,
     )
 
