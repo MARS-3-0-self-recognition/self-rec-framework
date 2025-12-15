@@ -1,3 +1,6 @@
+from collections import defaultdict
+
+
 INSPECT_MODEL_NAMES: dict = {
     # OpenAI
     "gpt-4o-mini": "openai/gpt-4o-mini",
@@ -68,7 +71,16 @@ INSPECT_MODEL_NAMES: dict = {
     "deepseek-r1_fw": "fireworks/accounts/fireworks/models/deepseek-r1-0528",  # reasoning model
 }
 
-SHORT_MODEL_NAMES: dict = {v: k for k, v in INSPECT_MODEL_NAMES.items()}
+# Build a reverse mapping that preserves ALL short names per inspect name.
+# Multiple short names (e.g., "sonnet-4.5" and "sonnet-4.5-thinking") can
+# legitimately map to the same inspect model, so we store a list rather than
+# silently overwriting during dict inversion.
+_INSPECT_TO_SHORT: dict[str, list[str]] = defaultdict(list)
+for short, inspect in INSPECT_MODEL_NAMES.items():
+    _INSPECT_TO_SHORT[inspect].append(short)
+
+# Public constant (inspect model name -> list of possible short names)
+SHORT_MODEL_NAMES: dict[str, list[str]] = dict(_INSPECT_TO_SHORT)
 
 
 def inspect_model_name(short_model_name: str) -> str:
@@ -80,9 +92,24 @@ def inspect_model_name(short_model_name: str) -> str:
 
 def short_model_name(model: str) -> str:
     """
-    Read from inverse of hard-coded INSPECT_MODEL_NAMES dict.
+    Return a canonical short model name for a given inspect model name.
+
+    When multiple short names map to the same inspect model (e.g.,
+    "sonnet-4.5" and "sonnet-4.5-thinking"), we:
+      - Prefer a "-thinking" variant if present (for reasoning-focused workflows)
+      - Otherwise, fall back to the first name in sorted order for determinism
     """
-    return SHORT_MODEL_NAMES[model]
+    shorts = SHORT_MODEL_NAMES.get(model)
+    if not shorts:
+        raise KeyError(f"No short model name found for inspect model '{model}'")
+
+    # Prefer thinking variants if available
+    thinking_variants = [s for s in shorts if s.endswith("-thinking")]
+    if thinking_variants:
+        return sorted(thinking_variants)[0]
+
+    # Fallback: deterministic choice among non-thinking variants
+    return sorted(shorts)[0]
 
 
 def is_thinking_model(treatment_name: str) -> bool:

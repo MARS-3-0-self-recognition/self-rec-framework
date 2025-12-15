@@ -336,8 +336,8 @@ def create_pivot_table(
           - count pivot (total samples contributing to each cell)
           - correct pivot (total correct predictions contributing to each cell)
     """
-    # Filter to successful evaluations only
-    df_success = df[df["status"] == "success"].copy()
+    # Filter to successful evaluations only and drop rows with missing accuracy
+    df_success = df[(df["status"] == "success") & (df["accuracy"].notna())].copy()
 
     print(f"Creating pivot table from {len(df_success)} successful evaluations...")
 
