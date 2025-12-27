@@ -39,6 +39,9 @@ INSPECT_MODEL_NAMES: dict = {
     "gemini-2.5-flash-thinking": "google/gemini-2.5-flash",
     "gemini-2.5-pro": "google/gemini-2.5-pro",
     "gemini-2.5-pro-thinking": "google/gemini-2.5-pro",
+    # XAI (uses OpenAI provider with custom base URL via INSPECT_MODELS_OPENAI_GROK_3_MINI_BETA_*)
+    "grok-3-mini": "openai/grok-3-mini",
+    "grok-3-mini-thinking": "openai/grok-3-mini",
     ## Together-specific models
     # Llama models
     "ll-3.1-8b": "together/meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
@@ -52,11 +55,13 @@ INSPECT_MODEL_NAMES: dict = {
     "qwen-3.0-80b-thinking": "together/Qwen/Qwen3-Next-80B-A3B-Thinking",
     "qwen-3.0-235b": "together/Qwen/Qwen3-235B-A22B-Instruct-2507",
     "qwen-3.0-235b-thinking": "together/Qwen/Qwen3-235B-A22B-Thinking-2507",
-    "qwq-32b-thinking": "together/Qwen/QwQ-32B",  # reasoning model (always thinking)
     # DeepSeek models
     "deepseek-3.0": "together/deepseek-ai/DeepSeek-V3",
     "deepseek-3.1": "together/deepseek-ai/DeepSeek-V3.1",
     "deepseek-r1-thinking": "together/deepseek-ai/DeepSeek-R1",  # reasoning model
+    # Moonshot
+    "kimi-k2": "together/moonshotai/Kimi-K2-Instruct-0905",
+    "kimi-k2-thinking": "together/moonshotai/Kimi-K2-Thinking",
     ## Fireworks
     # Llama
     "ll-3.1-8b_fw": "fireworks/accounts/fireworks/models/llama-v3p1-8b-instruct",
@@ -145,6 +150,9 @@ def is_thinking_model(treatment_name: str) -> bool:
         or base_name.startswith("o3")
         or base_name.startswith("o4")
         or base_name.startswith("gpt-5")
+        or base_name.startswith(
+            "grok-3-mini"
+        )  # XAI Grok-3-mini requires reasoning_effort
     )
 
 

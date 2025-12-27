@@ -30,6 +30,15 @@ class ExperimentConfig:
     )
     seed: Optional[int] = None
 
+    # Reasoning parameters for thinking models
+    reasoning_effort: Optional[str] = (
+        "high"  # OpenAI: "low", "medium", "high" (default: "high")
+    )
+    reasoning_summary: Optional[str] = (
+        None  # OpenAI: None, "auto", "last", "concise" (default: None)
+    )
+    reasoning_history: Optional[str] = "all"  # "all" or "none" (default: "all")
+
     # Prompt variant selection
     # Controls how generator outputs are inserted into UT transcripts
     # Valid values: "FA" | "CoT" | "CoT-FA"
@@ -84,6 +93,9 @@ def load_experiment_config(
         seed=config_dict.get("seed"),
         sr_reasoning_type=config_dict.get("sr_reasoning_type"),
         generator_output=config_dict.get("generator_output"),
+        reasoning_effort=config_dict.get("reasoning_effort", "high"),
+        reasoning_summary=config_dict.get("reasoning_summary", None),
+        reasoning_history=config_dict.get("reasoning_history", "all"),
     )
 
     # Build prompts automatically

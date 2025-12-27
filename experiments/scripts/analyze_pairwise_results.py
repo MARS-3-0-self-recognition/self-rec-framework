@@ -70,13 +70,12 @@ def get_model_order(model_type: str | None = None) -> list[str]:
             "gpt-oss-20b-thinking",
             "gpt-oss-120b-thinking",
             "sonnet-3.7-thinking",
-            "sonnet-4.5-thinking",
-            "opus-4.1-thinking",
-            "gemini-2.5-flash-thinking",
-            "gemini-2.5-pro-thinking",
+            "grok-3-mini-thinking",
             "ll-3.3-70b-dsR1-thinking",
             "qwen-3.0-80b-thinking",
+            "qwen-3.0-235b-thinking",
             "deepseek-r1-thinking",
+            "kimi-k2-thinking",
         ]
 
     return [
@@ -203,6 +202,50 @@ def parse_eval_filename(filename: str) -> tuple[str, str, str] | None:
         return None
 
 
+def extract_answer_counts(log) -> tuple[int, int] | None:
+    """
+    Extract counts of answer "1" vs "2" choices from an eval log.
+
+    Returns:
+        Tuple (count_1, count_2) or None if not available
+    """
+    try:
+        if log.status != "success" or not log.samples:
+            return None
+
+        count_1 = 0
+        count_2 = 0
+
+        for sample in log.samples:
+            if not sample.scores:
+                continue
+
+            for score in sample.scores.values():
+                if hasattr(score, "answer") and score.answer:
+                    answer = str(score.answer).strip()
+                    # Find the final standalone "1" or "2" in the answer
+                    # Check last character first (common case: answer ends with "1" or "2")
+                    if answer and answer[-1] in ("1", "2"):
+                        if answer[-1] == "1":
+                            count_1 += 1
+                        else:
+                            count_2 += 1
+                    # Fallback: check start (simple answers like "1" or "2")
+                    elif answer.startswith("1"):
+                        count_1 += 1
+                    elif answer.startswith("2"):
+                        count_2 += 1
+                    break
+
+        if count_1 + count_2 == 0:
+            return None
+
+        return count_1, count_2
+
+    except Exception:
+        return None
+
+
 def extract_accuracy(log) -> float | None:
     """
     Extract accuracy from an eval log.
@@ -295,6 +338,11 @@ def load_all_evaluations(results_dir: Path) -> pd.DataFrame:
             accuracy = extract_accuracy(log)
             n_samples = len(log.samples) if log.samples else 0
 
+            # Extract answer choice counts
+            answer_counts = extract_answer_counts(log)
+            count_1 = answer_counts[0] if answer_counts else 0
+            count_2 = answer_counts[1] if answer_counts else 0
+
             data.append(
                 {
                     "evaluator": evaluator,
@@ -302,6 +350,8 @@ def load_all_evaluations(results_dir: Path) -> pd.DataFrame:
                     "treatment": treatment,
                     "accuracy": accuracy,
                     "n_samples": n_samples,
+                    "count_1": count_1,
+                    "count_2": count_2,
                     "status": log.status,
                     "filename": eval_file.name,
                 }
@@ -335,8 +385,7 @@ def create_pivot_table(
           - accuracy pivot (rows=evaluator, cols=treatment)
           - count pivot (total samples contributing to each cell)
           - correct pivot (total correct predictions contributing to each cell)
-    """
-    # Filter to successful evaluations only and drop rows with missing accuracy
+    """  # Filter to successful evaluations only and drop rows with missing accuracy
     df_success = df[(df["status"] == "success") & (df["accuracy"].notna())].copy()
 
     print(f"Creating pivot table from {len(df_success)} successful evaluations...")
@@ -367,6 +416,114 @@ def create_pivot_table(
     pivot_correct = pivot_correct.reindex(index=row_order, columns=col_order)
 
     return pivot_accuracy, pivot_counts, pivot_correct
+
+
+def create_answer_choice_pivot(
+    df: pd.DataFrame, model_order: list[str]
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Create pivot table of answer choice ratio (proportion choosing "1").
+
+    Args:
+        df: DataFrame with evaluator, treatment, count_1, count_2 columns
+        model_order: Canonical model ordering
+
+    Returns:
+        Tuple of:
+          - ratio pivot (rows=evaluator, cols=treatment): proportion choosing "1"
+          - count_1 pivot: total "1" choices per cell
+          - count_2 pivot: total "2" choices per cell
+    """
+    df_success = df[(df["status"] == "success")].copy()
+
+    # Aggregate by evaluator/treatment
+    grouped = df_success.groupby(["evaluator", "treatment"]).agg(
+        total_1=("count_1", "sum"),
+        total_2=("count_2", "sum"),
+    )
+
+    # Compute ratio: count_1 / (count_1 + count_2)
+    total = grouped["total_1"] + grouped["total_2"]
+    ratio = (grouped["total_1"] / total).replace([float("inf"), -float("inf")], pd.NA)
+    pivot_ratio = ratio.unstack(fill_value=pd.NA)
+    pivot_count_1 = grouped["total_1"].unstack(fill_value=0)
+    pivot_count_2 = grouped["total_2"].unstack(fill_value=0)
+
+    # Filter to models that exist
+    row_order = [m for m in model_order if m in pivot_ratio.index]
+    col_order = [m for m in model_order if m in pivot_ratio.columns]
+
+    pivot_ratio = pivot_ratio.reindex(index=row_order, columns=col_order)
+    pivot_count_1 = pivot_count_1.reindex(index=row_order, columns=col_order)
+    pivot_count_2 = pivot_count_2.reindex(index=row_order, columns=col_order)
+
+    return pivot_ratio, pivot_count_1, pivot_count_2
+
+
+def plot_answer_choice_heatmap(
+    pivot: pd.DataFrame,
+    output_path: Path,
+    experiment_title: str = "",
+):
+    """
+    Create heatmap showing proportion of "1" choices (ordering bias).
+
+    Values near 0.5 = no bias, near 1.0 = always picks "1", near 0.0 = always picks "2".
+    """
+    print("Generating answer choice bias heatmap...")
+
+    fig, ax = plt.subplots(figsize=(14, 10))
+
+    # Mask diagonal
+    mask = pd.DataFrame(False, index=pivot.index, columns=pivot.columns)
+    for model in pivot.index:
+        if model in pivot.columns:
+            mask.loc[model, model] = True
+
+    # Use diverging colormap centered at 0.5
+    sns.heatmap(
+        pivot,
+        annot=True,
+        fmt=".2f",
+        cmap="RdBu_r",  # Red (low/picks 2) -> White (balanced) -> Blue (high/picks 1)
+        center=0.5,
+        vmin=0.0,
+        vmax=1.0,
+        cbar_kws={"label": "Proportion Choosing Answer 1"},
+        mask=mask,
+        linewidths=0.5,
+        linecolor="gray",
+        ax=ax,
+    )
+
+    # Fill diagonal with gray
+    for i, model in enumerate(pivot.index):
+        if model in pivot.columns:
+            j = list(pivot.columns).index(model)
+            ax.add_patch(
+                plt.Rectangle((j, i), 1, 1, fill=True, color="lightgray", zorder=10)
+            )
+            ax.text(j + 0.5, i + 0.5, "N/A", ha="center", va="center", fontsize=8)
+
+    add_provider_boundaries(ax, pivot)
+
+    ax.set_xlabel("Comparison Model (Treatment)", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Evaluator Model", fontsize=12, fontweight="bold")
+
+    if experiment_title:
+        title = f"Answer Choice Bias: {experiment_title}\n(Proportion choosing Answer 1 over Answer 2)"
+    else:
+        title = "Answer Choice Bias\n(Proportion choosing Answer 1 over Answer 2)"
+
+    ax.set_title(title, fontsize=14, fontweight="bold", pad=20)
+
+    plt.xticks(rotation=45, ha="right")
+    plt.yticks(rotation=0)
+    plt.tight_layout()
+
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    print(f"  ✓ Saved answer choice heatmap to: {output_path}")
+    plt.close()
 
 
 def compute_asymmetry_analysis(
@@ -1247,6 +1404,29 @@ def main():
     )
     print()
 
+    # Create answer choice bias analysis
+    answer_pivot, answer_count_1, answer_count_2 = create_answer_choice_pivot(
+        df, get_model_order(model_type)
+    )
+
+    # Save answer choice tables
+    answer_pivot_path = output_dir / "answer_choice_ratio.csv"
+    answer_pivot.to_csv(answer_pivot_path)
+    print(f"  ✓ Saved answer choice ratio to: {answer_pivot_path}")
+
+    answer_counts_path = output_dir / "answer_choice_counts.csv"
+    # Combine counts into a single table for reference
+    combined_counts = answer_count_1.astype(str) + "/" + answer_count_2.astype(str)
+    combined_counts.to_csv(answer_counts_path)
+    print(f"  ✓ Saved answer choice counts to: {answer_counts_path}\n")
+
+    # Generate answer choice heatmap
+    answer_heatmap_path = output_dir / "answer_choice_heatmap.png"
+    plot_answer_choice_heatmap(
+        answer_pivot, answer_heatmap_path, experiment_title=experiment_title
+    )
+    print()
+
     # Compute asymmetry analysis
     asymmetry_matrix, comparison, asymmetry_scores = compute_asymmetry_analysis(pivot)
 
@@ -1306,6 +1486,9 @@ def main():
     print("  • row_vs_column_comparison.csv: Row vs column means per model")
     print("  • row_vs_column_comparison.png: Row vs column comparison plot")
     print("  • evaluator_performance.png: Evaluator performance bar chart")
+    print("  • answer_choice_ratio.csv: Proportion choosing answer 1")
+    print("  • answer_choice_counts.csv: Raw counts (1/2) per cell")
+    print("  • answer_choice_heatmap.png: Ordering bias visualization")
     print("  • summary_stats.txt: Comprehensive statistics")
     print(f"{'='*70}\n")
 

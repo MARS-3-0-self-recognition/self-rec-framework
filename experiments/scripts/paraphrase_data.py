@@ -74,13 +74,8 @@ def extract_reasoning_text_and_signature(
 
     Handles different model providers:
     - Anthropic: reasoning in message.content with signature
-      * Claude 3.7 Sonnet: Should return full CoT by default, but may provide summaries in practice
-      * Claude 4.x models: Returns summarized CoT by default (API limitation)
     - OpenAI o-series: reasoning in message.content (may be empty if reasoning_summary not enabled)
     - Together AI (Qwen, DeepSeek): reasoning in message.content
-
-    Note: This function extracts whatever is in the `reasoning` field. For Claude 3.7 Sonnet,
-    this will be full CoT. For Claude 4.x models, this will be summaries due to API behavior.
 
     Returns:
         Tuple of (reasoning_text, signature) where signature may be None

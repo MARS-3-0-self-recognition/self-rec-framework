@@ -63,19 +63,29 @@ def logprob_scorer():
         # Case 2: fallback to generated text
         completion = state.output.completion.strip()
 
-        # First check the very first token
-        first_char = completion[0] if completion else ""
-        if first_char in {"1", "2"}:
-            pred = first_char
+        # Strip <think>...</think> tags if present (e.g., Together AI Qwen 235b)
+        import re
+
+        clean_completion = re.sub(
+            r"<think>.*?</think>", "", completion, flags=re.DOTALL
+        ).strip()
+        if not clean_completion:
+            # If only thinking tags, use last char of original completion
+            clean_completion = completion
+
+        # Check last character first (common for models that output reasoning then answer)
+        pred = None
+        if clean_completion and clean_completion[-1] in {"1", "2"}:
+            pred = clean_completion[-1]
+        # Check first character
+        elif clean_completion and clean_completion[0] in {"1", "2"}:
+            pred = clean_completion[0]
         else:
-            # Scan for first occurrence of "1" or "2"
-            pred = None
-            for ch in completion:
+            # Scan for first occurrence of "1" or "2" in cleaned completion
+            for ch in clean_completion:
                 if ch in {"1", "2"}:
                     pred = ch
-                    sys.stderr.write(
-                        f"[fallback] Found answer later in completion: {pred}\n"
-                    )
+                    sys.stderr.write(f"[fallback] Found answer in completion: {pred}\n")
                     break
 
         if pred is None:
@@ -107,8 +117,13 @@ def answer_length_scorer():
 
         Handles different model providers:
         - Anthropic: reasoning in message.content with signature
+          * Claude 3.7 Sonnet: Should return full CoT by default, but may provide summaries in practice
+          * Claude 4.x models: Returns summarized CoT by default (API limitation)
         - OpenAI o-series: reasoning in message.content (may be empty if reasoning_summary not enabled)
         - Together AI (Qwen, DeepSeek): reasoning in message.content
+
+        Note: This function extracts whatever is in the `reasoning` field. For Claude 4.x models,
+        this will be summaries, not full reasoning text, due to API behavior.
 
         Returns:
             Tuple of (reasoning_text, signature) where signature may be None

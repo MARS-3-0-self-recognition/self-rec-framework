@@ -9,5 +9,5 @@ uv run experiments/scripts/generate_data_sweep.py \
                 qwen-3.0-80b-thinking qwen-3.0-235b-thinking \
                 deepseek-r1-thinking \
                 kimi-k2-thinking \
-    --dataset_path=data/input/pku_saferlhf/mismatch_1-20/input.json \
+    --dataset_path=data/input/sharegpt/english_26/input.json \
     --dataset_config=experiments/00_data_gen/configs/config.yaml

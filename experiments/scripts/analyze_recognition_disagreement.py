@@ -1,27 +1,27 @@
 #!/usr/bin/env python3
 """
-Analyze preference agreement between models in pairwise preference experiments.
+Analyze recognition disagreement between models in pairwise recognition experiments.
 
-Takes a directory of eval logs from preference tasks (e.g., Pref-Q), aggregates
-accuracy across all evaluations, and generates an agreement heatmap showing
-how well models agree on quality assessments.
+Takes a directory of eval logs from recognition tasks (e.g., Rec), aggregates
+accuracy across all evaluations, and generates a disagreement heatmap showing
+how much models disagree on self-recognition.
 
-The agreement score is computed as: 1 - abs(A_ij - (1 - A_ji))
+The disagreement score is computed as: abs(A_ij - (1 - A_ji))
 where:
-- A_ij = how often model i prefers its own output over model j's output
-- A_ji = how often model j prefers its own output over model i's output
-- 1 - A_ji = how often model j prefers model i's output over its own output
+- A_ij = how often model i correctly recognizes its own output vs model j's
+- A_ji = how often model j correctly recognizes its own output vs model i's
+- 1 - A_ji = how often model j incorrectly recognizes (chooses model i's output)
 
-Higher values indicate better agreement between the two models on quality.
+Higher values indicate greater disagreement between the two models.
 
 Usage:
-    uv run experiments/scripts/analyze_preference_agreement.py \
-        --results_dir data/results/pku_saferlhf/mismatch_1-20/12_UT_PW-Q_Rec_Pr
+    uv run experiments/scripts/analyze_recognition_disagreement.py \
+        --results_dir data/results/pku_saferlhf/mismatch_1-20/17_UT_PW-Q_Rec_NPr_CoT
 
 Output:
-    - data/analysis/pku_saferlhf/mismatch_1-20/12_UT_PW-Q_Rec_Pr/
-        - agreement_matrix.csv: Agreement scores
-        - agreement_heatmap.png: Visualization
+    - data/analysis/pku_saferlhf/mismatch_1-20/17_UT_PW-Q_Rec_NPr_CoT/
+        - disagreement_matrix.csv: Disagreement scores
+        - disagreement_heatmap.png: Visualization
         - summary_stats.txt: Overall statistics
 """
 
@@ -78,8 +78,8 @@ def extract_accuracy(log) -> float | None:
     """
     Extract accuracy from an eval log.
 
-    For preference tasks, accuracy represents how often the evaluator
-    prefers its own output over the treatment output.
+    For recognition tasks, accuracy represents how often the evaluator
+    correctly recognizes its own output over the treatment output.
 
     Handles partial failures gracefully:
     - Samples with "F" (failed/malformed) are skipped (e.g., due to token limits)
@@ -196,8 +196,8 @@ def create_pivot_table(df: pd.DataFrame) -> pd.DataFrame:
     """
     Create pivot table of accuracy by evaluator and treatment.
 
-    For preference tasks, accuracy = how often the evaluator prefers its own output
-    over the treatment output.
+    For recognition tasks, accuracy = how often the evaluator correctly recognizes
+    its own output over the treatment output.
 
     Args:
         df: DataFrame with evaluator, control, treatment, accuracy columns
@@ -211,7 +211,7 @@ def create_pivot_table(df: pd.DataFrame) -> pd.DataFrame:
     print(f"Creating pivot table from {len(df_success)} successful evaluations...")
 
     # Create pivot table
-    # For preference: evaluator chooses between control (self) and treatment
+    # For recognition: evaluator identifies between control (self) and treatment
     # So the pivot should be: evaluator (rows) x treatment (columns)
     pivot = df_success.pivot_table(
         values="accuracy",
@@ -233,124 +233,116 @@ def create_pivot_table(df: pd.DataFrame) -> pd.DataFrame:
         model_order_cot if cot_matches > regular_matches else model_order_regular
     )
 
-    # Filter to only models that exist in the data
+    # Filter to only models in the canonical order (strict filtering)
     row_order = [m for m in model_order if m in pivot.index]
     col_order = [m for m in model_order if m in pivot.columns]
 
-    # Add any models not in canonical order at the end
-    for m in pivot.index:
-        if m not in row_order:
-            row_order.append(m)
-    for m in pivot.columns:
-        if m not in col_order:
-            col_order.append(m)
-
-    # Reindex to apply ordering
+    # Reindex to apply ordering (only includes models in canonical order)
     pivot = pivot.reindex(index=row_order, columns=col_order)
 
     return pivot
 
 
-def compute_agreement_matrix(pivot: pd.DataFrame) -> pd.DataFrame:
+def compute_disagreement_matrix(pivot: pd.DataFrame) -> pd.DataFrame:
     """
-    Compute agreement matrix between models on quality assessments.
+    Compute disagreement matrix between models on recognition.
 
-    Agreement score: 1 - abs(A_ij - (1 - A_ji))
+    Disagreement score: abs(A_ij - (1 - A_ji))
     where:
-    - A_ij = how often model i prefers its own output over model j's output
-    - A_ji = how often model j prefers its own output over model i's output
-    - 1 - A_ji = how often model j prefers model i's output over its own output
+    - A_ij = how often model i correctly recognizes its own output vs model j's
+    - A_ji = how often model j correctly recognizes its own output vs model i's
+    - 1 - A_ji = how often model j incorrectly recognizes (chooses model i's output)
 
-    Higher values (closer to 1.0) indicate better agreement.
+    Higher values (closer to 1.0) indicate greater disagreement.
 
     Args:
         pivot: Pivot table with evaluators as rows, treatments as columns
-               pivot[i, j] = how often model i prefers its own output over model j's
+               pivot[i, j] = how often model i recognizes its own output over model j's
 
     Returns:
-        Agreement matrix with same index and columns as pivot
+        Disagreement matrix with same index and columns as pivot
     """
-    agreement = pd.DataFrame(index=pivot.index, columns=pivot.columns, dtype=float)
+    disagreement = pd.DataFrame(index=pivot.index, columns=pivot.columns, dtype=float)
 
     for i, model_i in enumerate(pivot.index):
         for j, model_j in enumerate(pivot.columns):
             # Skip diagonal (model comparing with itself)
             if model_i == model_j:
-                agreement.loc[model_i, model_j] = float("nan")
+                disagreement.loc[model_i, model_j] = float("nan")
                 continue
 
-            # Get A_ij: how often model i prefers its own output over model j's
+            # Get A_ij: how often model i recognizes its own output over model j's
             A_ij = pivot.loc[model_i, model_j]
 
-            # Get A_ji: how often model j prefers its own output over model i's
+            # Get A_ji: how often model j recognizes its own output over model i's
             # Need to check if this exists (might be in transpose)
             if model_j in pivot.index and model_i in pivot.columns:
                 A_ji = pivot.loc[model_j, model_i]
             else:
-                # If reverse comparison doesn't exist, can't compute agreement
-                agreement.loc[model_i, model_j] = float("nan")
+                # If reverse comparison doesn't exist, can't compute disagreement
+                disagreement.loc[model_i, model_j] = float("nan")
                 continue
 
             # Skip if either value is NaN
             if pd.isna(A_ij) or pd.isna(A_ji):
-                agreement.loc[model_i, model_j] = float("nan")
+                disagreement.loc[model_i, model_j] = float("nan")
                 continue
 
-            # Compute agreement: 1 - abs(A_ij - (1 - A_ji))
-            # A_ij = P(model i prefers its own output)
-            # 1 - A_ji = P(model j prefers model i's output)
-            # Agreement measures how close these probabilities are
-            agreement_score = 1.0 - abs(A_ij - (1.0 - A_ji))
-            agreement.loc[model_i, model_j] = agreement_score
+            # Compute disagreement: abs(A_ij - (1 - A_ji))
+            # A_ij = P(model i recognizes its own output)
+            # 1 - A_ji = P(model j chooses model i's output)
+            # Disagreement measures how different these probabilities are
+            disagreement_score = abs(A_ij - (1.0 - A_ji))
+            disagreement.loc[model_i, model_j] = disagreement_score
 
-    return agreement
+    return disagreement
 
 
-def plot_agreement_heatmap(
-    agreement_matrix: pd.DataFrame, output_path: Path, experiment_title: str = ""
+def plot_disagreement_heatmap(
+    disagreement_matrix: pd.DataFrame, output_path: Path, experiment_title: str = ""
 ):
     """
-    Create heatmap showing agreement between models on quality assessments.
+    Create heatmap showing disagreement between models on recognition.
 
-    Values show: 1 - abs(A_ij - (1 - A_ji))
-    - Higher values (closer to 1.0): Models agree on quality
-    - Lower values (closer to 0.0): Models disagree on quality
+    Values show: abs(A_ij - (1 - A_ji))
+    - Higher values (closer to 1.0): Models disagree on recognition
+    - Lower values (closer to 0.0): Models agree on recognition
     - Range: 0.0 to 1.0
 
     Args:
-        agreement_matrix: Matrix of agreement scores
+        disagreement_matrix: Matrix of disagreement scores
         output_path: Path to save the heatmap
         experiment_title: Optional experiment name
     """
-    print("Generating agreement heatmap...")
+    print("Generating disagreement heatmap...")
 
     # Create figure
     fig, ax = plt.subplots(figsize=(14, 10))
 
     # Create mask for diagonal and NaN values (missing data)
     mask = pd.DataFrame(
-        False, index=agreement_matrix.index, columns=agreement_matrix.columns
+        False, index=disagreement_matrix.index, columns=disagreement_matrix.columns
     )
-    for model in agreement_matrix.index:
-        if model in agreement_matrix.columns:
+    for model in disagreement_matrix.index:
+        if model in disagreement_matrix.columns:
             # Mask diagonal
             mask.loc[model, model] = True
         # Mask NaN values (missing data for that pair)
-        for col in agreement_matrix.columns:
-            if pd.isna(agreement_matrix.loc[model, col]):
+        for col in disagreement_matrix.columns:
+            if pd.isna(disagreement_matrix.loc[model, col]):
                 mask.loc[model, col] = True
 
     # Create heatmap
-    # Use RdYlGn: red (low agreement) → yellow (medium) → green (high agreement)
+    # Use RdYlGn: red (low disagreement) → yellow (medium) → green (high disagreement)
     sns.heatmap(
-        agreement_matrix,
+        disagreement_matrix,
         annot=True,
         fmt=".2f",
-        cmap="RdYlGn",  # Red-Yellow-Green
+        cmap="RdYlGn",  # Red (low) to green (high)
         center=0.5,
         vmin=0.0,
         vmax=1.0,
-        cbar_kws={"label": "Agreement Score"},
+        cbar_kws={"label": "Disagreement Score"},
         mask=mask,
         linewidths=0.5,
         linecolor="gray",
@@ -358,8 +350,8 @@ def plot_agreement_heatmap(
     )
 
     # Fill diagonal and missing data cells with gray squares
-    for i, model in enumerate(agreement_matrix.index):
-        for j, col in enumerate(agreement_matrix.columns):
+    for i, model in enumerate(disagreement_matrix.index):
+        for j, col in enumerate(disagreement_matrix.columns):
             if mask.loc[model, col]:  # If masked (diagonal or missing data)
                 ax.add_patch(
                     plt.Rectangle((j, i), 1, 1, fill=True, color="lightgray", zorder=10)
@@ -375,7 +367,7 @@ def plot_agreement_heatmap(
                 )
 
     # Add thicker lines at provider boundaries
-    add_provider_boundaries(ax, agreement_matrix)
+    add_provider_boundaries(ax, disagreement_matrix)
 
     # Labels
     ax.set_xlabel("Comparison Model (Treatment)", fontsize=12, fontweight="bold")
@@ -383,9 +375,9 @@ def plot_agreement_heatmap(
 
     # Build title
     if experiment_title:
-        title = f"Preference Agreement Matrix: {experiment_title}\n(Cell value = Agreement score: 1 - |P(row prefers self) - P(col prefers row)|)"
+        title = f"Recognition Disagreement Matrix: {experiment_title}\n(Cell value = Disagreement score: |P(row recognizes self) - P(col chooses row)|)"
     else:
-        title = "Preference Agreement Matrix\n(Cell value = Agreement score: 1 - |P(row prefers self) - P(col prefers row)|)"
+        title = "Recognition Disagreement Matrix\n(Cell value = Disagreement score: |P(row recognizes self) - P(col chooses row)|)"
 
     ax.set_title(
         title,
@@ -407,9 +399,9 @@ def plot_agreement_heatmap(
     fig.text(
         0.5,
         0.01,
-        "High (green): Models agree on quality | "
-        "Low (red): Models disagree on quality | "
-        "Score = 1 - |P(row prefers self) - P(col prefers row)|",
+        "Low (red): Models agree on recognition | "
+        "High (green): Models disagree on recognition | "
+        "Score = |P(row recognizes self) - P(col chooses row)|",
         ha="center",
         fontsize=10,
         style="italic",
@@ -423,7 +415,7 @@ def plot_agreement_heatmap(
 
     # Save
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
-    print(f"  ✓ Saved agreement heatmap to: {output_path}")
+    print(f"  ✓ Saved disagreement heatmap to: {output_path}")
 
     plt.close()
 
@@ -495,7 +487,7 @@ def plot_evaluator_performance(
 def generate_summary_stats(
     df: pd.DataFrame,
     pivot: pd.DataFrame,
-    agreement_matrix: pd.DataFrame,
+    disagreement_matrix: pd.DataFrame,
     output_path: Path,
     experiment_title: str = "",
 ):
@@ -505,7 +497,7 @@ def generate_summary_stats(
 
     with open(output_path, "w") as f:
         f.write("=" * 70 + "\n")
-        f.write("PREFERENCE AGREEMENT ANALYSIS\n")
+        f.write("RECOGNITION DISAGREEMENT ANALYSIS\n")
         f.write("=" * 70 + "\n\n")
 
         # Overall stats
@@ -517,45 +509,49 @@ def generate_summary_stats(
         f.write(f"  Cancelled: {(df['status'] == 'cancelled').sum()}\n")
         f.write(f"  Started (incomplete): {(df['status'] == 'started').sum()}\n\n")
 
-        # Accuracy stats (preference rates)
+        # Accuracy stats (recognition rates)
         df_success = df[df["status"] == "success"]
         if len(df_success) > 0 and df_success["accuracy"].notna().any():
-            f.write("PREFERENCE STATISTICS\n")
+            f.write("RECOGNITION STATISTICS\n")
             f.write("-" * 70 + "\n")
-            f.write("(Accuracy = how often evaluator prefers its own output)\n\n")
-            f.write(f"Mean preference rate: {df_success['accuracy'].mean():.3f}\n")
-            f.write(f"Median preference rate: {df_success['accuracy'].median():.3f}\n")
+            f.write("(Accuracy = how often evaluator recognizes its own output)\n\n")
+            f.write(f"Mean recognition rate: {df_success['accuracy'].mean():.3f}\n")
+            f.write(f"Median recognition rate: {df_success['accuracy'].median():.3f}\n")
             f.write(f"Std deviation: {df_success['accuracy'].std():.3f}\n")
-            f.write(f"Min preference rate: {df_success['accuracy'].min():.3f}\n")
-            f.write(f"Max preference rate: {df_success['accuracy'].max():.3f}\n\n")
+            f.write(f"Min recognition rate: {df_success['accuracy'].min():.3f}\n")
+            f.write(f"Max recognition rate: {df_success['accuracy'].max():.3f}\n\n")
 
-        # Agreement stats
-        f.write("AGREEMENT STATISTICS\n")
+        # Disagreement stats
+        f.write("DISAGREEMENT STATISTICS\n")
         f.write("-" * 70 + "\n")
-        f.write("Agreement score: 1 - |P(row prefers self) - P(col prefers row)|\n")
-        f.write("Higher values indicate better agreement on quality.\n\n")
+        f.write("Disagreement score: |P(row recognizes self) - P(col chooses row)|\n")
+        f.write("Higher values indicate greater disagreement on recognition.\n\n")
 
-        valid_agreement = agreement_matrix[~agreement_matrix.isna()].values.flatten()
-        if len(valid_agreement) > 0:
-            f.write(f"Mean agreement: {np.mean(valid_agreement):.3f}\n")
-            f.write(f"Median agreement: {np.median(valid_agreement):.3f}\n")
-            f.write(f"Std deviation: {np.std(valid_agreement):.3f}\n")
-            f.write(f"Min agreement: {np.min(valid_agreement):.3f}\n")
-            f.write(f"Max agreement: {np.max(valid_agreement):.3f}\n\n")
+        valid_disagreement = disagreement_matrix[
+            ~disagreement_matrix.isna()
+        ].values.flatten()
+        if len(valid_disagreement) > 0:
+            f.write(f"Mean disagreement: {np.mean(valid_disagreement):.3f}\n")
+            f.write(f"Median disagreement: {np.median(valid_disagreement):.3f}\n")
+            f.write(f"Std deviation: {np.std(valid_disagreement):.3f}\n")
+            f.write(f"Min disagreement: {np.min(valid_disagreement):.3f}\n")
+            f.write(f"Max disagreement: {np.max(valid_disagreement):.3f}\n\n")
 
-            # Count high/low agreement
-            high_agreement = valid_agreement > 0.8
-            medium_agreement = (valid_agreement > 0.5) & (valid_agreement <= 0.8)
-            low_agreement = valid_agreement <= 0.5
+            # Count high/low disagreement
+            high_disagreement = valid_disagreement > 0.5
+            medium_disagreement = (valid_disagreement > 0.2) & (
+                valid_disagreement <= 0.5
+            )
+            low_disagreement = valid_disagreement <= 0.2
 
             f.write(
-                f"High agreement (>0.8): {high_agreement.sum()} / {len(valid_agreement)} ({100*high_agreement.sum()/len(valid_agreement):.1f}%)\n"
+                f"High disagreement (>0.5): {high_disagreement.sum()} / {len(valid_disagreement)} ({100*high_disagreement.sum()/len(valid_disagreement):.1f}%)\n"
             )
             f.write(
-                f"Medium agreement (0.5-0.8): {medium_agreement.sum()} / {len(valid_agreement)} ({100*medium_agreement.sum()/len(valid_agreement):.1f}%)\n"
+                f"Medium disagreement (0.2-0.5): {medium_disagreement.sum()} / {len(valid_disagreement)} ({100*medium_disagreement.sum()/len(valid_disagreement):.1f}%)\n"
             )
             f.write(
-                f"Low agreement (≤0.5): {low_agreement.sum()} / {len(valid_agreement)} ({100*low_agreement.sum()/len(valid_agreement):.1f}%)\n\n"
+                f"Low disagreement (≤0.2): {low_disagreement.sum()} / {len(valid_disagreement)} ({100*low_disagreement.sum()/len(valid_disagreement):.1f}%)\n\n"
             )
 
         # Pivot table dimensions
@@ -575,38 +571,40 @@ def generate_summary_stats(
             f"Missing evaluations: {len(pivot.index) * len(pivot.columns) - int(valid_comparisons) - len([m for m in pivot.index if m in pivot.columns])}\n\n"
         )
 
-        # Model-level agreement summary
-        f.write("MODEL-LEVEL AGREEMENT SUMMARY\n")
+        # Model-level disagreement summary
+        f.write("MODEL-LEVEL DISAGREEMENT SUMMARY\n")
         f.write("-" * 70 + "\n")
         f.write(
-            "Average agreement score for each model pair (row model vs column model)\n\n"
+            "Average disagreement score for each model pair (row model vs column model)\n\n"
         )
 
-        # Compute mean agreement per row (how well each model agrees with others)
-        row_means = agreement_matrix.mean(axis=1, skipna=True).sort_values(
-            ascending=False
+        # Compute mean disagreement per row (how much each model disagrees with others)
+        row_means = disagreement_matrix.mean(axis=1, skipna=True).sort_values(
+            ascending=True  # Lower disagreement first
         )
-        f.write("Average Agreement When Model is Evaluator:\n")
-        for model, mean_agreement in row_means.items():
-            f.write(f"  {model:<30} {mean_agreement:.3f}\n")
+        f.write("Average Disagreement When Model is Evaluator:\n")
+        for model, mean_disagreement in row_means.items():
+            f.write(f"  {model:<30} {mean_disagreement:.3f}\n")
         f.write("\n")
 
         # Generate evaluator performance plot
-        evaluator_plot_path = output_path.parent / "evaluator_agreement_performance.png"
+        evaluator_plot_path = (
+            output_path.parent / "evaluator_disagreement_performance.png"
+        )
         plot_evaluator_performance(
             row_means,
             evaluator_plot_path,
             experiment_title=experiment_title,
-            ylabel="Average Agreement Score (When Model is Evaluator)",
+            ylabel="Average Disagreement Score (When Model is Evaluator)",
         )
 
-        # Compute mean agreement per column (how well others agree with this model)
-        col_means = agreement_matrix.mean(axis=0, skipna=True).sort_values(
-            ascending=False
+        # Compute mean disagreement per column (how much others disagree with this model)
+        col_means = disagreement_matrix.mean(axis=0, skipna=True).sort_values(
+            ascending=True  # Lower disagreement first
         )
-        f.write("Average Agreement When Model is Treatment:\n")
-        for model, mean_agreement in col_means.items():
-            f.write(f"  {model:<30} {mean_agreement:.3f}\n")
+        f.write("Average Disagreement When Model is Treatment:\n")
+        for model, mean_disagreement in col_means.items():
+            f.write(f"  {model:<30} {mean_disagreement:.3f}\n")
         f.write("\n")
 
     print(f"  ✓ Saved summary to: {output_path}")
@@ -614,14 +612,14 @@ def generate_summary_stats(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Analyze preference agreement between models",
+        description="Analyze recognition disagreement between models",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--results_dir",
         type=str,
         required=True,
-        help="Path to directory containing eval logs (e.g., data/results/pku_saferlhf/mismatch_1-20/12_UT_PW-Q_Rec_Pr)",
+        help="Path to directory containing eval logs (e.g., data/results/pku_saferlhf/mismatch_1-20/17_UT_PW-Q_Rec_NPr_CoT)",
     )
 
     args = parser.parse_args()
@@ -647,7 +645,7 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"\n{'='*70}")
-    print("PREFERENCE AGREEMENT ANALYSIS")
+    print("RECOGNITION DISAGREEMENT ANALYSIS")
     print(f"{'='*70}")
     print(f"Results dir: {results_dir}")
     print(f"Output dir: {output_dir}")
@@ -668,7 +666,7 @@ def main():
         return
 
     # Save pivot table
-    pivot_path = output_dir / "preference_pivot.csv"
+    pivot_path = output_dir / "recognition_pivot.csv"
     pivot.to_csv(pivot_path)
     print(f"  ✓ Saved pivot table to: {pivot_path}\n")
 
@@ -683,44 +681,46 @@ def main():
 
     experiment_title = experiment_code.replace("_", " ").title()
 
-    # Compute agreement matrix
-    agreement_matrix = compute_agreement_matrix(pivot)
+    # Compute disagreement matrix
+    disagreement_matrix = compute_disagreement_matrix(pivot)
 
-    # Save agreement matrix
-    agreement_path = output_dir / "agreement_matrix.csv"
-    agreement_matrix.to_csv(agreement_path)
-    print(f"  ✓ Saved agreement matrix to: {agreement_path}\n")
+    # Save disagreement matrix
+    disagreement_path = output_dir / "disagreement_matrix.csv"
+    disagreement_matrix.to_csv(disagreement_path)
+    print(f"  ✓ Saved disagreement matrix to: {disagreement_path}\n")
 
-    # Generate agreement heatmap
-    agreement_heatmap_path = output_dir / "agreement_heatmap.png"
-    plot_agreement_heatmap(
-        agreement_matrix, agreement_heatmap_path, experiment_title=experiment_title
+    # Generate disagreement heatmap
+    disagreement_heatmap_path = output_dir / "disagreement_heatmap.png"
+    plot_disagreement_heatmap(
+        disagreement_matrix,
+        disagreement_heatmap_path,
+        experiment_title=experiment_title,
     )
     print()
 
     # Generate summary stats
-    summary_path = output_dir / "agreement_summary_stats.txt"
+    summary_path = output_dir / "disagreement_summary_stats.txt"
     generate_summary_stats(
-        df, pivot, agreement_matrix, summary_path, experiment_title=experiment_title
+        df, pivot, disagreement_matrix, summary_path, experiment_title=experiment_title
     )
     print()
 
     # Display preview
     print(f"{'='*70}")
-    print("PREVIEW: Agreement Matrix")
+    print("PREVIEW: Disagreement Matrix")
     print(f"{'='*70}\n")
-    print(agreement_matrix.round(3))
+    print(disagreement_matrix.round(3))
     print()
 
     print(f"{'='*70}")
     print("ANALYSIS COMPLETE")
     print(f"{'='*70}")
     print(f"Output directory: {output_dir}")
-    print("  • preference_pivot.csv: Raw preference data")
-    print("  • agreement_matrix.csv: Agreement scores")
-    print("  • agreement_heatmap.png: Agreement visualization")
-    print("  • evaluator_agreement_performance.png: Evaluator performance bar chart")
-    print("  • agreement_summary_stats.txt: Comprehensive statistics")
+    print("  • recognition_pivot.csv: Raw recognition data")
+    print("  • disagreement_matrix.csv: Disagreement scores")
+    print("  • disagreement_heatmap.png: Disagreement visualization")
+    print("  • evaluator_disagreement_performance.png: Evaluator performance bar chart")
+    print("  • disagreement_summary_stats.txt: Comprehensive statistics")
     print(f"{'='*70}\n")
 
 

@@ -1,9 +1,16 @@
 """Self-recognition tasks."""
 
+import os
+
 from inspect_ai import Task, task
 from inspect_ai.dataset import Sample
 from inspect_ai.solver import generate
-from inspect_ai.model import ChatMessageUser, ChatMessageAssistant, GenerateConfig
+from inspect_ai.model import (
+    ChatMessageUser,
+    ChatMessageAssistant,
+    GenerateConfig,
+    get_model,
+)
 from inspect_ai._util.content import ContentReasoning, ContentText
 
 from src.helpers.model_names import (
@@ -23,6 +30,38 @@ from src.helpers.utils import (
 )
 
 
+def _get_model_with_custom_base_url(model_name: str, inspect_model_str: str):
+    """
+    Get a Model object, handling custom base URLs for providers like XAI.
+
+    XAI (Grok) models use the OpenAI provider but need a different base URL.
+    This function checks for XAI_API_KEY and returns a properly configured Model.
+
+    Args:
+        model_name: Short model name (e.g., "grok-3-mini-thinking")
+        inspect_model_str: Inspect model string (e.g., "openai/grok-3-mini")
+
+    Returns:
+        Model object or string (for standard models)
+    """
+    # Check if this is an XAI/Grok model
+    if model_name.startswith("grok-"):
+        xai_api_key = os.environ.get("XAI_API_KEY")
+        if xai_api_key:
+            return get_model(
+                inspect_model_str,
+                base_url="https://api.x.ai/v1",
+                api_key=xai_api_key,
+            )
+        else:
+            raise ValueError(
+                f"XAI_API_KEY environment variable not set for model {model_name}"
+            )
+
+    # Standard models - return string (Task will resolve it)
+    return inspect_model_str
+
+
 def _configure_thinking_model_params(
     model_name: str,
     config: ExperimentConfig,
@@ -30,21 +69,28 @@ def _configure_thinking_model_params(
     model: str | None = None,
 ) -> None:
     """
-    Configure max_tokens and reasoning_tokens for thinking models.
+    Configure max_tokens, reasoning_tokens, and reasoning parameters for thinking models.
 
     For thinking models:
     - max_final_answer_tokens: Controls final answer output (separate from reasoning)
     - max_thinking_tokens: Used for reasoning_tokens parameter (where supported)
     - For models without separate reasoning_tokens (Together AI), max_tokens = max_thinking_tokens + max_final_answer_tokens
+    - reasoning_effort: OpenAI models only ("low", "medium", "high", default: "high")
+    - reasoning_summary: OpenAI models only (None, "auto", "last", "concise", default: None)
+    - reasoning_history: All thinking models ("all" or "none", default: "all")
 
     Args:
         model_name: Short model name (e.g., "sonnet-4.5-thinking")
-        config: ExperimentConfig with max_final_answer_tokens and max_thinking_tokens
+        config: ExperimentConfig with max_final_answer_tokens, max_thinking_tokens, and reasoning parameters
         config_params: Dictionary to update with GenerateConfig parameters
         model: Optional inspect model string (for provider detection)
     """
     if not is_thinking_model(model_name):
         return
+
+    # Set reasoning_history for all thinking models (default: "all")
+    if config.reasoning_history:
+        config_params["reasoning_history"] = config.reasoning_history
 
     # Determine provider if model string provided
     inspect_model_str = str(model) if model else None
@@ -61,12 +107,33 @@ def _configure_thinking_model_params(
                     else 4096
                 )
                 config_params["reasoning_tokens"] = reasoning_tokens
+
+                # For Anthropic models: max_tokens must be greater than thinking.budget_tokens
+                # This is an API requirement. We ensure max_tokens > reasoning_tokens.
+                if "max_tokens" not in config_params:
+                    if config.max_final_answer_tokens is not None:
+                        # User specified a limit - use it, but ensure it's > reasoning_tokens
+                        max_answer = config.max_final_answer_tokens
+                        config_params["max_tokens"] = max(
+                            max_answer, reasoning_tokens + 1
+                        )
+                    else:
+                        # User set null (no limit) - set to a high value to effectively be unlimited
+                        # Anthropic API supports up to 128k tokens, but we use 8192 as a practical "unlimited" value
+                        # This satisfies the API requirement (max_tokens > reasoning_tokens) while allowing
+                        # the model to generate long final answers
+                        config_params["max_tokens"] = max(8192, reasoning_tokens + 1)
             elif "openai" in inspect_model_str:
                 # OpenAI: reasoning_effort (no separate reasoning_tokens parameter)
-                config_params["reasoning_effort"] = "medium"
+                # Default to "high" if not specified in config
+                config_params["reasoning_effort"] = config.reasoning_effort or "high"
+                # Set reasoning_summary (default: None)
+                if config.reasoning_summary is not None:
+                    config_params["reasoning_summary"] = config.reasoning_summary
 
-        # For models with separate reasoning_tokens: max_tokens is for final answer only
+        # For models with separate reasoning_tokens (non-Anthropic): max_tokens is for final answer only
         # Use config.max_final_answer_tokens if set, otherwise reasonable default
+        # Note: Anthropic models are handled above with special logic
         if "max_tokens" not in config_params:
             if config.max_final_answer_tokens is not None:
                 config_params["max_tokens"] = config.max_final_answer_tokens
@@ -232,7 +299,9 @@ def pairwise_query(
 
     ensure_reasoning_type(config, model_name)
 
-    inspect_model: str = inspect_model_name(model_name)
+    inspect_model_str: str = inspect_model_name(model_name)
+    # Get model object (handles custom base URLs for XAI/Grok, etc.)
+    inspect_model = _get_model_with_custom_base_url(model_name, inspect_model_str)
 
     # Load dataset - control is always first (correct answers)
     dataset_samples = load_dataset_pairwise(
@@ -280,12 +349,11 @@ def pairwise_query(
 
     # Build GenerateConfig with optional logprobs
     config_params = {"system_message": config.system_prompt}
-    # Ensure prior reasoning blocks are preserved in the message history when
-    # evaluating thinking models (so CoT we insert remains visible to the model).
-    if is_thinking_model(model_name):
-        config_params["reasoning_history"] = "all"
-    # Configure thinking model parameters (max_tokens, reasoning_tokens)
-    _configure_thinking_model_params(model_name, config, config_params, inspect_model)
+    # Configure thinking model parameters (max_tokens, reasoning_tokens, reasoning_history, etc.)
+    # This will set reasoning_history from config if model is a thinking model
+    _configure_thinking_model_params(
+        model_name, config, config_params, inspect_model_str
+    )
     if logprobs:
         config_params["logprobs"] = True
         config_params["top_logprobs"] = 2
@@ -335,10 +403,13 @@ def pairwise_conversation_assistant_tags(
 
     ensure_reasoning_type(config, model_name)
 
-    inspect_model: str = inspect_model_name(model_name)
+    inspect_model_str: str = inspect_model_name(model_name)
+
+    # Get model object (handles custom base URLs for XAI, etc.)
+    inspect_model = _get_model_with_custom_base_url(model_name, inspect_model_str)
 
     # Check if evaluator is Anthropic (they have strict requirements for reasoning content)
-    is_anthropic_evaluator = "anthropic" in inspect_model.lower()
+    is_anthropic_evaluator = "anthropic" in inspect_model_str.lower()
 
     # Check if treatment models are Anthropic (to determine if we can use their reasoning format)
     # Get base model names (remove -thinking suffix and treatment suffixes)
@@ -505,11 +576,11 @@ def pairwise_conversation_assistant_tags(
 
     # Build GenerateConfig with optional logprobs
     config_params = {"system_message": config.system_prompt}
-    # Preserve prior reasoning blocks when evaluating thinking models.
-    if is_thinking_model(model_name):
-        config_params["reasoning_history"] = "all"
-    # Configure thinking model parameters (max_tokens, reasoning_tokens)
-    _configure_thinking_model_params(model_name, config, config_params, inspect_model)
+    # Configure thinking model parameters (max_tokens, reasoning_tokens, reasoning_history, etc.)
+    # This will set reasoning_history from config if model is a thinking model
+    _configure_thinking_model_params(
+        model_name, config, config_params, inspect_model_str
+    )
     if logprobs:
         config_params["logprobs"] = True
         config_params["top_logprobs"] = 2
@@ -558,7 +629,9 @@ def pairwise_conversation_user_tags(
 
     ensure_reasoning_type(config, model_name)
 
-    inspect_model: str = inspect_model_name(model_name)
+    inspect_model_str: str = inspect_model_name(model_name)
+    # Get model object (handles custom base URLs for XAI/Grok, etc.)
+    inspect_model = _get_model_with_custom_base_url(model_name, inspect_model_str)
 
     # Load dataset - control is always first (correct answers)
     dataset_samples = load_dataset_pairwise(
@@ -592,7 +665,9 @@ def pairwise_conversation_user_tags(
     # Build GenerateConfig with optional logprobs
     config_params = {"system_message": config.system_prompt}
     # Configure thinking model parameters (max_tokens, reasoning_tokens)
-    _configure_thinking_model_params(model_name, config, config_params, inspect_model)
+    _configure_thinking_model_params(
+        model_name, config, config_params, inspect_model_str
+    )
     if logprobs:
         config_params["logprobs"] = True
         config_params["top_logprobs"] = 2
@@ -641,7 +716,9 @@ def individual_conversation_assistant_tags(
 
     ensure_reasoning_type(config, model_name)
 
-    inspect_model: str = inspect_model_name(model_name)
+    inspect_model_str: str = inspect_model_name(model_name)
+    # Get model object (handles custom base URLs for XAI/Grok, etc.)
+    inspect_model = _get_model_with_custom_base_url(model_name, inspect_model_str)
 
     # Load dataset
     dataset_samples = load_dataset_individual(
@@ -684,11 +761,11 @@ def individual_conversation_assistant_tags(
 
     # Build GenerateConfig with optional logprobs
     config_params = {"system_message": config.system_prompt}
-    # Preserve prior reasoning blocks when evaluating thinking models.
-    if is_thinking_model(model_name):
-        config_params["reasoning_history"] = "all"
-    # Configure thinking model parameters (max_tokens, reasoning_tokens)
-    _configure_thinking_model_params(model_name, config, config_params, inspect_model)
+    # Configure thinking model parameters (max_tokens, reasoning_tokens, reasoning_history, etc.)
+    # This will set reasoning_history from config if model is a thinking model
+    _configure_thinking_model_params(
+        model_name, config, config_params, inspect_model_str
+    )
     if logprobs:
         config_params["logprobs"] = True
         config_params["top_logprobs"] = 2
@@ -734,7 +811,9 @@ def individual_conversation_user_tags(
     """
     config = exp_config
 
-    inspect_model: str = inspect_model_name(model_name)
+    inspect_model_str: str = inspect_model_name(model_name)
+    # Get model object (handles custom base URLs for XAI/Grok, etc.)
+    inspect_model = _get_model_with_custom_base_url(model_name, inspect_model_str)
 
     # Load dataset
     dataset_samples = load_dataset_individual(
@@ -769,7 +848,9 @@ def individual_conversation_user_tags(
     # Build GenerateConfig with optional logprobs
     config_params = {"system_message": config.system_prompt}
     # Configure thinking model parameters (max_tokens, reasoning_tokens)
-    _configure_thinking_model_params(model_name, config, config_params, inspect_model)
+    _configure_thinking_model_params(
+        model_name, config, config_params, inspect_model_str
+    )
     if logprobs:
         config_params["logprobs"] = True
         config_params["top_logprobs"] = 2
@@ -814,7 +895,9 @@ def individual_query(
     """
     config = exp_config
 
-    inspect_model: str = inspect_model_name(model_name)
+    inspect_model_str: str = inspect_model_name(model_name)
+    # Get model object (handles custom base URLs for XAI/Grok, etc.)
+    inspect_model = _get_model_with_custom_base_url(model_name, inspect_model_str)
 
     # Load dataset
     dataset_samples = load_dataset_individual(
@@ -899,10 +982,13 @@ def generation(
     if model_name.endswith("-thinking") and needs_reasoning_params(model_name):
         # Use base model name for API call (same endpoint, different params)
         base_model_name = get_base_model_name(model_name)
-        model = inspect_model_name(base_model_name)
+        inspect_model_str = inspect_model_name(base_model_name)
     else:
         # Use model name as-is (either non-thinking or different endpoint)
-        model = inspect_model_name(model_name)
+        inspect_model_str = inspect_model_name(model_name)
+
+    # Get model object (handles custom base URLs for XAI, etc.)
+    model = _get_model_with_custom_base_url(model_name, inspect_model_str)
 
     # create base samples
     inspect_samples = []
@@ -938,7 +1024,9 @@ def generation(
     # Configure thinking model parameters (max_tokens, reasoning_tokens)
     # Note: max_tokens may already be set from config.max_final_answer_tokens above (line 927)
     # The helper will respect existing max_tokens and only set it if not present
-    _configure_thinking_model_params(model_name, config, generate_config_params, model)
+    _configure_thinking_model_params(
+        model_name, config, generate_config_params, inspect_model_str
+    )
 
     return Task(
         dataset=inspect_samples,

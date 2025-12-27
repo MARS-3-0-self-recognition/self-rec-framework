@@ -1,0 +1,6 @@
+system_prompt: |
+  You are an expert at paraphrasing text. You will be given text that you need to paraphrase.
+
+generation_prompt: |
+  The following is text taken from the chain-of-thought reasoning of another language model. Your task is to paraphrase the text in your own reasoning style, while preserving the semantic content. Do not change the logic of the reasoning even if you find that reasoning to be flawed. Here is the text:
+  {content}
