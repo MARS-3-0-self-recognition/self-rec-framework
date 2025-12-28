@@ -63,19 +63,29 @@ def logprob_scorer():
         # Case 2: fallback to generated text
         completion = state.output.completion.strip()
 
-        # First check the very first token
-        first_char = completion[0] if completion else ""
-        if first_char in {"1", "2"}:
-            pred = first_char
+        # Strip <think>...</think> tags if present (e.g., Together AI Qwen 235b)
+        import re
+
+        clean_completion = re.sub(
+            r"<think>.*?</think>", "", completion, flags=re.DOTALL
+        ).strip()
+        if not clean_completion:
+            # If only thinking tags, use last char of original completion
+            clean_completion = completion
+
+        # Check last character first (common for models that output reasoning then answer)
+        pred = None
+        if clean_completion and clean_completion[-1] in {"1", "2"}:
+            pred = clean_completion[-1]
+        # Check first character
+        elif clean_completion and clean_completion[0] in {"1", "2"}:
+            pred = clean_completion[0]
         else:
-            # Scan for first occurrence of "1" or "2"
-            pred = None
-            for ch in completion:
+            # Scan for first occurrence of "1" or "2" in cleaned completion
+            for ch in clean_completion:
                 if ch in {"1", "2"}:
                     pred = ch
-                    sys.stderr.write(
-                        f"[fallback] Found answer later in completion: {pred}\n"
-                    )
+                    sys.stderr.write(f"[fallback] Found answer in completion: {pred}\n")
                     break
 
         if pred is None:
@@ -99,14 +109,81 @@ def logprob_scorer():
 
 @scorer(metrics=[mean(), std()])
 def answer_length_scorer():
-    """Scorer that makes model output as 'answer' such that it shows in .eval table and also counts number of characters in answer."""
+    """Scorer that records answer length and optionally captures reasoning/CoT."""
+
+    def _extract_reasoning(state: TaskState) -> tuple[str | None, str | None]:
+        """
+        Return concatenated reasoning blocks and signature (if any) from the model output.
+
+        Handles different model providers:
+        - Anthropic: reasoning in message.content with signature
+          * Claude 3.7 Sonnet: Should return full CoT by default, but may provide summaries in practice
+          * Claude 4.x models: Returns summarized CoT by default (API limitation)
+        - OpenAI o-series: reasoning in message.content (may be empty if reasoning_summary not enabled)
+        - Together AI (Qwen, DeepSeek): reasoning in message.content
+
+        Note: This function extracts whatever is in the `reasoning` field. For Claude 4.x models,
+        this will be summaries, not full reasoning text, due to API behavior.
+
+        Returns:
+            Tuple of (reasoning_text, signature) where signature may be None
+        """
+        try:
+            message = state.output.message
+        except Exception:
+            # Fallback: try accessing via choices (for OpenAI models)
+            try:
+                choices = getattr(state.output, "choices", None)
+                if choices and len(choices) > 0:
+                    message = getattr(choices[0], "message", None)
+                else:
+                    return None, None
+            except Exception:
+                return None, None
+
+        if message is None:
+            return None, None
+
+        content = getattr(message, "content", None)
+        if isinstance(content, str):
+            return None, None
+
+        reasoning_chunks: list[str] = []
+        signatures: list[str] = []
+        if isinstance(content, list):
+            for part in content:
+                if getattr(part, "type", None) == "reasoning":
+                    reasoning_text = getattr(part, "reasoning", None)
+                    if reasoning_text:
+                        reasoning_chunks.append(reasoning_text.strip())
+                    # Extract signature if present (for Anthropic and OpenAI models)
+                    signature = getattr(part, "signature", None)
+                    if signature:
+                        signatures.append(signature)
+
+        reasoning_text = None
+        if reasoning_chunks:
+            reasoning_text = "\n\n".join(chunk for chunk in reasoning_chunks if chunk)
+
+        # Use the first signature if available (Anthropic/OpenAI typically have one per message)
+        signature = signatures[0] if signatures else None
+
+        return reasoning_text, signature
 
     async def score(state: TaskState, target: Target) -> Score:
         answer = state.output.completion
+        cot, signature = _extract_reasoning(state)
+        metadata = {"uuid": state.metadata["uuid"]}
+        if cot:
+            metadata["cot"] = cot
+        if signature:
+            metadata["cot_signature"] = signature
+
         return Score(
             value=len(answer),
             uuid=state.metadata["uuid"],
             answer=answer,
+            metadata=metadata,
         )
 
     return score

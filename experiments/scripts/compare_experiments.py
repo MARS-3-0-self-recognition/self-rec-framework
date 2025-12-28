@@ -26,6 +26,7 @@ import seaborn as sns
 import numpy as np
 from scipy import stats
 from inspect_ai.log import read_eval_log
+import yaml
 
 
 def get_experiment_name_mapping() -> dict[str, str]:
@@ -109,7 +110,32 @@ def get_experiment_title(results_dir: Path) -> str:
     return mapping.get(code, code)
 
 
-def get_model_order() -> list[str]:
+def derive_config_path(results_dir: Path) -> Path | None:
+    """
+    Given a results directory, attempt to locate the corresponding experiment config.
+
+    Expected layout:
+      results_dir: data/results/.../{experiment_name}
+      config:      experiments/{experiment_name}/config.yaml
+    """
+    experiment_name = results_dir.name
+    candidate = Path("experiments") / experiment_name / "config.yaml"
+    return candidate if candidate.exists() else None
+
+
+def load_model_type(config_path: Path | None) -> str | None:
+    """Load model_type from a config.yaml if available."""
+    if config_path is None or not config_path.exists():
+        return None
+    try:
+        with open(config_path, "r") as f:
+            cfg = yaml.safe_load(f) or {}
+        return cfg.get("model_type")
+    except Exception:
+        return None
+
+
+def get_model_order(model_type: str | None = None) -> list[str]:
     """
     Define the canonical order for models in the pivot table and heatmap.
 
@@ -118,6 +144,19 @@ def get_model_order() -> list[str]:
     Returns:
         List of model names in display order
     """
+    if model_type and model_type.lower() == "cot":
+        return [
+            "gpt-oss-20b-thinking",
+            "gpt-oss-120b-thinking",
+            "sonnet-3.7-thinking",
+            "grok-3-mini-thinking",
+            "ll-3.3-70b-dsR1-thinking",
+            "qwen-3.0-80b-thinking",
+            "qwen-3.0-235b-thinking",
+            "deepseek-r1-thinking",
+            "kimi-k2-thinking",
+        ]
+
     return [
         # OpenAI (weakest to strongest)
         "gpt-4o-mini",
@@ -356,7 +395,7 @@ def load_sample_level_results(
     return results
 
 
-def load_pivot_table(results_dir: Path) -> pd.DataFrame:
+def load_pivot_table(results_dir: Path, model_order: list[str]) -> pd.DataFrame:
     """
     Load pre-computed accuracy pivot table from analysis directory.
 
@@ -390,12 +429,15 @@ def load_pivot_table(results_dir: Path) -> pd.DataFrame:
     # Load with index column
     pivot = pd.read_csv(pivot_path, index_col=0)
 
-    # Reorder rows and columns according to canonical model order
-    model_order = get_model_order()
-
     # Filter to only models that exist in the data
     row_order = [m for m in model_order if m in pivot.index]
     col_order = [m for m in model_order if m in pivot.columns]
+
+    # If no overlap, keep original ordering to avoid empty pivots
+    if not row_order:
+        row_order = list(pivot.index)
+    if not col_order:
+        col_order = list(pivot.columns)
 
     # Reindex to apply ordering
     pivot = pivot.reindex(index=row_order, columns=col_order)
@@ -403,7 +445,9 @@ def load_pivot_table(results_dir: Path) -> pd.DataFrame:
     return pivot
 
 
-def compute_difference(pivot1: pd.DataFrame, pivot2: pd.DataFrame) -> pd.DataFrame:
+def compute_difference(
+    pivot1: pd.DataFrame, pivot2: pd.DataFrame, model_order: list[str]
+) -> pd.DataFrame:
     """
     Compute difference between two pivot tables (pivot1 - pivot2).
 
@@ -415,9 +459,6 @@ def compute_difference(pivot1: pd.DataFrame, pivot2: pd.DataFrame) -> pd.DataFra
         Difference matrix
     """
     print("Computing difference (experiment1 - experiment2)...")
-
-    # Ensure both pivot tables are ordered according to canonical model order
-    model_order = get_model_order()
 
     # Get union of all models from both pivots, ordered by canonical order
     all_rows = [m for m in model_order if m in pivot1.index or m in pivot2.index]
@@ -433,28 +474,34 @@ def compute_difference(pivot1: pd.DataFrame, pivot2: pd.DataFrame) -> pd.DataFra
     return diff
 
 
-def compute_paired_ttests(
+def compute_mcnemar_tests(
     results1: dict[tuple[str, str], list[int]],
     results2: dict[tuple[str, str], list[int]],
     pivot1: pd.DataFrame,
     pivot2: pd.DataFrame,
+    model_order: list[str],
 ) -> tuple[pd.DataFrame, dict]:
     """
-    Perform paired t-tests comparing sample-level results between two experiments.
+    Perform McNemar's tests comparing sample-level binary results between two experiments.
+
+    McNemar's test is appropriate for paired binary data. It focuses on discordant pairs:
+    - b = cases where exp1 correct, exp2 incorrect
+    - c = cases where exp1 incorrect, exp2 correct
+
+    The test statistic is: chi2 = (b - c)^2 / (b + c)
+    For small samples (b + c < 25), uses exact binomial test instead.
 
     Args:
         results1: Sample-level results from experiment 1
         results2: Sample-level results from experiment 2
         pivot1: Pivot table from experiment 1 (for structure)
         pivot2: Pivot table from experiment 2 (for structure)
+        model_order: Canonical model ordering
 
     Returns:
         Tuple of (p_values DataFrame, overall_stats dict)
     """
-    print("Performing paired t-tests...")
-
-    # Ensure both pivot tables are ordered according to canonical model order
-    model_order = get_model_order()
+    print("Performing McNemar's tests...")
 
     # Get union of all models from both pivots, ordered by canonical order
     all_rows = [m for m in model_order if m in pivot1.index or m in pivot2.index]
@@ -463,8 +510,9 @@ def compute_paired_ttests(
     # Initialize p-values matrix with NaN, using canonical order
     p_values = pd.DataFrame(np.nan, index=all_rows, columns=all_cols)
 
-    # Collect all paired differences for overall test
-    all_diffs = []
+    # Collect all discordant pairs for overall test
+    total_b = 0  # exp1 correct, exp2 incorrect
+    total_c = 0  # exp1 incorrect, exp2 correct
 
     # For each (evaluator, treatment) cell
     tested_cells = 0
@@ -484,7 +532,7 @@ def compute_paired_ttests(
                 samples2 = results2[key]
 
                 # Check that we have the same number of samples
-                if len(samples1) == len(samples2) and len(samples1) > 1:
+                if len(samples1) == len(samples2) and len(samples1) > 0:
                     # Filter out positions where either experiment has None (failed samples)
                     valid_pairs = [
                         (s1, s2)
@@ -492,55 +540,83 @@ def compute_paired_ttests(
                         if s1 is not None and s2 is not None
                     ]
 
-                    # Need at least 2 valid pairs for t-test
-                    if len(valid_pairs) < 2:
+                    if len(valid_pairs) == 0:
                         continue
 
-                    # Unzip back into separate lists
-                    valid_samples1, valid_samples2 = zip(*valid_pairs)
+                    # Count discordant pairs
+                    # b = exp1 correct (1), exp2 incorrect (0)
+                    # c = exp1 incorrect (0), exp2 correct (1)
+                    b = sum(1 for s1, s2 in valid_pairs if s1 == 1 and s2 == 0)
+                    c = sum(1 for s1, s2 in valid_pairs if s1 == 0 and s2 == 1)
 
-                    # Compute differences
-                    diffs = np.array(valid_samples1) - np.array(valid_samples2)
+                    # Accumulate for overall test
+                    total_b += b
+                    total_c += c
 
-                    # Check if all differences are zero (identical results)
-                    if np.all(diffs == 0):
-                        # No variance, so no difference - set p=1.0
+                    # McNemar's test
+                    n_discordant = b + c
+
+                    if n_discordant == 0:
+                        # No discordant pairs - no difference
                         p_value = 1.0
+                    elif n_discordant < 25:
+                        # Use exact binomial test for small samples
+                        # H0: P(b) = P(c) = 0.5
+                        # Two-sided test: probability of observing b or more extreme
+                        p_value = stats.binomtest(
+                            b, n_discordant, 0.5, alternative="two-sided"
+                        ).pvalue
                     else:
-                        # Perform paired t-test
-                        t_stat, p_value = stats.ttest_rel(
-                            valid_samples1, valid_samples2
-                        )
+                        # Use chi-squared approximation (with continuity correction)
+                        # McNemar's chi-squared: (|b - c| - 1)^2 / (b + c)
+                        chi2 = (abs(b - c) - 1) ** 2 / n_discordant
+                        p_value = 1 - stats.chi2.cdf(chi2, df=1)
 
                     p_values.loc[evaluator, treatment] = p_value
-
-                    # Collect differences for overall test
-                    all_diffs.extend(diffs)
 
                     tested_cells += 1
                     if p_value < 0.05:
                         significant_cells += 1
 
-    print(f"  ✓ Performed {tested_cells} paired t-tests")
+    print(f"  ✓ Performed {tested_cells} McNemar's tests")
     print(f"  ✓ Found {significant_cells} significant differences (p < 0.05)")
 
-    # Overall test: one-sample t-test on all paired differences
-    # H0: mean difference = 0 (no overall difference between experiments)
+    # Overall test: McNemar's test on aggregated discordant pairs
+    # H0: P(exp1 correct, exp2 incorrect) = P(exp1 incorrect, exp2 correct)
     overall_stats = None
-    if all_diffs:
-        all_diffs = np.array(all_diffs)
-        t_stat_overall, p_value_overall = stats.ttest_1samp(all_diffs, 0)
+    n_discordant_total = total_b + total_c
+
+    if n_discordant_total > 0:
+        # Calculate effect size: proportion of discordant pairs favoring exp1
+        prop_favoring_exp1 = (
+            total_b / n_discordant_total if n_discordant_total > 0 else 0.5
+        )
+
+        if n_discordant_total < 25:
+            # Exact binomial test
+            p_value_overall = stats.binomtest(
+                total_b, n_discordant_total, 0.5, alternative="two-sided"
+            ).pvalue
+            test_type = "exact binomial"
+        else:
+            # Chi-squared approximation with continuity correction
+            chi2_overall = (abs(total_b - total_c) - 1) ** 2 / n_discordant_total
+            p_value_overall = 1 - stats.chi2.cdf(chi2_overall, df=1)
+            test_type = "chi-squared"
+
         overall_stats = {
-            "n_samples": len(all_diffs),
-            "mean_diff": np.mean(all_diffs),
-            "std_diff": np.std(all_diffs),
-            "t_statistic": t_stat_overall,
+            "n_discordant": n_discordant_total,
+            "b_exp1_better": total_b,
+            "c_exp2_better": total_c,
+            "prop_favoring_exp1": prop_favoring_exp1,
+            "test_type": test_type,
             "p_value": p_value_overall,
             "significant": p_value_overall < 0.05,
         }
-        print(f"  ✓ Overall t-test: t={t_stat_overall:.3f}, p={p_value_overall:.4f}")
+        print(f"  ✓ Overall McNemar's test ({test_type}): p={p_value_overall:.4f}")
+        print(f"    Discordant pairs: {total_b} favor exp1, {total_c} favor exp2")
     else:
-        print("  ⚠ No valid paired differences found for overall t-test")
+        print("  ⚠ No discordant pairs found for overall test")
 
     return p_values, overall_stats
 
@@ -737,19 +813,28 @@ def generate_summary_stats(
 
         # Overall statistical test
         if overall_stats:
-            f.write("OVERALL PAIRED T-TEST\n")
+            f.write("OVERALL McNEMAR'S TEST\n")
             f.write("-" * 70 + "\n")
-            f.write(f"Total paired samples: {overall_stats['n_samples']}\n")
-            f.write(f"Mean difference: {overall_stats['mean_diff']:.4f}\n")
-            f.write(f"Std deviation: {overall_stats['std_diff']:.4f}\n")
-            f.write(f"t-statistic: {overall_stats['t_statistic']:.3f}\n")
+            f.write(f"Total discordant pairs: {overall_stats['n_discordant']}\n")
+            f.write(
+                f"  Exp1 correct, Exp2 incorrect (b): {overall_stats['b_exp1_better']}\n"
+            )
+            f.write(
+                f"  Exp1 incorrect, Exp2 correct (c): {overall_stats['c_exp2_better']}\n"
+            )
+            f.write(
+                f"Proportion favoring Exp1: {overall_stats['prop_favoring_exp1']:.3f}\n"
+            )
+            f.write(f"Test type: {overall_stats['test_type']}\n")
             f.write(f"p-value: {overall_stats['p_value']:.6f}\n")
             f.write(
                 f"Result: {'SIGNIFICANT' if overall_stats['significant'] else 'NOT SIGNIFICANT'} at α=0.05\n"
             )
             if overall_stats["significant"]:
-                direction = "HIGHER" if overall_stats["mean_diff"] > 0 else "LOWER"
-                f.write(f"Conclusion: Experiment 1 has {direction} accuracy overall\n")
+                if overall_stats["b_exp1_better"] > overall_stats["c_exp2_better"]:
+                    f.write("Conclusion: Experiment 1 has HIGHER accuracy overall\n")
+                else:
+                    f.write("Conclusion: Experiment 2 has HIGHER accuracy overall\n")
             else:
                 f.write(
                     "Conclusion: No significant overall difference between experiments\n"
@@ -770,7 +855,7 @@ def generate_summary_stats(
                                 sig_count += 1
 
             if total_tests > 0:
-                f.write("CELL-WISE PAIRED T-TESTS\n")
+                f.write("CELL-WISE McNEMAR'S TESTS\n")
                 f.write("-" * 70 + "\n")
                 f.write(f"Total tests performed: {total_tests}\n")
                 f.write(
@@ -780,10 +865,10 @@ def generate_summary_stats(
                     f"Non-significant: {total_tests - sig_count} ({(total_tests-sig_count)/total_tests*100:.1f}%)\n\n"
                 )
             else:
-                f.write("CELL-WISE PAIRED T-TESTS\n")
+                f.write("CELL-WISE McNEMAR'S TESTS\n")
                 f.write("-" * 70 + "\n")
                 f.write(
-                    "No valid paired t-tests could be performed (insufficient overlapping data)\n\n"
+                    "No valid McNemar's tests could be performed (insufficient overlapping data)\n\n"
                 )
 
         if len(flat_diff) > 0:
@@ -1081,6 +1166,32 @@ def main():
         required=True,
         help="Path to second experiment results directory",
     )
+    parser.add_argument(
+        "--config1",
+        type=str,
+        default=None,
+        help="Optional path to config for experiment1 (to infer model_type)",
+    )
+    parser.add_argument(
+        "--config2",
+        type=str,
+        default=None,
+        help="Optional path to config for experiment2 (to infer model_type)",
+    )
+    parser.add_argument(
+        "--model_type1",
+        type=str,
+        choices=["CoT", "DR"],
+        default=None,
+        help='Override model set for experiment1 ("CoT" uses thinking subset)',
+    )
+    parser.add_argument(
+        "--model_type2",
+        type=str,
+        choices=["CoT", "DR"],
+        default=None,
+        help='Override model set for experiment2 ("CoT" uses thinking subset)',
+    )
 
     args = parser.parse_args()
 
@@ -1094,6 +1205,25 @@ def main():
     if not exp2_dir.exists():
         print(f"❌ Error: Experiment 2 directory not found: {exp2_dir}")
         return
+
+    # Resolve config paths (provided or derived) and model types
+    config1_path = Path(args.config1) if args.config1 else derive_config_path(exp1_dir)
+    config2_path = Path(args.config2) if args.config2 else derive_config_path(exp2_dir)
+
+    model_type1 = args.model_type1 or load_model_type(config1_path)
+    model_type2 = args.model_type2 or load_model_type(config2_path)
+
+    model_order1 = get_model_order(model_type1)
+    model_order2 = get_model_order(model_type2)
+
+    # Combined model order preserves ordering across both experiments
+    combined_model_order: list[str] = []
+    for lst in (model_order1, model_order2):
+        for m in lst:
+            if m not in combined_model_order:
+                combined_model_order.append(m)
+    if not combined_model_order:
+        combined_model_order = model_order1 or model_order2
 
     # Get experiment codes and titles
     exp1_code = get_experiment_code(exp1_dir)
@@ -1193,21 +1323,25 @@ def main():
     print(f"              {exp1_dir}")
     if is_cross_dataset and exp1_info:
         print(f"              Dataset: {exp1_info[0]}/{exp1_info[1]}")
+    if model_type1:
+        print(f"              model_type: {model_type1}")
     print(f"Experiment 2: {exp2_title}")
     print(f"              {exp2_dir}")
     if is_cross_dataset and exp2_info:
         print(f"              Dataset: {exp2_info[0]}/{exp2_info[1]}")
+    if model_type2:
+        print(f"              model_type: {model_type2}")
     print(f"Output dir:   {output_dir}")
     print(f"{'='*70}\n")
 
     # Load pivot tables
     try:
         print("Loading pivot tables...")
-        pivot1 = load_pivot_table(exp1_dir)
+        pivot1 = load_pivot_table(exp1_dir, model_order1)
         print(
             f"  ✓ Loaded experiment 1: {pivot1.shape[0]} evaluators × {pivot1.shape[1]} treatments"
         )
-        pivot2 = load_pivot_table(exp2_dir)
+        pivot2 = load_pivot_table(exp2_dir, model_order2)
         print(
             f"  ✓ Loaded experiment 2: {pivot2.shape[0]} evaluators × {pivot2.shape[1]} treatments\n"
         )
@@ -1216,7 +1350,7 @@ def main():
         return
 
     # Compute difference
-    diff = compute_difference(pivot1, pivot2)
+    diff = compute_difference(pivot1, pivot2, combined_model_order)
     print(
         f"  ✓ Computed differences: {diff.shape[0]} evaluators × {diff.shape[1]} treatments\n"
     )
@@ -1228,7 +1362,9 @@ def main():
     print()
 
     # Perform paired t-tests
-    p_values, overall_stats = compute_paired_ttests(results1, results2, pivot1, pivot2)
+    p_values, overall_stats = compute_mcnemar_tests(
+        results1, results2, pivot1, pivot2, combined_model_order
+    )
     print()
 
     # Save difference matrix

@@ -16,14 +16,33 @@ class ExperimentConfig:
     format: str  # "PW-C", "PW-Q", "IND-C", "IND-Q"
     task: str  # "Rec" or "Pref" or "Pref-N", "Pref-S", "Pref-Q" (N=Neutral, S=Submission, Q=Quality)
     priming: bool
+    # Optional selector for SR reasoning style (e.g., "Instruct", "Pseudo-CoT", "CoT")
+    sr_reasoning_type: Optional[str] = None
     dataset_name: Optional[str] = (
         None  # Optional, will be inferred from dataset path if not provided
     )
 
     # Generation parameters
     temperature: Optional[float] = None
-    max_tokens: Optional[int] = None
+    max_final_answer_tokens: Optional[int] = None
+    max_thinking_tokens: Optional[int] = (
+        None  # Max tokens for thinking models (default: 8192)
+    )
     seed: Optional[int] = None
+
+    # Reasoning parameters for thinking models
+    reasoning_effort: Optional[str] = (
+        "high"  # OpenAI: "low", "medium", "high" (default: "high")
+    )
+    reasoning_summary: Optional[str] = (
+        None  # OpenAI: None, "auto", "last", "concise" (default: None)
+    )
+    reasoning_history: Optional[str] = "all"  # "all" or "none" (default: "all")
+
+    # Prompt variant selection
+    # Controls how generator outputs are inserted into UT transcripts
+    # Valid values: "FA" | "CoT" | "CoT-FA"
+    generator_output: Optional[str] = None
 
     # Built prompts (set after initialization)
     generation_prompt: Optional[str] = None
@@ -68,14 +87,42 @@ def load_experiment_config(
         priming=config_dict.get("priming", False),
         dataset_name=dataset_name,
         temperature=config_dict.get("temperature"),
-        max_tokens=config_dict.get("max_tokens"),
+        max_final_answer_tokens=config_dict.get("max_final_answer_tokens")
+        or config_dict.get("max_tokens"),  # Backward compat
+        max_thinking_tokens=config_dict.get("max_thinking_tokens"),
         seed=config_dict.get("seed"),
+        sr_reasoning_type=config_dict.get("sr_reasoning_type"),
+        generator_output=config_dict.get("generator_output"),
+        reasoning_effort=config_dict.get("reasoning_effort", "high"),
+        reasoning_summary=config_dict.get("reasoning_summary", None),
+        reasoning_history=config_dict.get("reasoning_history", "all"),
     )
 
     # Build prompts automatically
     _build_prompts(exp_config)
 
     return exp_config
+
+
+def ensure_reasoning_type(
+    exp_config: ExperimentConfig, evaluator_model_name: str
+) -> None:
+    """
+    Set a default SR reasoning type based on evaluator model name if none is provided,
+    then rebuild prompts so SR_task_prompt reflects the selection.
+
+    Default: "CoT" for models ending with "-thinking", otherwise "Instruct".
+    Caller should invoke this before using SR_task_prompt in evaluation tasks.
+    """
+    if exp_config.sr_reasoning_type is not None:
+        return
+
+    exp_config.sr_reasoning_type = (
+        "CoT" if evaluator_model_name.endswith("-thinking") else "Instruct"
+    )
+
+    # Rebuild prompts to reflect the selected reasoning type
+    _build_prompts(exp_config)
 
 
 def load_base_prompts() -> dict:
@@ -101,7 +148,7 @@ def load_dataset_prompts(dataset_name: str) -> dict:
 def create_generation_config(
     dataset_name: str,
     temperature: float = None,
-    max_tokens: int = None,
+    max_final_answer_tokens: int = None,
     seed: int = None,
 ) -> ExperimentConfig:
     """
@@ -113,7 +160,7 @@ def create_generation_config(
     Args:
         dataset_name: Dataset name
         temperature: Generation temperature
-        max_tokens: Max tokens for generation
+        max_final_answer_tokens: Max tokens for final answer generation
         seed: Random seed
 
     Returns:
@@ -130,7 +177,7 @@ def create_generation_config(
         priming=False,
         dataset_name=dataset_name,
         temperature=temperature,
-        max_tokens=max_tokens,
+        max_final_answer_tokens=max_final_answer_tokens,
         seed=seed,
     )
 
@@ -251,24 +298,71 @@ def _build_prompts(exp_config: ExperimentConfig) -> None:
     # Get SR task template: SR_task[pair_type][format_type][base_task]
     # Use base_task ("Pref" or "Rec") for template lookup
     try:
+        # Rec tasks can have generator_output variants (FA / CoT / CoT-FA)
         sr_task_keys = [pair_type, format_type, base_task]
+        if base_task == "Rec":
+            generator_output = exp_config.generator_output
+            if generator_output is None:
+                if exp_config.sr_reasoning_type == "CoT":
+                    generator_output = "CoT-FA"
+                elif exp_config.sr_reasoning_type:
+                    generator_output = "FA"
+                else:
+                    generator_output = "FA"
+            sr_task_keys.append(generator_output)
+
         sr_task_template = _get_nested_prompt(
             base_prompts["SR_task"], sr_task_keys, allow_all=False
         )
     except KeyError as e:
         raise ValueError(
             f"SR task not implemented for combination: "
-            f"format={exp_config.format}, task={exp_config.task}"
+            f"format={exp_config.format}, task={exp_config.task} "
+            f"generator_output={exp_config.generator_output}"
         ) from e
 
     # Replace SR_task_preface, but keep other placeholders for per-sample formatting
     # (e.g., {correct_choice_token}, {incorrect_choice_token} for IND-C tasks)
     sr_task_prompt = sr_task_template.replace("{SR_task_preface}", sr_task_preface)
 
-    # For preference tasks, replace preference builder placeholders
+    # Build reasoning+format string using SR_task_prompt_builder
+    # Select reasoning style: match generator_output default logic
+    # If sr_reasoning_type is not provided, default to "Instruct" (not "CoT")
+    # to align with generator_output="FA" default
+    if exp_config.sr_reasoning_type is None:
+        # Default to "Instruct" when no reasoning type specified
+        # This aligns with generator_output="FA" default (no CoT in output)
+        reasoning_type = "Instruct"
+    else:
+        reasoning_type = exp_config.sr_reasoning_type
+    try:
+        reasoning_template = base_prompts["SR_task_prompt_builder"]["Reasoning"][
+            reasoning_type
+        ].strip()
+    except KeyError as e:
+        raise ValueError(f"Unknown reasoning type: {reasoning_type}") from e
+
+    # Select format string; try nested path [pair_type, format_type], with "All" fallback
+    try:
+        format_template = _get_nested_prompt(
+            base_prompts["SR_task_prompt_builder"]["Format"],
+            [pair_type, format_type],
+            allow_all=True,
+        ).strip()
+    except KeyError as e:
+        raise ValueError(
+            f"Format not implemented for pair_type={pair_type}, format_type={format_type}"
+        ) from e
+
+    reasoning_format_text = reasoning_template.replace("{Format}", format_template)
+
+    # Insert reasoning+format into SR task prompt
+    sr_task_prompt = sr_task_prompt.replace(
+        "{SR_task_prompt_builder_Reasoning_Format}", reasoning_format_text
+    )
+
+    # For preference tasks, replace preference type placeholder using new builder
     if base_task == "Pref":
-        # Parse preference type: "Pref-N" → "Neutral", "Pref-S" → "Submission", "Pref-Q" → "Quality"
-        # Default to "Neutral" if just "Pref" (backward compatibility)
         pref_type_map = {
             "N": "Neutral",
             "S": "Submission",
@@ -279,35 +373,53 @@ def _build_prompts(exp_config: ExperimentConfig) -> None:
             pref_suffix = exp_config.task.split("-")[1]
             pref_type = pref_type_map.get(pref_suffix, "Neutral")
         else:
-            # Backward compatibility: default to Neutral if no suffix
             pref_type = "Neutral"
 
-        # Get preference type text
-        pref_type_text = base_prompts["SR_task_pref_builder"]["Type"][pref_type].strip()
+        try:
+            pref_type_text = base_prompts["SR_task_prompt_builder"]["Pref"]["Type"][
+                pref_type
+            ].strip()
+        except KeyError as e:
+            raise ValueError(f"Preference type not implemented: {pref_type}") from e
 
-        # Get preference format text
-        pref_format_text = base_prompts["SR_task_pref_builder"]["Format"].strip()
-
-        # Replace placeholders
         sr_task_prompt = sr_task_prompt.replace(
-            "{SR_task_pref_builder_type}", pref_type_text
-        )
-        sr_task_prompt = sr_task_prompt.replace(
-            "{SR_task_pref_builder_format}", pref_format_text
+            "{SR_task_prompt_builder_Pref_Type}", pref_type_text
         )
 
     # For UT (user tags), we need to build the transcript prefix
     if exp_config.tags == "UT":
         transcript_preface = base_prompts["UT_transcript"]["preface"].strip()
-        # Get transcript template: UT_transcript[pair_type][format_type]
+        # Decide which generator output variant to use.
+        # Default: FA for non-CoT runs; CoT-FA when reasoning type is CoT and no override is provided.
+        generator_output = exp_config.generator_output
+        if generator_output is None:
+            if exp_config.sr_reasoning_type == "CoT":
+                generator_output = "CoT-FA"
+            elif exp_config.sr_reasoning_type:
+                generator_output = "FA"
+            else:
+                generator_output = "FA"
+
+        # Get transcript template:
+        #   - Pairwise (PW-*): UT_transcript[pair_type][format_type][generator_output]
+        #   - Individual (IND-*): UT_transcript[pair_type][format_type]
         try:
-            transcript_keys = [pair_type, format_type]
+            if pair_type == "PW":
+                transcript_keys = [pair_type, format_type, generator_output]
+            elif pair_type == "IND":
+                transcript_keys = [pair_type, format_type]
+            else:
+                raise ValueError(
+                    f"Unsupported pair_type for UT_transcript: {pair_type}"
+                )
+
             transcript_template = _get_nested_prompt(
                 base_prompts["UT_transcript"], transcript_keys, allow_all=False
             )
         except KeyError as e:
             raise ValueError(
-                f"UT transcript not implemented for format: {exp_config.format}"
+                f"UT transcript not implemented for format={exp_config.format} "
+                f"and generator_output={generator_output}"
             ) from e
 
         transcript_with_preface = transcript_template.replace(

@@ -1,5 +1,8 @@
+import re
+
 from inspect_ai import eval
 from inspect_ai.log import EvalLog
+from inspect_ai.model import ModelOutput
 from pathlib import Path
 import yaml
 
@@ -9,8 +12,52 @@ from src.helpers.utils import data_dir, save_json
 from src.data_generation.procedural_editing.treatment import apply_treatment
 
 
+def _extract_think_tags(text: str) -> str | None:
+    """
+    Extract reasoning content from <think>...</think> or similar tags.
+
+    Some models (e.g., Qwen3-235B-Thinking, DeepSeek-R1) output reasoning
+    inline with think tags rather than structured ContentReasoning blocks.
+
+    Handles multiple patterns:
+    - <think>...</think>
+    - <thinking>...</thinking>
+    - Text before </think> (when opening tag is implicit at start)
+
+    Returns:
+        Extracted reasoning text, or None if no tags found
+    """
+    if not text:
+        return None
+
+    # Try explicit <think>...</think> or <thinking>...</thinking> tags
+    patterns = [
+        r"<think>(.*?)</think>",
+        r"<thinking>(.*?)</thinking>",
+    ]
+
+    for pattern in patterns:
+        matches = re.findall(pattern, text, re.DOTALL)
+        if matches:
+            return "\n\n".join(m.strip() for m in matches if m.strip())
+
+    # Fallback: if text contains </think> but no opening tag,
+    # assume everything before it is the reasoning
+    if "</think>" in text:
+        parts = text.split("</think>", 1)
+        if parts[0].strip():
+            return parts[0].strip()
+
+    if "</thinking>" in text:
+        parts = text.split("</thinking>", 1)
+        if parts[0].strip():
+            return parts[0].strip()
+
+    return None
+
+
 def load_generation_config(config_path: str) -> dict:
-    """Load simple generation config (temperature, max_tokens, treatments, etc.)."""
+    """Load simple generation config (temperature, max_final_answer_tokens, treatments, etc.)."""
     config_path = Path(config_path)
     if not config_path.exists():
         raise FileNotFoundError(f"Config file not found: {config_path}")
@@ -19,12 +66,99 @@ def load_generation_config(config_path: str) -> dict:
         return yaml.safe_load(f)
 
 
-def construct_data_dict(eval_log: EvalLog) -> dict[str, str]:
-    """Parse the model outputs and UUIDs into a dict."""
-    data_dict = {}
+def extract_reasoning_text_and_signature(
+    output: ModelOutput,
+) -> tuple[str | None, str | None]:
+    """
+    Extract concatenated reasoning/CoT text and signature (if present) from a ModelOutput.
+
+    Handles different model providers:
+    - Anthropic: reasoning in message.content with signature
+      * Claude 3.7 Sonnet: Should return full CoT by default, but may provide summaries in practice
+      * Claude 4.x models: Returns summarized CoT by default (API limitation)
+    - OpenAI o-series: reasoning in message.content (may be empty if reasoning_summary not enabled)
+    - Together AI (Qwen, DeepSeek): reasoning in message.content
+
+    Note: This function extracts whatever is in the `reasoning` field. For Claude 3.7 Sonnet,
+    this will be full CoT. For Claude 4.x models, this will be summaries due to API behavior.
+
+    Returns:
+        Tuple of (reasoning_text, signature) where signature may be None
+    """
+    try:
+        message = output.message
+    except Exception:
+        # Fallback: try accessing via choices (for OpenAI models)
+        try:
+            choices = getattr(output, "choices", None)
+            if choices and len(choices) > 0:
+                message = getattr(choices[0], "message", None)
+            else:
+                return None, None
+        except Exception:
+            return None, None
+
+    if message is None:
+        return None, None
+
+    content = getattr(message, "content", None)
+
+    # Fallback: parse <think>...</think> tags from string content
+    # Some models (e.g., Qwen3-235B-Thinking) return reasoning inline
+    if isinstance(content, str):
+        return _extract_think_tags(content), None
+
+    reasoning_chunks: list[str] = []
+    signatures: list[str] = []
+    if isinstance(content, list):
+        for part in content:
+            if getattr(part, "type", None) == "reasoning":
+                reasoning_text = getattr(part, "reasoning", None)
+                if reasoning_text:
+                    reasoning_chunks.append(reasoning_text.strip())
+                # Extract signature if present (for Anthropic and OpenAI models)
+                signature = getattr(part, "signature", None)
+                if signature:
+                    signatures.append(signature)
+
+    reasoning_text = None
+    if reasoning_chunks:
+        reasoning_text = "\n\n".join(chunk for chunk in reasoning_chunks if chunk)
+
+    # Use the first signature if available (Anthropic/OpenAI typically have one per message)
+    signature = signatures[0] if signatures else None
+
+    # Fallback: if no structured reasoning found, try parsing from completion text
+    if reasoning_text is None:
+        completion = getattr(output, "completion", None)
+        if completion:
+            reasoning_text = _extract_think_tags(completion)
+
+    return reasoning_text, signature
+
+
+def construct_data_dicts(
+    eval_log: EvalLog,
+) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+    """
+    Parse model outputs and UUIDs into completion, CoT, and signature dicts.
+
+    Returns:
+        Tuple of (data_dict, cot_dict, signature_dict)
+    """
+    data_dict: dict[str, str] = {}
+    cot_dict: dict[str, str] = {}
+    signature_dict: dict[str, str] = {}
+
     for sample in eval_log.samples:
         data_dict[sample.id] = sample.output.completion
-    return data_dict
+        cot_text, signature = extract_reasoning_text_and_signature(sample.output)
+        if cot_text:
+            cot_dict[sample.id] = cot_text
+        if signature:
+            signature_dict[sample.id] = signature
+
+    return data_dict, cot_dict, signature_dict
 
 
 def _generate_base_data(
@@ -34,7 +168,7 @@ def _generate_base_data(
     exp_config: ExperimentConfig,
     overwrite: bool = False,
     batch: bool | int | str = False,
-) -> Path:
+) -> tuple[Path, Path | None, Path | None]:
     """
     Generate base data using a model (no treatments applied).
 
@@ -50,7 +184,7 @@ def _generate_base_data(
                Can be True (default config), int (batch size), or str (path to config file)
 
     Returns:
-        Path to the generated data.json file
+        Tuple of (data_path, cot_path, signature_path) where cot_path and signature_path may be None
     """
     treatment_name = model_name
     output_path = (
@@ -60,7 +194,13 @@ def _generate_base_data(
     # Check if already exists
     if output_path.exists() and not overwrite:
         print(f"  ✓ {treatment_name}: data already exists, skipping generation")
-        return output_path
+        cot_path = output_path.with_name("data_cot.json")
+        signature_path = output_path.with_name("data_signatures.json")
+        return (
+            output_path,
+            cot_path if cot_path.exists() else None,
+            signature_path if signature_path.exists() else None,
+        )
 
     if output_path.exists() and overwrite:
         print(f"  → {treatment_name}: overwriting existing data...")
@@ -92,15 +232,29 @@ def _generate_base_data(
     assert len(eval_logs) == 1, "Expected only one eval log"
     eval_log = eval_logs[0]
 
-    # Extract outputs
-    data_dict = construct_data_dict(eval_log)
+    # Extract outputs (completion + CoT + signatures, if present)
+    data_dict, cot_dict, signature_dict = construct_data_dicts(eval_log)
 
     # Save to data.json
     output_path.parent.mkdir(parents=True, exist_ok=True)
     save_json(data_dict, output_path)
 
+    cot_path: Path | None = None
+    if cot_dict:
+        cot_path = output_path.with_name("data_cot.json")
+        save_json(cot_dict, cot_path)
+        print(f"  ✓ {treatment_name}: Saved {len(cot_dict)} CoT samples to {cot_path}")
+
+    signature_path: Path | None = None
+    if signature_dict:
+        signature_path = output_path.with_name("data_signatures.json")
+        save_json(signature_dict, signature_path)
+        print(
+            f"  ✓ {treatment_name}: Saved {len(signature_dict)} signature samples to {signature_path}"
+        )
+
     print(f"  ✓ {treatment_name}: Saved {len(data_dict)} samples to {output_path}")
-    return output_path
+    return output_path, cot_path, signature_path
 
 
 def apply_treatments(
@@ -219,7 +373,8 @@ def run_generation(
     exp_config = create_generation_config(
         dataset_name=dataset_name,
         temperature=gen_config.get("temperature"),
-        max_tokens=gen_config.get("max_tokens"),
+        max_final_answer_tokens=gen_config.get("max_final_answer_tokens")
+        or gen_config.get("max_tokens"),  # Backward compat
         seed=gen_config.get("seed"),
     )
 
@@ -233,7 +388,7 @@ def run_generation(
     print(f"{'=' * 60}")
 
     # Step 1: Generate base data using the pipeline
-    base_data_path = _generate_base_data(
+    base_data_path, base_cot_path, base_signature_path = _generate_base_data(
         model_name=model_name,
         dataset_name=dataset_name,
         data_subset=data_subset,
@@ -251,6 +406,11 @@ def run_generation(
         gen_config=gen_config,
         overwrite=overwrite,
     )
+
+    if base_cot_path:
+        print(f"  CoT saved to {base_cot_path}")
+    if base_signature_path:
+        print(f"  Signatures saved to {base_signature_path}")
 
     print(f"\n{'=' * 60}")
     print("All data generation complete!")

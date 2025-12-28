@@ -491,14 +491,16 @@ def run_sweep_experiment(
         # Check if it's a model that doesn't support batch mode
         # Google/Gemini models have bugs in Inspect AI batch mode
         # GPT-5.1 specifically returns unsupported_value errors in batch mode
+        # Grok models (XAI) don't support batch mode
         # Note: gpt-5 (without .1) is allowed to try batch mode
         is_gemini = "gemini" in evaluator_model.lower()
         is_gpt5_1 = (
             evaluator_model.lower() == "gpt-5.1"
             or evaluator_model.lower().startswith("gpt-5.1")
         )
+        is_grok = "grok" in evaluator_model.lower()
 
-        if is_gemini or is_gpt5_1:
+        if is_gemini or is_gpt5_1 or is_grok:
             no_batch_tasks.append(task)
             no_batch_descriptions.append(desc)
         else:
@@ -516,7 +518,7 @@ def run_sweep_experiment(
             f"\n\033[91m⚠ WARNING: Batch mode disabled for {len(no_batch_tasks)} evaluations"
         )
         print(
-            "  (Google Gemini batch mode has bugs; GPT-5.1 returns unsupported_value errors)\033[0m"
+            "  (Google Gemini batch mode has bugs; GPT-5.1/Grok return unsupported_value errors)\033[0m"
         )
         print(f"  • Batch-compatible models: {len(batch_tasks)} evals WITH batch mode")
         print(f"  • Non-batch models: {len(no_batch_tasks)} evals WITHOUT batch mode")
