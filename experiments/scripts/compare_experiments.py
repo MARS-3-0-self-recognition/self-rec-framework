@@ -27,6 +27,8 @@ import numpy as np
 from scipy import stats
 from inspect_ai.log import read_eval_log
 import yaml
+from src.helpers.model_sets import get_model_set
+from utils import parse_models_from_config
 
 
 def get_experiment_name_mapping() -> dict[str, str]:
@@ -135,57 +137,16 @@ def load_model_type(config_path: Path | None) -> str | None:
         return None
 
 
-def get_model_order(model_type: str | None = None) -> list[str]:
-    """
-    Define the canonical order for models in the pivot table and heatmap.
-
-    Models are organized by company/provider, then ordered from weakest to strongest.
-
-    Returns:
-        List of model names in display order
-    """
-    if model_type and model_type.lower() == "cot":
-        return [
-            "gpt-oss-20b-thinking",
-            "gpt-oss-120b-thinking",
-            "sonnet-3.7-thinking",
-            "grok-3-mini-thinking",
-            "ll-3.3-70b-dsR1-thinking",
-            "qwen-3.0-80b-thinking",
-            "qwen-3.0-235b-thinking",
-            "deepseek-r1-thinking",
-            "kimi-k2-thinking",
-        ]
-
-    return [
-        # OpenAI (weakest to strongest)
-        "gpt-4o-mini",
-        "gpt-4.1-mini",
-        "gpt-4o",
-        "gpt-4.1",
-        "gpt-5.1",
-        # Anthropic (weakest to strongest)
-        "haiku-3.5",
-        "sonnet-3.7",
-        "sonnet-4.5",
-        "opus-4.1",
-        # Google Gemini (weakest to strongest)
-        "gemini-2.0-flash-lite",
-        "gemini-2.0-flash",
-        "gemini-2.5-flash",
-        "gemini-2.5-pro",
-        # Together AI - Llama (weakest to strongest)
-        "ll-3.1-8b",
-        "ll-3.1-70b",
-        "ll-3.1-405b",
-        # Together AI - Qwen (weakest to strongest)
-        "qwen-2.5-7b",
-        "qwen-2.5-72b",
-        "qwen-3.0-80b",
-        # Together AI - DeepSeek (weakest to strongest)
-        "deepseek-3.0",
-        "deepseek-3.1",
-    ]
+def load_models_from_config(config_path: Path | None) -> list[str] | None:
+    """Load models from a config.yaml if available."""
+    if config_path is None or not config_path.exists():
+        return None
+    try:
+        with open(config_path, "r") as f:
+            cfg = yaml.safe_load(f) or {}
+        return parse_models_from_config(cfg.get("models"))
+    except Exception:
+        return None
 
 
 def get_model_provider(model_name: str) -> str:
@@ -1213,8 +1174,23 @@ def main():
     model_type1 = args.model_type1 or load_model_type(config1_path)
     model_type2 = args.model_type2 or load_model_type(config2_path)
 
-    model_order1 = get_model_order(model_type1)
-    model_order2 = get_model_order(model_type2)
+    # Try to get models from config first, otherwise use model_type
+    models1 = load_models_from_config(config1_path)
+    models2 = load_models_from_config(config2_path)
+
+    if models1:
+        model_order1 = models1
+    else:
+        # Map model_type to set name: "cot" -> "gen_cot", None -> "dr"
+        set_name1 = "gen_cot" if model_type1 and model_type1.lower() == "cot" else "dr"
+        model_order1 = get_model_set(set_name1)
+
+    if models2:
+        model_order2 = models2
+    else:
+        # Map model_type to set name: "cot" -> "gen_cot", None -> "dr"
+        set_name2 = "gen_cot" if model_type2 and model_type2.lower() == "cot" else "dr"
+        model_order2 = get_model_set(set_name2)
 
     # Combined model order preserves ordering across both experiments
     combined_model_order: list[str] = []

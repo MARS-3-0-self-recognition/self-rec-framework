@@ -25,39 +25,7 @@ import matplotlib.patches as mpatches
 import numpy as np
 from scipy import stats
 from inspect_ai.log import read_eval_log
-
-
-def get_model_order() -> list[str]:
-    """Define the canonical order for models."""
-    return [
-        # OpenAI (weakest to strongest)
-        "gpt-4o-mini",
-        "gpt-4.1-mini",
-        "gpt-4o",
-        "gpt-4.1",
-        "gpt-5.1",
-        # Anthropic (weakest to strongest)
-        "haiku-3.5",
-        "sonnet-3.7",
-        "sonnet-4.5",
-        "opus-4.1",
-        # Google Gemini (weakest to strongest)
-        "gemini-2.0-flash-lite",
-        "gemini-2.0-flash",
-        "gemini-2.5-flash",
-        "gemini-2.5-pro",
-        # Together AI - Llama (weakest to strongest)
-        "ll-3.1-8b",
-        "ll-3.1-70b",
-        "ll-3.1-405b",
-        # Together AI - Qwen (weakest to strongest)
-        "qwen-2.5-7b",
-        "qwen-2.5-72b",
-        "qwen-3.0-80b",
-        # Together AI - DeepSeek (weakest to strongest)
-        "deepseek-3.0",
-        "deepseek-3.1",
-    ]
+from src.helpers.model_sets import get_model_set
 
 
 def get_model_provider(model_name: str) -> str:
@@ -103,7 +71,7 @@ def add_provider_boundaries(ax, pivot: pd.DataFrame, linewidth: float = 2.5):
 def load_pivot_table(csv_path: Path) -> pd.DataFrame:
     """Load a pivot table and reorder according to canonical model order."""
     matrix = pd.read_csv(csv_path, index_col=0)
-    model_order = get_model_order()
+    model_order = get_model_set("dr")
 
     # Filter to only models that exist in the data
     row_order = [m for m in model_order if m in matrix.index]
@@ -122,7 +90,7 @@ def compute_difference(
     print("Computing difference (preference - recognition)...")
 
     # Ensure both matrices are aligned
-    model_order = get_model_order()
+    model_order = get_model_set("dr")
     all_rows = [m for m in model_order if m in rec_pivot.index or m in pref_pivot.index]
     all_cols = [
         m for m in model_order if m in rec_pivot.columns or m in pref_pivot.columns
@@ -255,7 +223,7 @@ def compute_paired_ttests(
     """
     print("Performing paired t-tests...")
 
-    model_order = get_model_order()
+    model_order = get_model_set("dr")
     all_rows = [m for m in model_order if m in diff.index]
     all_cols = [m for m in model_order if m in diff.columns]
 

@@ -6,63 +6,11 @@ This module contains common functions used across analysis scripts including:
 - Model ordering and provider identification
 - Heatmap styling and provider boundaries
 - Color schemes for model families
+- Model set expansion for command-line arguments
 """
 
 import pandas as pd
-
-
-def get_model_order(model_type: str | None = None) -> list[str]:
-    """
-    Define the canonical order for models in pivot tables and heatmaps.
-
-    Models are organized by company/provider, then ordered from weakest to strongest.
-
-    Args:
-        model_type: Optional type of models. Use "cot" for chain-of-thought models.
-
-    Returns:
-        List of model names in display order
-    """
-    if model_type and model_type.lower() == "cot":
-        return [
-            "gpt-oss-20b-thinking",
-            "gpt-oss-120b-thinking",
-            "sonnet-3.7-thinking",
-            "grok-3-mini-thinking",
-            "ll-3.3-70b-dsR1-thinking",
-            "qwen-3.0-80b-thinking",
-            "qwen-3.0-235b-thinking",
-            "deepseek-r1-thinking",
-            "kimi-k2-thinking",
-        ]
-
-    return [
-        # OpenAI (weakest to strongest)
-        "gpt-4o-mini",
-        "gpt-4.1-mini",
-        "gpt-4o",
-        "gpt-4.1",
-        # Anthropic (weakest to strongest)
-        "haiku-3.5",
-        "sonnet-3.7",
-        "sonnet-4.5",
-        "opus-4.1",
-        # Google Gemini (weakest to strongest)
-        "gemini-2.0-flash-lite",
-        "gemini-2.0-flash",
-        "gemini-2.5-flash",
-        "gemini-2.5-pro",
-        # Together AI - Llama (weakest to strongest)
-        "ll-3.1-8b",
-        "ll-3.1-70b",
-        "ll-3.1-405b",
-        # Together AI - Qwen (weakest to strongest)
-        "qwen-2.5-7b",
-        "qwen-2.5-72b",
-        "qwen-3.0-80b",
-        # Together AI - DeepSeek (weakest to strongest)
-        "deepseek-3.1",
-    ]
+from src.helpers.model_sets import get_model_set
 
 
 def get_model_provider(model_name: str) -> str:
@@ -267,8 +215,8 @@ def detect_model_order(pivot: pd.DataFrame) -> list[str]:
     Returns:
         Appropriate model order list (CoT or regular)
     """
-    model_order_cot = get_model_order("cot")
-    model_order_regular = get_model_order()
+    model_order_cot = get_model_set("gen_cot")
+    model_order_regular = get_model_set("dr")
 
     # Check which order has more matches
     cot_matches = len([m for m in model_order_cot if m in pivot.index])
@@ -306,3 +254,77 @@ def reorder_pivot(pivot: pd.DataFrame, strict: bool = True) -> pd.DataFrame:
 
     # Reindex to apply ordering
     return pivot.reindex(index=row_order, columns=col_order)
+
+
+def expand_model_names(model_names: list[str]) -> list[str]:
+    """
+    Expand model set references (e.g., '-set gen_cot') to actual model names.
+
+    Supports patterns like:
+    - Individual model names: 'haiku-3.5', 'gpt-4.1'
+    - Set references: '-set gen_cot', '-set dr', '-set eval_cot'
+
+    Args:
+        model_names: List of model names and/or set references
+
+    Returns:
+        Expanded list of model names (sets replaced with actual model names)
+    """
+    expanded = []
+    i = 0
+
+    while i < len(model_names):
+        if model_names[i] == "-set" and i + 1 < len(model_names):
+            # Found a set reference
+            set_name = model_names[i + 1]
+
+            try:
+                models_in_set = get_model_set(set_name)
+                if models_in_set and len(models_in_set) > 0:
+                    expanded.extend(models_in_set)
+                    print(
+                        f"  Expanded '-set {set_name}' -> {len(models_in_set)} models: {', '.join(models_in_set)}"
+                    )
+                else:
+                    raise ValueError(f"Unknown or empty model set: {set_name}")
+            except (AttributeError, KeyError, TypeError, ValueError) as e:
+                raise ValueError(f"Unknown model set: {set_name}") from e
+
+            i += 2  # Skip both '-set' and the set name
+        else:
+            # Regular model name
+            expanded.append(model_names[i])
+            i += 1
+
+    return expanded
+
+
+def parse_models_from_config(models_str: str | None) -> list[str] | None:
+    """
+    Parse models specification from config file.
+
+    Supports two formats:
+    1. Set reference: "-set gen_cot" or "-set dr"
+    2. Space-separated list: "gpt-4o gpt-4.1-mini haiku-3.5"
+
+    Args:
+        models_str: String from config file, or None
+
+    Returns:
+        List of model names (expanded if set reference), or None if models_str is None/empty
+    """
+    if not models_str or not models_str.strip():
+        return None
+
+    models_str = models_str.strip()
+
+    # Check if it's a set reference
+    if models_str.startswith("-set "):
+        set_name = models_str[5:].strip()  # Remove "-set " prefix
+        models = get_model_set(set_name)
+        if not models:
+            raise ValueError(f"Unknown or empty model set: {set_name}")
+        return models
+
+    # Otherwise, treat as space-separated list of model names
+    return models_str.split()

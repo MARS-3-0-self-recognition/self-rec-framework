@@ -6,3 +6,4 @@ format: "PW-Q"
 task: "Rec"
 priming: False
 generator_output: "CoT-FA"
+models: "-set eval_cot"

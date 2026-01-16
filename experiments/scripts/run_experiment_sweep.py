@@ -22,6 +22,7 @@ from run_experiment import (
 )
 from src.inspect.tasks import get_task_function
 from src.inspect.config import load_experiment_config
+from utils import expand_model_names
 
 
 def _add_task_if_needed(
@@ -628,11 +629,18 @@ Examples:
     --dataset_dir_path data/input/pku_saferlhf/mismatch_1-20 \\
     --experiment_config experiments/01_AT_PW-C_Rec_Pr/config.yaml
 
-  # Compare models against caps treatments
+  # Use a model set (e.g., gen_cot models)
   python experiments/scripts/run_experiment_sweep.py \\
-    --model_names haiku-3-5 gpt-4.1 \\
-    --treatment_type caps \\
-    --dataset_dir_path data/input/wikisum/training_set_1-20 \\
+    --model_names -set cot \\
+    --treatment_type other_models \\
+    --dataset_dir_path data/input/pku_saferlhf/mismatch_1-20 \\
+    --experiment_config experiments/01_AT_PW-C_Rec_Pr/config.yaml
+
+  # Mix individual models and sets
+  python experiments/scripts/run_experiment_sweep.py \\
+    --model_names haiku-3-5 -set dr gpt-4.1 \\
+    --treatment_type other_models \\
+    --dataset_dir_path data/input/pku_saferlhf/mismatch_1-20 \\
     --experiment_config experiments/01_AT_PW-C_Rec_Pr/config.yaml
         """,
     )
@@ -641,7 +649,8 @@ Examples:
         type=str,
         nargs="+",
         required=True,
-        help="List of model names to evaluate (e.g., 'haiku-3-5 gpt-4.1')",
+        help="List of model names to evaluate (e.g., 'haiku-3-5 gpt-4.1') or model sets (e.g., '-set cot' for gen_cot set). "
+        "Can mix individual models and sets.",
     )
     parser.add_argument(
         "--treatment_type",
@@ -685,6 +694,9 @@ Examples:
 
     args = parser.parse_args()
 
+    # Expand model set references (e.g., '-set cot' -> list of models)
+    expanded_model_names = expand_model_names(args.model_names)
+
     # Parse batch argument
     batch_value = args.batch
     if batch_value is not False:
@@ -693,7 +705,7 @@ Examples:
             batch_value = int(batch_value)
 
     run_sweep_experiment(
-        model_names=args.model_names,
+        model_names=expanded_model_names,
         treatment_type=args.treatment_type,
         dataset_dir_path=args.dataset_dir_path,
         experiment_config=args.experiment_config,

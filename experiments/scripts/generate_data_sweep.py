@@ -16,6 +16,7 @@ from src.inspect.tasks import generation
 from src.inspect.config import create_generation_config
 from src.helpers.utils import data_dir, save_json
 from src.helpers.model_names import inspect_model_name, short_model_name
+from utils import expand_model_names
 from generate_data import (
     apply_treatments,
     construct_data_dicts,
@@ -352,9 +353,22 @@ if __name__ == "__main__":
         description="Sweep generate data using multiple models",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Example:
+Examples:
+  # Individual model names
   python experiments/scripts/generate_data_sweep.py \\
     --model_names haiku-3-5 sonnet-3-7 gpt-4 \\
+    --dataset_path=data/wikisum/debug/input/input.json \\
+    --dataset_config=experiments/00_data_gen/configs/config.yaml
+
+  # Use a model set (e.g., gen_cot models)
+  python experiments/scripts/generate_data_sweep.py \\
+    --model_names -set cot \\
+    --dataset_path=data/input/sharegpt/english_26/input.json \\
+    --dataset_config=experiments/00_data_gen/configs/config.yaml
+
+  # Mix individual models and sets
+  python experiments/scripts/generate_data_sweep.py \\
+    --model_names haiku-3-5 -set dr gpt-4.1 \\
     --dataset_path=data/wikisum/debug/input/input.json \\
     --dataset_config=experiments/00_data_gen/configs/config.yaml
         """,
@@ -364,7 +378,8 @@ Example:
         type=str,
         nargs="+",
         required=True,
-        help="List of model names (e.g., 'haiku-3-5 sonnet-3-5 gpt-4')",
+        help="List of model names (e.g., 'haiku-3-5 sonnet-3-5 gpt-4') or model sets (e.g., '-set cot' for gen_cot set). "
+        "Can mix individual models and sets.",
     )
     parser.add_argument(
         "--dataset_path",
@@ -395,6 +410,9 @@ Example:
 
     args = parser.parse_args()
 
+    # Expand model set references (e.g., '-set cot' -> list of models)
+    expanded_model_names = expand_model_names(args.model_names)
+
     # Parse batch argument
     batch_value = args.batch
     if batch_value is not False:
@@ -403,7 +421,7 @@ Example:
             batch_value = int(batch_value)
 
     run_sweep_generation(
-        model_names=args.model_names,
+        model_names=expanded_model_names,
         dataset_path=args.dataset_path,
         dataset_config=args.dataset_config,
         overwrite=args.overwrite,

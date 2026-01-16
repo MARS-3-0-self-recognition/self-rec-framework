@@ -25,6 +25,8 @@ import seaborn as sns
 from inspect_ai.log import read_eval_log
 import yaml
 from scipy.stats import binomtest
+from src.helpers.model_sets import get_model_set
+from utils import parse_models_from_config
 
 
 def get_experiment_name_mapping() -> dict[str, str]:
@@ -54,57 +56,6 @@ def get_experiment_name_mapping() -> dict[str, str]:
         "AT_IND-C_Rec_Pr": "Assistant Tags Individual Conversation Primed",
         "AT_IND-C_Rec_NPr": "Assistant Tags Individual Conversation Unprimed",
     }
-
-
-def get_model_order(model_type: str | None = None) -> list[str]:
-    """
-    Define the canonical order for models in the pivot table and heatmap.
-
-    Models are organized by company/provider, then ordered from weakest to strongest.
-
-    Returns:
-        List of model names in display order
-    """
-    if model_type and model_type.lower() == "cot":
-        return [
-            "gpt-oss-20b-thinking",
-            "gpt-oss-120b-thinking",
-            "sonnet-3.7-thinking",
-            "grok-3-mini-thinking",
-            "ll-3.3-70b-dsR1-thinking",
-            "qwen-3.0-80b-thinking",
-            "qwen-3.0-235b-thinking",
-            "deepseek-r1-thinking",
-            "kimi-k2-thinking",
-        ]
-
-    return [
-        # OpenAI (weakest to strongest)
-        "gpt-4o-mini",
-        "gpt-4.1-mini",
-        "gpt-4o",
-        "gpt-4.1",
-        # Anthropic (weakest to strongest)
-        "haiku-3.5",
-        "sonnet-3.7",
-        "sonnet-4.5",
-        "opus-4.1",
-        # Google Gemini (weakest to strongest)
-        "gemini-2.0-flash-lite",
-        "gemini-2.0-flash",
-        "gemini-2.5-flash",
-        "gemini-2.5-pro",
-        # Together AI - Llama (weakest to strongest)
-        "ll-3.1-8b",
-        "ll-3.1-70b",
-        "ll-3.1-405b",
-        # Together AI - Qwen (weakest to strongest)
-        "qwen-2.5-7b",
-        "qwen-2.5-72b",
-        "qwen-3.0-80b",
-        # Together AI - DeepSeek (weakest to strongest)
-        "deepseek-3.1",
-    ]
 
 
 def get_model_provider(model_name: str) -> str:
@@ -1311,16 +1262,19 @@ def main():
             derived_config_path = candidate
     config_path = Path(args.config_path) if args.config_path else derived_config_path
 
-    # If model_type not provided, try to infer from config_path (if resolved)
-    if model_type is None and config_path:
+    # Read config to get models and/or model_type
+    models_from_config = None
+    if config_path:
         try:
             with open(config_path, "r") as f:
                 cfg = yaml.safe_load(f) or {}
-            model_type = cfg.get("model_type")
+            # Try to get models from config
+            models_from_config = parse_models_from_config(cfg.get("models"))
+            # Fall back to model_type if models not specified
+            if model_type is None:
+                model_type = cfg.get("model_type")
         except Exception as e:
-            print(
-                f"Warning: Could not read model_type from config ({e}). Using default ordering."
-            )
+            print(f"Warning: Could not read config ({e}). Using default ordering.")
 
     if not results_dir.exists():
         print(f"Error: Directory not found: {results_dir}")
@@ -1354,10 +1308,15 @@ def main():
         print("⚠ No evaluations found!")
         return
 
-    # Create pivot table
-    pivot, pivot_counts, pivot_correct = create_pivot_table(
-        df, get_model_order(model_type)
-    )
+    # Determine model order: use models from config if available, otherwise use model_type
+    if models_from_config:
+        model_order = models_from_config
+    else:
+        # Map model_type to set name: "cot" -> "gen_cot", None -> "dr"
+        set_name = "gen_cot" if model_type and model_type.lower() == "cot" else "dr"
+        model_order = get_model_set(set_name)
+
+    pivot, pivot_counts, pivot_correct = create_pivot_table(df, model_order)
 
     if pivot.empty:
         print("⚠ No successful evaluations to analyze!")
@@ -1405,8 +1364,9 @@ def main():
     print()
 
     # Create answer choice bias analysis
+    # Use same model order as above
     answer_pivot, answer_count_1, answer_count_2 = create_answer_choice_pivot(
-        df, get_model_order(model_type)
+        df, model_order
     )
 
     # Save answer choice tables

@@ -34,11 +34,13 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from inspect_ai.log import read_eval_log
 
-from analysis_utils import (
-    get_model_order,
+from utils import (
     add_provider_boundaries,
     get_model_family_colors,
+    parse_models_from_config,
 )
+from src.helpers.model_sets import get_model_set
+import yaml
 
 
 def parse_eval_filename(filename: str) -> tuple[str, str, str] | None:
@@ -192,7 +194,9 @@ def load_all_evaluations(results_dir: Path) -> pd.DataFrame:
     return pd.DataFrame(data)
 
 
-def create_pivot_table(df: pd.DataFrame) -> pd.DataFrame:
+def create_pivot_table(
+    df: pd.DataFrame, models_from_config: list[str] | None = None
+) -> pd.DataFrame:
     """
     Create pivot table of accuracy by evaluator and treatment.
 
@@ -201,6 +205,7 @@ def create_pivot_table(df: pd.DataFrame) -> pd.DataFrame:
 
     Args:
         df: DataFrame with evaluator, control, treatment, accuracy columns
+        models_from_config: Optional list of models from config file to use for ordering
 
     Returns:
         Pivot table with evaluators as rows, treatments as columns
@@ -221,17 +226,21 @@ def create_pivot_table(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     # Reorder rows and columns according to canonical model order
-    # Try CoT model order first, then fall back to regular order
-    model_order_cot = get_model_order("cot")
-    model_order_regular = get_model_order()
+    # Use models from config if available, otherwise auto-detect
+    if models_from_config:
+        model_order = models_from_config
+    else:
+        # Try CoT model order first, then fall back to regular order
+        model_order_cot = get_model_set("gen_cot")
+        model_order_regular = get_model_set("dr")
 
-    # Check which order has more matches
-    cot_matches = len([m for m in model_order_cot if m in pivot.index])
-    regular_matches = len([m for m in model_order_regular if m in pivot.index])
+        # Check which order has more matches
+        cot_matches = len([m for m in model_order_cot if m in pivot.index])
+        regular_matches = len([m for m in model_order_regular if m in pivot.index])
 
-    model_order = (
-        model_order_cot if cot_matches > regular_matches else model_order_regular
-    )
+        model_order = (
+            model_order_cot if cot_matches > regular_matches else model_order_regular
+        )
 
     # Filter to only models in the canonical order (strict filtering)
     row_order = [m for m in model_order if m in pivot.index]
@@ -630,6 +639,24 @@ def main():
         print(f"Error: Directory not found: {results_dir}")
         return
 
+    # Try to derive config path from results_dir
+    experiment_name = results_dir.name
+    config_path = Path("experiments") / experiment_name / "config.yaml"
+    if not config_path.exists():
+        config_path = None
+
+    # Read models from config if available
+    models_from_config = None
+    if config_path:
+        try:
+            with open(config_path, "r") as f:
+                cfg = yaml.safe_load(f) or {}
+            models_from_config = parse_models_from_config(cfg.get("models"))
+        except Exception as e:
+            print(
+                f"Warning: Could not read models from config ({e}). Using auto-detection."
+            )
+
     # Parse path to create matching analysis output path
     # Expected: data/results/{dataset_name}/{data_subset}/{experiment_name}
     # Output: data/analysis/{dataset_name}/{data_subset}/{experiment_name}
@@ -659,7 +686,7 @@ def main():
         return
 
     # Create pivot table
-    pivot = create_pivot_table(df)
+    pivot = create_pivot_table(df, models_from_config)
 
     if pivot.empty:
         print("⚠ No successful evaluations to analyze!")
