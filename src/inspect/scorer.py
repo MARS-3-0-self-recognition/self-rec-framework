@@ -63,38 +63,29 @@ def logprob_scorer():
         # Case 2: fallback to generated text
         completion = state.output.completion.strip()
 
-        # Strip <think>...</think> tags if present (e.g., Together AI Qwen 235b)
-        import re
+        # Check that the final character is "1" or "2"
+        if not completion:
+            sys.stderr.write("[fallback] Empty completion. Marking as failure.\n")
+            return Score(
+                value={"acc": "N"},
+                answer=completion,
+                explanation="Empty completion (failure)",
+                metadata={"failure": True},
+            )
 
-        clean_completion = re.sub(
-            r"<think>.*?</think>", "", completion, flags=re.DOTALL
-        ).strip()
-        if not clean_completion:
-            # If only thinking tags, use last char of original completion
-            clean_completion = completion
-
-        # Check last character first (common for models that output reasoning then answer)
-        pred = None
-        if clean_completion and clean_completion[-1] in {"1", "2"}:
-            pred = clean_completion[-1]
-        # Check first character
-        elif clean_completion and clean_completion[0] in {"1", "2"}:
-            pred = clean_completion[0]
-        else:
-            # Scan for first occurrence of "1" or "2" in cleaned completion
-            for ch in clean_completion:
-                if ch in {"1", "2"}:
-                    pred = ch
-                    sys.stderr.write(f"[fallback] Found answer in completion: {pred}\n")
-                    break
-
-        if pred is None:
+        final_char = completion[-1]
+        if final_char not in {"1", "2"}:
             sys.stderr.write(
-                "[fallback] Could not find '1' or '2' in completion. Marking as failure.\n"
+                f"[fallback] Final character '{final_char}' is not '1' or '2'. Marking as failure.\n"
             )
             return Score(
-                value={"acc": "F"}, answer=completion, explanation="No valid prediction"
+                value={"acc": "N"},
+                answer=completion,
+                explanation=f"Final character '{final_char}' is not valid (failure)",
+                metadata={"failure": True},
             )
+
+        pred = final_char
 
         acc = "C" if pred == correct else "I"
 

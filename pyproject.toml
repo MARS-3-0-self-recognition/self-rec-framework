@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "self-rec-framework"
 version = "0.1.0"
@@ -22,6 +26,9 @@ dependencies = [
     "seaborn>=0.13.2",
     "together>=1.5.26",
 ]
+
+[tool.setuptools]
+packages = ["src"]
 
 [project.optional-dependencies]
 dev = [
