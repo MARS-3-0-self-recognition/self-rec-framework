@@ -23,12 +23,16 @@ INSPECT_MODEL_NAMES: dict = {
     "sonnet-3.7": "anthropic/claude-3-7-sonnet-20250219",
     "sonnet-3.7-thinking": "anthropic/claude-3-7-sonnet-20250219",
     "haiku-3.5": "anthropic/claude-3-5-haiku-20241022",
+    "haiku-3.5-thinking": "anthropic/claude-3-5-haiku-20241022",
     "haiku-4.5": "anthropic/claude-4-5-haiku-20251001",
+    "haiku-4.5-thinking": "anthropic/claude-4-5-haiku-20251001",
     "opus-4.1": "anthropic/claude-opus-4-1-20250805",
     "opus-4.1-thinking": "anthropic/claude-opus-4-1-20250805",
     # Google
     "gemini-2.0-flash": "google/gemini-2.0-flash",
+    "gemini-2.0-flash-thinking": "google/gemini-2.0-flash",
     "gemini-2.0-flash-lite": "google/gemini-2.0-flash-lite",
+    "gemini-2.0-flash-lite-thinking": "google/gemini-2.0-flash-lite",
     "gemini-2.5-flash": "google/gemini-2.5-flash",
     "gemini-2.5-flash-thinking": "google/gemini-2.5-flash",
     "gemini-2.5-pro": "google/gemini-2.5-pro",
@@ -36,6 +40,8 @@ INSPECT_MODEL_NAMES: dict = {
     # XAI (uses OpenAI provider with custom base URL via INSPECT_MODELS_OPENAI_GROK_3_MINI_BETA_*)
     "grok-3-mini": "openai/grok-3-mini",
     "grok-3-mini-thinking": "openai/grok-3-mini",
+    "grok-4.1-fast": "openai/grok-4-1-fast-non-reasoning",
+    "grok-4.1-fast-thinking": "openai/grok-4-1-fast-reasoning",
     ## Together-specific models
     # Llama models
     "ll-3.1-8b": "together/meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
@@ -93,27 +99,29 @@ def short_model_name(model: str) -> str:
     """
     Return a canonical short model name for a given inspect model name.
 
-    When multiple short names map to the same inspect model (e.g.,
-    "sonnet-4.5" and "sonnet-4.5-thinking"), we:
-      - Prefer a "-thinking" variant if present (for reasoning-focused workflows)
-      - Otherwise, fall back to the first name in sorted order for determinism
+    WARNING: When multiple short names map to the same inspect model (e.g.,
+    "sonnet-4.5" and "sonnet-4.5-thinking"), this function cannot determine
+    which one was originally requested. It returns the first in sorted order.
+    
+    For reliable model name resolution, use the original model name from the
+    request context (e.g., models_to_generate list) rather than this function.
     """
     shorts = SHORT_MODEL_NAMES.get(model)
     if not shorts:
         raise KeyError(f"No short model name found for inspect model '{model}'")
 
-    # Prefer thinking variants if available
-    thinking_variants = [s for s in shorts if s.endswith("-thinking")]
-    if thinking_variants:
-        return sorted(thinking_variants)[0]
-
-    # Fallback: deterministic choice among non-thinking variants
+    # Return first in sorted order (deterministic but arbitrary)
+    # Note: This may not be the correct variant - caller should use context
     return sorted(shorts)[0]
 
 
 def is_thinking_model(treatment_name: str) -> bool:
     """
     Check if a treatment name corresponds to a thinking/reasoning model.
+
+    CoT reasoning is ONLY enabled when the model name explicitly has the "-thinking" suffix.
+    This applies to all models, including those that are always thinking-capable (like o-series,
+    gpt-5) and those with dual modes (like Gemini and Claude).
 
     Treatment names may have suffixes like "_caps_S2" or "_typos_S4",
     so we extract the base model name first.
@@ -122,7 +130,7 @@ def is_thinking_model(treatment_name: str) -> bool:
         treatment_name: Treatment name (may include suffixes like "_caps_S2")
 
     Returns:
-        True if the base model is a thinking model, False otherwise
+        True if the base model name contains "-thinking", False otherwise
     """
     # Extract base model name by removing treatment suffixes
     # Treatment names can be: "model_name", "model_name_caps_S2", "model_name_typos_S4"
@@ -132,22 +140,16 @@ def is_thinking_model(treatment_name: str) -> bool:
     elif "_typos_" in base_name:
         base_name = base_name.split("_typos_")[0]
 
-    # Check if it's a known thinking model
-    # All thinking models now have "-thinking" suffix for consistent notation
-    # Also check for OpenAI o-series and gpt-5 models (they're always thinking-capable,
-    # but can be used with or without the -thinking suffix)
-    return (
-        "-thinking" in base_name
-        or base_name
-        == "deepseek-r1_fw"  # Fireworks DeepSeek-R1 (always thinking, no suffix variant)
-        or base_name.startswith("o1")
-        or base_name.startswith("o3")
-        or base_name.startswith("o4")
-        or base_name.startswith("gpt-5")
-        or base_name.startswith(
-            "grok-3-mini"
-        )  # XAI Grok-3-mini requires reasoning_effort
-    )
+    # CoT reasoning is ONLY enabled when the model name has "-thinking" suffix
+    # This applies to all models, regardless of whether they're always thinking-capable
+    # Examples:
+    # - gemini-2.5-pro → False (no CoT)
+    # - gemini-2.5-pro-thinking → True (CoT enabled)
+    # - o3 → False (no CoT, even though always thinking-capable)
+    # - o3-thinking → True (CoT enabled)
+    # - sonnet-4.5 → False (no CoT)
+    # - sonnet-4.5-thinking → True (CoT enabled)
+    return "-thinking" in base_name
 
 
 def get_base_model_name(model_name: str) -> str:
@@ -219,3 +221,71 @@ def needs_reasoning_params(model_name: str) -> bool:
     # Models that use same endpoint but need API parameters
     # OpenAI o-series, GPT-5, Anthropic Claude 3.7/4, Google Gemini 2.5
     return True
+
+
+def is_native_reasoning_model(model_name: str) -> bool:
+    """
+    Check if a model is a native reasoning model (uses a different endpoint for reasoning).
+
+    Native reasoning models have their own separate data generated with reasoning.
+    COT-I models (instruction-tuned models prompted to think) use the same endpoint
+    and should pull data from their non-thinking counterparts.
+
+    Args:
+        model_name: Model name (may include "-thinking" suffix)
+
+    Returns:
+        True if the model is a native reasoning model, False if it's COT-I
+    """
+    if not model_name.endswith("-thinking"):
+        return False
+
+    base_name = get_base_model_name(model_name)
+
+    # Native reasoning models that use different endpoints or are always-reasoning
+    # These models have their own generated data with the -thinking suffix
+    native_reasoning_bases = [
+        # Together AI models with separate thinking endpoints
+        "qwen-3.0-80b",
+        "qwen-3.0-235b",
+        "deepseek-r1",
+        "ll-3.3-70b-dsR1",
+        "gpt-oss-20b",
+        "gpt-oss-120b",
+        "kimi-k2",
+        # OpenAI o-series (always reasoning)
+        "o3",
+        "o3-mini",
+        # XAI Grok with separate reasoning endpoint
+        "grok-4.1-fast",
+    ]
+
+    return base_name in native_reasoning_bases
+
+
+def get_data_model_name(model_name: str) -> str:
+    """
+    Get the model name to use for data loading.
+
+    For COT-I models (instruction-tuned models prompted to think step-by-step),
+    returns the base model name without "-thinking" suffix since these models
+    use data generated without reasoning instructions.
+
+    For native reasoning models (different endpoints), returns the full model name
+    since they have their own separately generated data.
+
+    Args:
+        model_name: Model name (may include "-thinking" suffix)
+
+    Returns:
+        Model name to use for data directory lookup
+    """
+    if not model_name.endswith("-thinking"):
+        return model_name
+
+    # Native reasoning models use their own data with -thinking suffix
+    if is_native_reasoning_model(model_name):
+        return model_name
+
+    # COT-I models use data from non-thinking counterpart
+    return get_base_model_name(model_name)
