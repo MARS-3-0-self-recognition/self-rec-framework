@@ -6,7 +6,9 @@
 #
 # Note: Continues running subsequent scripts even if one fails.
 # Failed scripts are reported in the summary at the end.
-# Auto-answers "y" to confirmation prompts (e.g., "Continue? (y/n):").
+# Sweep scripts pass -y to run_experiment_sweep to skip confirmation. Do NOT
+# pipe input (e.g. "echo y |") into the scripts: that makes stdin a pipe
+# instead of the TTY and breaks Inspect's experiment GUI (mouse/keyboard).
 
 if [ -z "$1" ]; then
     echo "Usage: $0 <directory>"
@@ -22,7 +24,8 @@ if [ ! -d "$DIR" ]; then
 fi
 
 # Find all .sh files in the directory, sorted alphabetically
-SCRIPTS=$(find "$DIR" -maxdepth 1 -name "*.sh" -type f | sort)
+# Exclude config.sh files (shared configuration files, not executable scripts)
+SCRIPTS=$(find "$DIR" -maxdepth 1 -name "*.sh" -type f -not -name "config.sh" | sort)
 
 if [ -z "$SCRIPTS" ]; then
     echo "No bash scripts found in '$DIR'"
@@ -32,6 +35,9 @@ fi
 echo "======================================================================"
 echo "Running all bash scripts in: $DIR"
 echo "======================================================================"
+
+# Enable batch mode for all sweep scripts via environment variable
+export SWEEP_BATCH=0
 
 # Count scripts and track results
 TOTAL=$(echo "$SCRIPTS" | wc -l)
@@ -43,16 +49,15 @@ FAILED_SCRIPTS=""
 for script in $SCRIPTS; do
     CURRENT=$((CURRENT + 1))
     SCRIPT_NAME=$(basename "$script")
-    
+
     echo ""
     echo "======================================================================"
     echo "[$CURRENT/$TOTAL] Running: $SCRIPT_NAME"
     echo "======================================================================"
     echo ""
-    
+
     # Run the script and capture exit code
-    # Pipe "y" to auto-answer confirmation prompts (e.g., "Continue? (y/n):")
-    if echo "y" | bash "$script"; then
+    if bash "$script"; then
         echo ""
         echo "✓ Completed: $SCRIPT_NAME"
         SUCCEEDED=$((SUCCEEDED + 1))

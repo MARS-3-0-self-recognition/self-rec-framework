@@ -1,0 +1,1296 @@
+#!/usr/bin/env python3
+"""
+Compute recognition accuracy metrics from evaluation logs.
+
+This script generates the core accuracy data including pivot tables, p-values,
+and answer choice analysis. All outputs are saved to a recognition_accuracy/
+subdirectory.
+
+Usage:
+    uv run experiments/_scripts/analysis/recognition_accuracy.py \
+        --results_dir data/results/wikisum/training_set_1-20/EXP_NAME \
+        --model_names -set dr
+
+Output:
+    - data/analysis/{dataset}/{subset}/{experiment}/recognition_accuracy/
+        - accuracy_pivot.csv: Raw accuracy data
+        - accuracy_counts.csv: Sample counts per cell
+        - pvalues_vs_chance.csv: Statistical significance
+        - answer_choice_ratio.csv: Proportion choosing answer 1
+        - answer_choice_counts.csv: Raw counts (1/2) per cell
+        - accuracy_heatmap.png: Accuracy visualization
+        - answer_choice_heatmap.png: Ordering bias visualization
+"""
+
+import argparse
+import sys
+from pathlib import Path
+
+# Add parent directory to path to import utils
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from inspect_ai.log import read_eval_log
+from scipy.stats import binomtest
+from utils import expand_model_names, add_provider_boundaries
+
+
+def get_experiment_name_mapping() -> dict[str, str]:
+    """
+    Map experiment code abbreviations to full descriptive names.
+
+    Returns:
+        Dictionary mapping abbreviated codes to full experiment names
+    """
+    return {
+        # User Tags (UT)
+        "UT_PW-Q_Rec_Pr": "User Tags Pairwise Query Primed",
+        "UT_PW-Q_Rec_NPr": "User Tags Pairwise Query Unprimed",
+        "UT_PW-C_Rec_Pr": "User Tags Pairwise Conversation Primed",
+        "UT_PW-C_Rec_NPr": "User Tags Pairwise Conversation Unprimed",
+        "UT_IND-Q_Rec_Pr": "User Tags Individual Query Primed",
+        "UT_IND-Q_Rec_NPr": "User Tags Individual Query Unprimed",
+        "UT_IND-C_Rec_Pr": "User Tags Individual Conversation Primed",
+        "UT_IND-C_Rec_NPr": "User Tags Individual Conversation Unprimed",
+        # Assistant Tags (AT)
+        "AT_PW-Q_Rec_Pr": "Assistant Tags Pairwise Query Primed",
+        "AT_PW-Q_Rec_NPr": "Assistant Tags Pairwise Query Unprimed",
+        "AT_PW-C_Rec_Pr": "Assistant Tags Pairwise Conversation Primed",
+        "AT_PW-C_Rec_NPr": "Assistant Tags Pairwise Conversation Unprimed",
+        "AT_IND-Q_Rec_Pr": "Assistant Tags Individual Query Primed",
+        "AT_IND-Q_Rec_NPr": "Assistant Tags Individual Query Unprimed",
+        "AT_IND-C_Rec_Pr": "Assistant Tags Individual Conversation Primed",
+        "AT_IND-C_Rec_NPr": "Assistant Tags Individual Conversation Unprimed",
+    }
+
+
+def parse_eval_filename(filename: str) -> tuple[str, str, str | None] | None:
+    """
+    Extract evaluator, control, and treatment from eval log filename.
+
+    Supports two formats:
+    1. Pairwise: TIMESTAMP_{evaluator}-eval-on-{control}-vs-{treatment}_{UUID}.eval
+    2. Individual: TIMESTAMP_{evaluator}-eval-on-{model}-{control|treatment}_{UUID}.eval
+
+    Returns:
+        (evaluator, control, treatment) for pairwise format
+        (evaluator, model, None) for individual format
+        None if parsing fails
+
+    Note: For individual format, the model being evaluated is returned as the second
+    element (control field). The third element is None. The "-control"/"-treatment"
+    suffix indicates whether evaluator == model (control condition) or evaluator != model
+    (treatment condition), but this is determined by comparing evaluator and model, not
+    stored in the return value.
+    """
+    try:
+        # Remove timestamp and UUID
+        # Format: YYYY-MM-DDTHH-MM-SS+TZ_{task_name}_{uuid}.eval
+        parts = filename.split("_", 1)
+        if len(parts) < 2:
+            return None
+
+        # Get task name (remove UUID and .eval)
+        task_part = parts[1]
+        task_name = task_part.rsplit("_", 1)[0]  # Remove UUID
+
+        if "-eval-on-" not in task_name:
+            return None
+
+        evaluator_part, rest = task_name.split("-eval-on-", 1)
+
+        # Check if it's pairwise format (has "-vs-")
+        if "-vs-" in rest:
+            # Pairwise: {control}-vs-{treatment}
+            control_part, treatment_part = rest.split("-vs-", 1)
+            return evaluator_part, control_part, treatment_part
+        else:
+            # Individual format: {model}-{control|treatment}
+            # The suffix indicates whether evaluator == model (control condition)
+            # or evaluator != model (treatment condition), but we extract the model name
+            if rest.endswith("-control"):
+                model_part = rest[:-8]  # Remove "-control"
+                return evaluator_part, model_part, None
+            elif rest.endswith("-treatment"):
+                model_part = rest[:-10]  # Remove "-treatment"
+                return evaluator_part, model_part, None
+            else:
+                # Unknown format
+                return None
+
+    except Exception:
+        return None
+
+
+def extract_answer_counts(log) -> tuple[int, int] | None:
+    """
+    Extract counts of answer "1" vs "2" choices from an eval log.
+
+    Returns:
+        Tuple (count_1, count_2) or None if not available
+    """
+    try:
+        if log.status != "success" or not log.samples:
+            return None
+
+        count_1 = 0
+        count_2 = 0
+
+        for sample in log.samples:
+            if not sample.scores:
+                continue
+
+            for score in sample.scores.values():
+                if hasattr(score, "answer") and score.answer:
+                    answer = str(score.answer).strip()
+                    # Find the final standalone "1" or "2" in the answer
+                    # Check last character first (common case: answer ends with "1" or "2")
+                    if answer and answer[-1] in ("1", "2"):
+                        if answer[-1] == "1":
+                            count_1 += 1
+                        else:
+                            count_2 += 1
+                    # Fallback: check start (simple answers like "1" or "2")
+                    elif answer.startswith("1"):
+                        count_1 += 1
+                    elif answer.startswith("2"):
+                        count_2 += 1
+                    break
+
+        if count_1 + count_2 == 0:
+            return None
+
+        return count_1, count_2
+
+    except Exception:
+        return None
+
+
+def extract_accuracy(log) -> float | None:
+    """
+    Extract accuracy from an eval log.
+
+    Handles partial failures gracefully:
+    - Samples with "F" (failed/malformed) are skipped (e.g., due to token limits)
+    - Only "C" (correct) and "I" (incorrect) samples are counted
+    - Returns accuracy if at least one valid sample exists, otherwise None
+    - This allows eval files with occasional failures to still be considered "scored"
+
+    Returns:
+        Accuracy as a float (0.0 to 1.0), or None if not available
+    """
+    try:
+        # Check if log has results
+        if log.status != "success":
+            return None
+
+        # Count correct answers from samples
+        # Note: We count from samples directly rather than relying on log.results
+        # because some eval logs may have sample scores but missing aggregated results
+        if not log.samples:
+            return None
+
+        correct_count = 0
+        total_count = 0
+
+        for sample in log.samples:
+            if not sample.scores:
+                continue
+
+            # Find acc score
+            for score in sample.scores.values():
+                if hasattr(score, "value") and isinstance(score.value, dict):
+                    if "acc" in score.value:
+                        acc_val = score.value["acc"]
+                        # Only count C (correct) and I (incorrect) samples
+                        # Skip F (failed/malformed) - can't assess attribution
+                        # F samples occur when model hits token limit, produces invalid output, etc.
+                        if acc_val == "C":
+                            total_count += 1
+                            correct_count += 1
+                        elif acc_val == "I":
+                            total_count += 1
+                        # If acc_val == "F", skip entirely (partial failures are OK)
+                        break
+
+        # Return None only if ALL samples failed (no valid samples to score)
+        # If at least one sample is C or I, return accuracy (handles partial failures)
+        if total_count == 0:
+            return None
+
+        return correct_count / total_count
+
+    except Exception as e:
+        print(f"  Warning: Error extracting accuracy: {e}")
+        return None
+
+
+def load_all_evaluations(results_dirs: list[Path]) -> pd.DataFrame:
+    """
+    Load all evaluation logs from one or more directories and extract key metrics.
+
+    When multiple directories are provided, eval files from matching evaluations
+    (same evaluator, control, treatment) are combined, effectively increasing
+    the sample size for that evaluation.
+
+    Args:
+        results_dirs: List of directories containing eval logs
+
+    Returns:
+        DataFrame with columns: evaluator, control, treatment, accuracy, n_samples, status
+    """
+    data = []
+    skipped = 0
+    errors = 0
+    total_files = 0
+
+    for results_dir in results_dirs:
+        eval_files = list(results_dir.glob("*.eval"))
+        total_files += len(eval_files)
+        print(f"Found {len(eval_files)} eval log files in {results_dir}")
+
+        for eval_file in eval_files:
+            try:
+                # Parse filename
+                parsed = parse_eval_filename(eval_file.name)
+                if not parsed:
+                    skipped += 1
+                    continue
+
+                evaluator, control, treatment = parsed
+
+                # Read log
+                log = read_eval_log(eval_file)
+
+                # Extract accuracy
+                accuracy = extract_accuracy(log)
+                n_samples = len(log.samples) if log.samples else 0
+
+                # Extract answer choice counts
+                answer_counts = extract_answer_counts(log)
+                count_1 = answer_counts[0] if answer_counts else 0
+                count_2 = answer_counts[1] if answer_counts else 0
+
+                data.append(
+                    {
+                        "evaluator": evaluator,
+                        "control": control,
+                        "treatment": treatment,
+                        "accuracy": accuracy,
+                        "n_samples": n_samples,
+                        "count_1": count_1,
+                        "count_2": count_2,
+                        "status": log.status,
+                        "filename": eval_file.name,
+                        "source_dir": str(results_dir),
+                    }
+                )
+
+            except Exception as e:
+                errors += 1
+                print(f"  ⚠ Error reading {eval_file.name}: {e}")
+
+    print(
+        f"\nTotal: Found {total_files} eval log files across {len(results_dirs)} directories"
+    )
+    print(f"Loaded {len(data)} evaluations")
+    print(f"  Skipped: {skipped} (couldn't parse filename)")
+    print(f"  Errors: {errors}\n")
+
+    return pd.DataFrame(data)
+
+
+def create_pivot_table(
+    df: pd.DataFrame, model_order: list[str]
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Create pivot table of accuracy by evaluator and treatment, along with counts.
+
+    For pairwise comparisons, the evaluator judges between control (self) and treatment.
+    Accuracy = how often the evaluator correctly identifies its own output.
+
+    Args:
+        df: DataFrame with evaluator, control, treatment, accuracy, n_samples columns
+
+    Returns:
+        Tuple of:
+          - accuracy pivot (rows=evaluator, cols=treatment)
+          - count pivot (total samples contributing to each cell)
+          - correct pivot (total correct predictions contributing to each cell)
+    """  # Filter to successful evaluations only and drop rows with missing accuracy
+    df_success = df[(df["status"] == "success") & (df["accuracy"].notna())].copy()
+
+    print(f"Creating pivot table from {len(df_success)} successful evaluations...")
+
+    # Compute total correct per evaluation (accuracy * n_samples)
+    df_success["correct"] = df_success["accuracy"] * df_success["n_samples"]
+
+    # Detect if this is individual format (treatment is None) vs pairwise format (treatment is model name)
+    is_individual_format = df_success["treatment"].isna().all()
+
+    # Aggregate by evaluator and appropriate column
+    # For pairwise: group by treatment (the alternative model)
+    # For individual: group by control (the model being evaluated)
+    if is_individual_format:
+        grouped = df_success.groupby(["evaluator", "control"]).agg(
+            total_correct=("correct", "sum"),
+            total_samples=("n_samples", "sum"),
+        )
+    else:
+        grouped = df_success.groupby(["evaluator", "treatment"]).agg(
+            total_correct=("correct", "sum"),
+            total_samples=("n_samples", "sum"),
+        )
+
+    # Accuracy pivot: total_correct / total_samples
+    pivot_accuracy = (grouped["total_correct"] / grouped["total_samples"]).unstack(
+        fill_value=pd.NA
+    )
+    pivot_counts = grouped["total_samples"].unstack(fill_value=0)
+    pivot_correct = grouped["total_correct"].unstack(fill_value=0.0)
+
+    # Filter rows to only models that exist in the data
+    row_order = [m for m in model_order if m in pivot_accuracy.index]
+
+    # If no models match, use all available rows (fallback)
+    if not row_order:
+        row_order = list(pivot_accuracy.index)
+
+    # For both formats, columns are model names (control for individual, treatment for pairwise)
+    col_order = [m for m in model_order if m in pivot_accuracy.columns]
+    # If no models match, use all available columns (fallback)
+    if not col_order:
+        col_order = list(pivot_accuracy.columns)
+
+    # Reindex to apply ordering
+    pivot_accuracy = pivot_accuracy.reindex(index=row_order, columns=col_order)
+    pivot_counts = pivot_counts.reindex(index=row_order, columns=col_order)
+    pivot_correct = pivot_correct.reindex(index=row_order, columns=col_order)
+
+    return pivot_accuracy, pivot_counts, pivot_correct
+
+
+def create_answer_choice_pivot(
+    df: pd.DataFrame, model_order: list[str]
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Create pivot table of answer choice ratio (proportion choosing "1").
+
+    Args:
+        df: DataFrame with evaluator, treatment, count_1, count_2 columns
+        model_order: Canonical model ordering
+
+    Returns:
+        Tuple of:
+          - ratio pivot (rows=evaluator, cols=treatment): proportion choosing "1"
+          - count_1 pivot: total "1" choices per cell
+          - count_2 pivot: total "2" choices per cell
+    """
+    df_success = df[(df["status"] == "success")].copy()
+
+    # Aggregate by evaluator/treatment
+    grouped = df_success.groupby(["evaluator", "treatment"]).agg(
+        total_1=("count_1", "sum"),
+        total_2=("count_2", "sum"),
+    )
+
+    # Compute ratio: count_1 / (count_1 + count_2)
+    total = grouped["total_1"] + grouped["total_2"]
+    ratio = (grouped["total_1"] / total).replace([float("inf"), -float("inf")], pd.NA)
+    pivot_ratio = ratio.unstack(fill_value=pd.NA)
+    pivot_count_1 = grouped["total_1"].unstack(fill_value=0)
+    pivot_count_2 = grouped["total_2"].unstack(fill_value=0)
+
+    # Filter to models that exist
+    row_order = [m for m in model_order if m in pivot_ratio.index]
+    col_order = [m for m in model_order if m in pivot_ratio.columns]
+
+    pivot_ratio = pivot_ratio.reindex(index=row_order, columns=col_order)
+    pivot_count_1 = pivot_count_1.reindex(index=row_order, columns=col_order)
+    pivot_count_2 = pivot_count_2.reindex(index=row_order, columns=col_order)
+
+    return pivot_ratio, pivot_count_1, pivot_count_2
+
+
+def plot_answer_choice_heatmap(
+    pivot: pd.DataFrame,
+    output_path: Path,
+    experiment_title: str = "",
+):
+    """
+    Create heatmap showing proportion of "1" choices (ordering bias).
+
+    Values near 0.5 = no bias, near 1.0 = always picks "1", near 0.0 = always picks "2".
+    """
+    print("Generating answer choice bias heatmap...")
+
+    fig, ax = plt.subplots(figsize=(14, 10))
+
+    # Mask diagonal
+    mask = pd.DataFrame(False, index=pivot.index, columns=pivot.columns)
+    for model in pivot.index:
+        if model in pivot.columns:
+            mask.loc[model, model] = True
+
+    # Use diverging colormap centered at 0.5
+    sns.heatmap(
+        pivot,
+        annot=True,
+        fmt=".2f",
+        cmap="RdBu_r",  # Red (low/picks 2) -> White (balanced) -> Blue (high/picks 1)
+        center=0.5,
+        vmin=0.0,
+        vmax=1.0,
+        cbar_kws={"label": "Proportion Choosing Answer 1"},
+        mask=mask,
+        linewidths=0.5,
+        linecolor="gray",
+        ax=ax,
+    )
+
+    # Fill diagonal with gray
+    for i, model in enumerate(pivot.index):
+        if model in pivot.columns:
+            j = list(pivot.columns).index(model)
+            ax.add_patch(
+                plt.Rectangle((j, i), 1, 1, fill=True, color="lightgray", zorder=10)
+            )
+            ax.text(j + 0.5, i + 0.5, "N/A", ha="center", va="center", fontsize=8)
+
+    add_provider_boundaries(ax, pivot)
+
+    ax.set_xlabel("Comparison Model (Treatment)", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Evaluator Model", fontsize=12, fontweight="bold")
+
+    if experiment_title:
+        title = f"Answer Choice Bias: {experiment_title}\n(Proportion choosing Answer 1 over Answer 2)"
+    else:
+        title = "Answer Choice Bias\n(Proportion choosing Answer 1 over Answer 2)"
+
+    ax.set_title(title, fontsize=14, fontweight="bold", pad=20)
+
+    plt.xticks(rotation=45, ha="right")
+    plt.yticks(rotation=0)
+    plt.tight_layout()
+
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    print(f"  ✓ Saved answer choice heatmap to: {output_path}")
+    plt.close()
+
+
+def compute_asymmetry_analysis(
+    pivot: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
+    """
+    Compute asymmetry between evaluator and evaluatee roles.
+
+    Returns:
+        - asymmetry_matrix: Cell-wise differences (pivot - pivot.T)
+        - row_col_comparison: DataFrame with row means, column means, and differences
+        - asymmetry_scores: Series of asymmetry scores per model (row_mean - col_mean)
+    """
+    # Compute row means (when model is evaluator)
+    row_means = pivot.mean(axis=1, skipna=True)
+
+    # Compute column means (when model is treatment/evaluatee)
+    col_means = pivot.mean(axis=0, skipna=True)
+
+    # Create comparison DataFrame
+    comparison = pd.DataFrame(
+        {
+            "row_mean": row_means,
+            "col_mean": col_means,
+        }
+    )
+
+    # Compute difference (row_mean - col_mean)
+    comparison["difference"] = comparison["row_mean"] - comparison["col_mean"]
+    comparison = comparison.sort_values("difference", ascending=False)
+
+    # Compute cell-wise asymmetry: pivot - pivot.T
+    # This shows for each pair (A, B): how much better A identifies itself vs B
+    # compared to how well B identifies itself vs A
+    asymmetry_matrix = pivot - pivot.T
+
+    return asymmetry_matrix, comparison, comparison["difference"]
+
+
+def plot_asymmetry_heatmap(
+    asymmetry_matrix: pd.DataFrame, output_path: Path, experiment_title: str = ""
+):
+    """
+    Create heatmap showing asymmetry between evaluator and evaluatee roles.
+
+    Values show: pivot[A, B] - pivot[B, A]
+    - Positive: Model A is better at identifying itself vs B than B is vs A
+    - Negative: Model B is better at identifying itself vs A than A is vs B
+    - Magnitude indicates strength of asymmetry
+
+    Args:
+        asymmetry_matrix: Matrix of differences (pivot - pivot.T)
+        output_path: Path to save the heatmap
+        experiment_title: Optional experiment name
+    """
+    print("Generating asymmetry heatmap...")
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=(14, 10))
+
+    # Create mask for diagonal and NaN values (missing data)
+    mask = pd.DataFrame(
+        False, index=asymmetry_matrix.index, columns=asymmetry_matrix.columns
+    )
+    for model in asymmetry_matrix.index:
+        if model in asymmetry_matrix.columns:
+            # Mask diagonal
+            mask.loc[model, model] = True
+        # Mask NaN values (missing data for that pair)
+        for col in asymmetry_matrix.columns:
+            if pd.isna(asymmetry_matrix.loc[model, col]):
+                mask.loc[model, col] = True
+
+    # Create heatmap with same colormap as accuracy heatmap
+    # Use RdYlGn: red (negative) → yellow (zero) → green (positive)
+    sns.heatmap(
+        asymmetry_matrix,
+        annot=True,
+        fmt=".2f",
+        cmap="RdYlGn",  # Same as accuracy heatmap: Red-Yellow-Green
+        center=0.0,
+        vmin=-1.0,
+        vmax=1.0,
+        cbar_kws={"label": "Asymmetry (Row - Column)"},
+        mask=mask,
+        linewidths=0.5,
+        linecolor="gray",
+        ax=ax,
+    )
+
+    # Fill diagonal and missing data cells with gray squares
+    for i, model in enumerate(asymmetry_matrix.index):
+        for j, col in enumerate(asymmetry_matrix.columns):
+            if mask.loc[model, col]:  # If masked (diagonal or missing data)
+                ax.add_patch(
+                    plt.Rectangle((j, i), 1, 1, fill=True, color="lightgray", zorder=10)
+                )
+                ax.text(
+                    j + 0.5,
+                    i + 0.5,
+                    "N/A",
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                    color="black",
+                )
+
+    # Add thicker lines at provider boundaries
+    add_provider_boundaries(ax, asymmetry_matrix)
+
+    # Labels
+    ax.set_xlabel("Comparison Model (Treatment)", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Evaluator Model", fontsize=12, fontweight="bold")
+
+    # Build title
+    if experiment_title:
+        title = f"Evaluator vs Evaluatee Asymmetry: {experiment_title}\n(Cell value = How well row model identifies itself vs column model\nminus how well column model identifies itself vs row model)"
+    else:
+        title = "Evaluator vs Evaluatee Asymmetry\n(Cell value = Row model performance - Column model performance)"
+
+    ax.set_title(
+        title,
+        fontsize=14,
+        fontweight="bold",
+        pad=20,
+    )
+
+    # Rotate labels
+    plt.xticks(rotation=45, ha="right")
+    plt.yticks(rotation=0)
+
+    # Tight layout
+    plt.tight_layout()
+    # Increase bottom margin significantly to make room for note and rotated x-axis labels
+    plt.subplots_adjust(bottom=0.20)
+
+    # Add interpretation note (moved further down to avoid overlap with x-axis labels)
+    fig.text(
+        0.5,
+        0.01,
+        "Positive (green): Row model better at self-identification | "
+        "Negative (red): Column model better at self-identification | "
+        "Zero (yellow): Balanced",
+        ha="center",
+        fontsize=10,
+        style="italic",
+        bbox=dict(
+            boxstyle="round,pad=0.5",
+            facecolor="lightyellow",
+            edgecolor="gray",
+            linewidth=1,
+        ),
+    )
+
+    # Save
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    print(f"  ✓ Saved asymmetry heatmap to: {output_path}")
+
+    plt.close()
+
+
+def plot_row_vs_column_comparison(
+    comparison: pd.DataFrame, output_path: Path, experiment_title: str = ""
+):
+    """
+    Create bar plot comparing row means vs column means for each model.
+
+    This shows:
+    - Row mean: Average accuracy when model is evaluator (identifying itself)
+    - Column mean: Average accuracy when model is treatment (others identifying it)
+    - Difference: Row mean - Column mean
+
+    Positive difference suggests model has distinctive style.
+    Negative difference suggests model's outputs are easily identified by others.
+    """
+    print("Generating row vs column comparison plot...")
+
+    fig, ax = plt.subplots(figsize=(14, 8))
+
+    models = comparison.index
+    x_pos = range(len(models))
+
+    # Plot bars
+    width = 0.35
+    ax.bar(
+        [x - width / 2 for x in x_pos],
+        comparison["row_mean"],
+        width,
+        label="As Evaluator (Row Mean)",
+        color="steelblue",
+        alpha=0.8,
+    )
+    ax.bar(
+        [x + width / 2 for x in x_pos],
+        comparison["col_mean"],
+        width,
+        label="As Treatment (Column Mean)",
+        color="coral",
+        alpha=0.8,
+    )
+
+    # Add difference line
+    ax2 = ax.twinx()
+    colors = ["green" if d > 0 else "red" for d in comparison["difference"]]
+    ax2.bar(
+        x_pos,
+        comparison["difference"],
+        width=0.2,
+        label="Difference (Row - Col)",
+        color=colors,
+        alpha=0.6,
+    )
+    ax2.axhline(y=0, color="black", linestyle="--", linewidth=0.8)
+    ax2.set_ylabel(
+        "Difference (Row Mean - Column Mean)", fontsize=11, fontweight="bold"
+    )
+
+    # Labels
+    ax.set_xlabel("Model", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Average Accuracy", fontsize=12, fontweight="bold")
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(models, rotation=45, ha="right")
+    ax.set_ylim(0, 1.0)
+
+    # Title
+    if experiment_title:
+        title = f"Evaluator vs Evaluatee Performance: {experiment_title}\n(Row Mean: Model as evaluator | Column Mean: Model as treatment)"
+    else:
+        title = "Evaluator vs Evaluatee Performance\n(Row Mean: Model as evaluator | Column Mean: Model as treatment)"
+
+    ax.set_title(title, fontsize=14, fontweight="bold", pad=20)
+
+    # Legend
+    ax.legend(loc="upper left")
+    ax2.legend(loc="upper right")
+
+    # Add interpretation
+    fig.text(
+        0.5,
+        0.02,
+        "Positive difference (green): Model better at identifying itself than others are at identifying it (suggests distinctive style)\n"
+        "Negative difference (red): Others identify it easily, but model struggles to identify itself (suggests quality-based bias)",
+        ha="center",
+        fontsize=9,
+        style="italic",
+        bbox=dict(
+            boxstyle="round,pad=0.5",
+            facecolor="lightyellow",
+            edgecolor="gray",
+            linewidth=1,
+        ),
+    )
+
+    plt.tight_layout()
+    plt.subplots_adjust(bottom=0.12)
+
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    print(f"  ✓ Saved row vs column comparison to: {output_path}")
+
+    plt.close()
+
+
+def plot_heatmap(
+    pivot: pd.DataFrame,
+    output_path: Path,
+    experiment_title: str = "",
+    p_values: pd.DataFrame | None = None,
+    alpha: float = 0.05,
+):
+    """
+    Create and save heatmap of self-recognition accuracy.
+
+    Args:
+        pivot: Pivot table with evaluators as rows, treatments as columns
+        output_path: Path to save the heatmap image
+        experiment_title: Optional experiment name to include in the title
+    """
+    print("Generating heatmap...")
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=(14, 10))
+
+    # Check if diagonal has data (individual format) or is empty (pairwise format)
+    # For individual format, diagonal contains control condition data and should be shown
+    # For pairwise format, diagonal is empty (evaluator == treatment doesn't exist) and should be masked
+    has_diagonal_data = False
+    for model in pivot.index:
+        if model in pivot.columns:
+            if pd.notna(pivot.loc[model, model]):
+                has_diagonal_data = True
+                break
+
+    # Create mask for diagonal only if it's pairwise format (no diagonal data)
+    mask = pd.DataFrame(False, index=pivot.index, columns=pivot.columns)
+    if not has_diagonal_data:
+        # Pairwise format: mask diagonal (evaluator == treatment doesn't exist)
+        for model in pivot.index:
+            if model in pivot.columns:
+                mask.loc[model, model] = True
+
+    # Create heatmap
+    hm = sns.heatmap(
+        pivot,
+        annot=True,
+        fmt=".2f",
+        cmap="RdYlGn",
+        center=0.5,
+        vmin=0.0,
+        vmax=1.0,
+        cbar_kws={"label": "Self-Recognition Accuracy"},
+        mask=mask,
+        linewidths=0.5,
+        linecolor="gray",
+        ax=ax,
+    )
+
+    # Bold significant cells if p-values provided
+    if p_values is not None:
+        # Seaborn's hm.texts only includes unmasked cells; build a position->text map
+        text_map: dict[tuple[int, int], any] = {}
+        for text in hm.texts:
+            x, y = text.get_position()
+            # Heatmap text positions are at (col + 0.5, row + 0.5)
+            j = int(round(x - 0.5))
+            i = int(round(y - 0.5))
+            text_map[(i, j)] = text
+
+        for i, row in enumerate(pivot.index):
+            for j, col in enumerate(pivot.columns):
+                text = text_map.get((i, j))
+                if text is None:
+                    continue
+                p_val = (
+                    p_values.loc[row, col]
+                    if (row in p_values.index and col in p_values.columns)
+                    else None
+                )
+                if p_val is not None and pd.notna(p_val) and p_val < alpha:
+                    text.set_fontweight("bold")
+
+    # Fill diagonal with gray only for pairwise format (when diagonal has no data)
+    if not has_diagonal_data:
+        for i, model in enumerate(pivot.index):
+            if model in pivot.columns:
+                j = list(pivot.columns).index(model)
+                ax.add_patch(
+                    plt.Rectangle((j, i), 1, 1, fill=True, color="lightgray", zorder=10)
+                )
+                ax.text(
+                    j + 0.5,
+                    i + 0.5,
+                    "N/A",
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                    color="black",
+                )
+
+    # Add thicker lines at provider boundaries
+    add_provider_boundaries(ax, pivot)
+
+    # Labels
+    ax.set_xlabel("Comparison Model (Treatment)", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Evaluator Model", fontsize=12, fontweight="bold")
+
+    # Build title with optional experiment name
+    if experiment_title:
+        title = f"Self-Recognition Accuracy Matrix: {experiment_title}\n(How well each model identifies its own outputs vs. others)"
+    else:
+        title = "Self-Recognition Accuracy Matrix\n(How well each model identifies its own outputs vs. others)"
+
+    ax.set_title(
+        title,
+        fontsize=14,
+        fontweight="bold",
+        pad=20,
+    )
+
+    # Rotate labels for readability
+    plt.xticks(rotation=45, ha="right")
+    plt.yticks(rotation=0)
+
+    # Tight layout
+    plt.tight_layout()
+
+    # Save
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    print(f"  ✓ Saved heatmap to: {output_path}")
+
+    plt.close()
+
+
+def compute_significance_matrix(
+    pivot_correct: pd.DataFrame, pivot_counts: pd.DataFrame, alpha: float = 0.05
+) -> pd.DataFrame:
+    """
+    Compute p-values for accuracy vs chance (0.5) using exact binomial tests.
+
+    Args:
+        pivot_correct: Matrix of total correct counts
+        pivot_counts: Matrix of total sample counts
+        alpha: Significance threshold (unused here but kept for API symmetry)
+
+    Returns:
+        DataFrame of p-values (NaN where n=0)
+    """
+    p_values = pd.DataFrame(
+        pd.NA, index=pivot_correct.index, columns=pivot_correct.columns
+    )
+
+    for r in pivot_correct.index:
+        for c in pivot_correct.columns:
+            n = pivot_counts.loc[r, c]
+            k = pivot_correct.loc[r, c]
+            if pd.notna(n) and n > 0 and pd.notna(k):
+                try:
+                    res = binomtest(
+                        int(round(k)), int(round(n)), p=0.5, alternative="two-sided"
+                    )
+                    p_values.loc[r, c] = res.pvalue
+                except Exception:
+                    p_values.loc[r, c] = pd.NA
+
+    return p_values
+
+
+def generate_summary_stats(
+    df: pd.DataFrame,
+    pivot: pd.DataFrame,
+    pivot_counts: pd.DataFrame,
+    p_values: pd.DataFrame | None,
+    comparison: pd.DataFrame,
+    asymmetry_matrix: pd.DataFrame,
+    output_path: Path,
+    experiment_title: str = "",
+):
+    """Generate and save summary statistics."""
+
+    print("Generating summary statistics...")
+
+    with open(output_path, "w") as f:
+        f.write("=" * 70 + "\n")
+        f.write("SELF-RECOGNITION EXPERIMENT ANALYSIS\n")
+        f.write("=" * 70 + "\n\n")
+
+        # Overall stats
+        f.write("OVERALL STATISTICS\n")
+        f.write("-" * 70 + "\n")
+        f.write(f"Total evaluations: {len(df)}\n")
+        f.write(f"  Successful: {(df['status'] == 'success').sum()}\n")
+        f.write(f"  Failed: {(df['status'] == 'error').sum()}\n")
+        f.write(f"  Cancelled: {(df['status'] == 'cancelled').sum()}\n")
+        f.write(f"  Started (incomplete): {(df['status'] == 'started').sum()}\n\n")
+
+        # Accuracy stats
+        df_success = df[df["status"] == "success"]
+        if len(df_success) > 0 and df_success["accuracy"].notna().any():
+            f.write("ACCURACY STATISTICS\n")
+            f.write("-" * 70 + "\n")
+            f.write(f"Mean accuracy: {df_success['accuracy'].mean():.3f}\n")
+            f.write(f"Median accuracy: {df_success['accuracy'].median():.3f}\n")
+            f.write(f"Std deviation: {df_success['accuracy'].std():.3f}\n")
+            f.write(f"Min accuracy: {df_success['accuracy'].min():.3f}\n")
+            f.write(f"Max accuracy: {df_success['accuracy'].max():.3f}\n\n")
+
+        # Model performance
+        f.write("EVALUATOR PERFORMANCE (Average Accuracy)\n")
+        f.write("-" * 70 + "\n")
+        evaluator_avg = (
+            df_success.groupby("evaluator")["accuracy"]
+            .mean()
+            .sort_values(ascending=False)
+        )
+        for model, acc in evaluator_avg.items():
+            f.write(f"  {model:30} {acc:.3f}\n")
+        f.write("\n")
+
+        # Treatment difficulty
+        f.write("TREATMENT DIFFICULTY (Average Accuracy Across All Evaluators)\n")
+        f.write("-" * 70 + "\n")
+        f.write("(Lower = harder to distinguish from self)\n\n")
+        treatment_avg = (
+            df_success.groupby("treatment")["accuracy"]
+            .mean()
+            .sort_values(ascending=True)
+        )
+        for model, acc in treatment_avg.items():
+            f.write(f"  {model:30} {acc:.3f}\n")
+        f.write("\n")
+
+        # Pivot table dimensions
+        f.write("COVERAGE\n")
+        f.write("-" * 70 + "\n")
+        f.write(f"Unique evaluators: {len(pivot.index)}\n")
+        f.write(f"Unique treatments: {len(pivot.columns)}\n")
+        f.write(
+            f"Total possible comparisons: {len(pivot.index) * len(pivot.columns)}\n"
+        )
+        f.write(
+            f"Diagonal (N/A): {len([m for m in pivot.index if m in pivot.columns])}\n"
+        )
+        valid_comparisons = pivot.notna().sum().sum()
+        f.write(f"Valid evaluations: {int(valid_comparisons)}\n")
+        f.write(
+            f"Missing evaluations: {len(pivot.index) * len(pivot.columns) - int(valid_comparisons) - len([m for m in pivot.index if m in pivot.columns])}\n\n"
+        )
+
+        if p_values is not None:
+            f.write("SIGNIFICANCE vs CHANCE (p=0.5)\n")
+            f.write("-" * 70 + "\n")
+            sig_mask = (p_values < 0.05) & p_values.notna()
+            sig_count = int(sig_mask.sum().sum())
+            f.write(f"Significant cells (p < 0.05): {sig_count}\n")
+            # Identify strongest signals
+            flattened = []
+            for r in p_values.index:
+                for c in p_values.columns:
+                    pval = p_values.loc[r, c]
+                    n = (
+                        pivot_counts.loc[r, c]
+                        if (r in pivot_counts.index and c in pivot_counts.columns)
+                        else 0
+                    )
+                    acc = (
+                        pivot.loc[r, c]
+                        if (r in pivot.index and c in pivot.columns)
+                        else pd.NA
+                    )
+                    if pd.notna(pval):
+                        flattened.append((pval, r, c, acc, n))
+            flattened.sort(key=lambda x: x[0])
+            top = flattened[:5]
+            f.write("Lowest p-values:\n")
+            for pval, r, c, acc, n in top:
+                acc_str = f"{acc:.3f}" if pd.notna(acc) else "NA"
+                f.write(f"  {r} vs {c}: p={pval:.4g}, acc={acc_str}, n={int(n)}\n")
+            f.write("\n")
+
+        # Asymmetry analysis
+        f.write("EVALUATOR vs EVALUATEE ASYMMETRY ANALYSIS\n")
+        f.write("-" * 70 + "\n")
+        f.write("This analysis distinguishes between:\n")
+        f.write("  • Style-based recognition: Model has distinctive output style\n")
+        f.write("  • Quality-based bias: Model biased by response quality/strength\n\n")
+
+        f.write("ROW vs COLUMN MEANS (Per Model)\n")
+        f.write("-" * 70 + "\n")
+        f.write(
+            "Row Mean: Average accuracy when model is EVALUATOR (identifying itself)\n"
+        )
+        f.write(
+            "Col Mean: Average accuracy when model is TREATMENT (others identifying it)\n"
+        )
+        f.write("Difference: Row Mean - Col Mean\n\n")
+        f.write(
+            f"{'Model':<30} {'Row Mean':<12} {'Col Mean':<12} {'Difference':<12} {'Interpretation':<50}\n"
+        )
+        f.write("-" * 116 + "\n")
+
+        for model, row in comparison.iterrows():
+            row_mean = row["row_mean"]
+            col_mean = row["col_mean"]
+            diff = row["difference"]
+
+            if diff > 0.1:
+                interpretation = "Distinctive style (better at self-ID)"
+            elif diff < -0.1:
+                interpretation = "Quality bias (others ID it easily)"
+            else:
+                interpretation = "Balanced"
+
+            f.write(
+                f"{model:<30} {row_mean:<12.3f} {col_mean:<12.3f} {diff:<12.3f} {interpretation:<50}\n"
+            )
+        f.write("\n")
+
+        # Cell-wise asymmetry statistics
+        f.write("CELL-WISE ASYMMETRY STATISTICS\n")
+        f.write("-" * 70 + "\n")
+        valid_asym = asymmetry_matrix[~asymmetry_matrix.isna()].values.flatten()
+        if len(valid_asym) > 0:
+            f.write(f"Mean absolute asymmetry: {abs(valid_asym).mean():.3f}\n")
+            f.write(f"Max asymmetry: {valid_asym.max():.3f}\n")
+            f.write(f"Min asymmetry: {valid_asym.min():.3f}\n")
+            f.write(f"Std deviation: {valid_asym.std():.3f}\n\n")
+
+            # Count significant asymmetries
+            large_asym = abs(valid_asym) > 0.2
+            f.write(
+                f"Large asymmetries (|diff| > 0.2): {large_asym.sum()} / {len(valid_asym)} ({100*large_asym.sum()/len(valid_asym):.1f}%)\n"
+            )
+            f.write(
+                f"Positive asymmetries: {(valid_asym > 0).sum()} ({100*(valid_asym > 0).sum()/len(valid_asym):.1f}%)\n"
+            )
+            f.write(
+                f"Negative asymmetries: {(valid_asym < 0).sum()} ({100*(valid_asym < 0).sum()/len(valid_asym):.1f}%)\n\n"
+            )
+
+    print(f"  ✓ Saved summary to: {output_path}")
+
+
+def main():
+    # Preprocess sys.argv to handle -set before argparse sees it
+    # This is needed because argparse treats -set as a flag due to the leading dash
+    if "--model_names" in sys.argv:
+        model_names_idx = sys.argv.index("--model_names")
+        # Find where model_names arguments end (next flag or end of args)
+        for i in range(model_names_idx + 1, len(sys.argv)):
+            if sys.argv[i] == "-set" and (
+                i + 1 < len(sys.argv) and not sys.argv[i + 1].startswith("--")
+            ):
+                # Replace -set with a placeholder that doesn't start with -
+                sys.argv[i] = "SET_PLACEHOLDER"
+
+    parser = argparse.ArgumentParser(
+        description="Compute recognition accuracy metrics from evaluation logs",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        allow_abbrev=False,  # Disable abbreviation to allow -set as a value
+    )
+    parser.add_argument(
+        "--results_dir",
+        type=str,
+        nargs="+",
+        required=True,
+        help="Path(s) to directory containing eval logs. Multiple directories can be specified "
+        "to combine subsets (e.g., data/results/wikisum/training_set_1-20/EXP data/results/wikisum/test_set_1-30/EXP)",
+    )
+    parser.add_argument(
+        "--model_names",
+        type=str,
+        nargs="+",
+        required=True,
+        help="List of model names to include (filters and orders results). "
+        "Supports -set notation (e.g., --model_names -set dr) or explicit names "
+        "(e.g., --model_names haiku-3.5 gpt-4.1) or mixed (--model_names haiku-3.5 -set dr)",
+    )
+    parser.add_argument(
+        "--output_name",
+        type=str,
+        default=None,
+        help="Optional custom output directory name (used when combining multiple subsets). "
+        "If not provided, uses 'combined' when multiple dirs are given.",
+    )
+
+    args = parser.parse_args()
+
+    # Restore -set from placeholder and expand model sets
+    args.model_names = [
+        arg.replace("SET_PLACEHOLDER", "-set") for arg in args.model_names
+    ]
+    model_order = expand_model_names(args.model_names)
+    print(f"Model filter/order: {', '.join(model_order)}\n")
+
+    results_dirs = [Path(d) for d in args.results_dir]
+
+    # Validate all directories exist
+    for results_dir in results_dirs:
+        if not results_dir.exists():
+            print(f"Error: Directory not found: {results_dir}")
+            return
+
+    # Use first directory for config path derivation
+    first_dir = results_dirs[0]
+
+    # Parse path to create matching analysis output path
+    # Expected: data/results/{dataset_name}/{data_subset}/{experiment_name}
+    # Output: data/analysis/{dataset_name}/{data_subset}/{experiment_name}
+    # For multiple directories, use dataset_name/combined/{experiment_name} or custom output_name
+    parts = first_dir.parts
+    if len(parts) >= 4 and parts[0] == "data" and parts[1] == "results":
+        dataset_name = parts[2]
+        experiment_name = parts[-1]
+
+        if len(results_dirs) == 1:
+            # Single directory: use original structure
+            relative_path = Path(*parts[2:])
+            output_dir = Path("data/analysis") / relative_path
+        else:
+            # Multiple directories: use combined or custom name
+            if args.output_name:
+                subset_name = args.output_name
+            else:
+                # Auto-generate combined name from subset names
+                subset_names = []
+                for d in results_dirs:
+                    d_parts = d.parts
+                    if len(d_parts) >= 4:
+                        subset_names.append(d_parts[3])  # The subset part
+                subset_name = "+".join(subset_names) if subset_names else "combined"
+
+            output_dir = (
+                Path("data/analysis") / dataset_name / subset_name / experiment_name
+            )
+    else:
+        # Fallback: use full path from results onwards
+        output_dir = Path("data/analysis") / first_dir.name
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create recognition_accuracy subdirectory
+    accuracy_dir = output_dir / "recognition_accuracy"
+    accuracy_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"\n{'='*70}")
+    print("RECOGNITION ACCURACY ANALYSIS")
+    print(f"{'='*70}")
+    if len(results_dirs) == 1:
+        print(f"Results dir: {results_dirs[0]}")
+    else:
+        print(f"Combining {len(results_dirs)} result directories:")
+        for d in results_dirs:
+            print(f"  - {d}")
+    print(f"Output dir: {accuracy_dir}")
+    print(f"{'='*70}\n")
+
+    # Load all evaluations from all directories
+    df = load_all_evaluations(results_dirs)
+
+    if len(df) == 0:
+        print("⚠ No evaluations found!")
+        return
+
+    pivot, pivot_counts, pivot_correct = create_pivot_table(df, model_order)
+
+    if pivot.empty:
+        print("⚠ No successful evaluations to analyze!")
+        return
+
+    # Compute significance vs chance (0.5)
+    p_values = compute_significance_matrix(pivot_correct, pivot_counts)
+
+    # Save pivot table
+    pivot_path = accuracy_dir / "accuracy_pivot.csv"
+    pivot.to_csv(pivot_path)
+    print(f"  ✓ Saved pivot table to: {pivot_path}\n")
+
+    # Save counts and p-values
+    counts_path = accuracy_dir / "accuracy_counts.csv"
+    pivot_counts.to_csv(counts_path)
+    pvalues_path = accuracy_dir / "pvalues_vs_chance.csv"
+    p_values.to_csv(pvalues_path)
+    print(f"  ✓ Saved counts to: {counts_path}")
+    print(f"  ✓ Saved p-values to: {pvalues_path}\n")
+
+    # Extract experiment name from path for title
+    # Path format: .../dataset/subset/[NUM_]EXPERIMENT_CODE
+    # e.g., .../pku_saferlhf/mismatch_1-20/11_UT_PW-Q_Rec_NPr
+    experiment_code = results_dir.name
+    # Remove leading numbers and underscore if present (e.g., "11_UT_PW-Q_Rec_NPr" -> "UT_PW-Q_Rec_NPr")
+    if "_" in experiment_code:
+        parts = experiment_code.split("_", 1)
+        if parts[0].isdigit():
+            experiment_code = parts[1]
+
+    # Look up full name from mapping
+    experiment_mapping = get_experiment_name_mapping()
+    experiment_title = experiment_mapping.get(experiment_code, experiment_code)
+
+    # Generate heatmap
+    heatmap_path = accuracy_dir / "accuracy_heatmap.png"
+    plot_heatmap(
+        pivot,
+        heatmap_path,
+        experiment_title=experiment_title,
+        p_values=p_values,
+        alpha=0.05,
+    )
+    print()
+
+    # Create answer choice bias analysis
+    # Use same model order as above
+    answer_pivot, answer_count_1, answer_count_2 = create_answer_choice_pivot(
+        df, model_order
+    )
+
+    # Save answer choice tables
+    answer_pivot_path = accuracy_dir / "answer_choice_ratio.csv"
+    answer_pivot.to_csv(answer_pivot_path)
+    print(f"  ✓ Saved answer choice ratio to: {answer_pivot_path}")
+
+    answer_counts_path = accuracy_dir / "answer_choice_counts.csv"
+    # Combine counts into a single table for reference
+    combined_counts = answer_count_1.astype(str) + "/" + answer_count_2.astype(str)
+    combined_counts.to_csv(answer_counts_path)
+    print(f"  ✓ Saved answer choice counts to: {answer_counts_path}\n")
+
+    # Generate answer choice heatmap
+    answer_heatmap_path = accuracy_dir / "answer_choice_heatmap.png"
+    plot_answer_choice_heatmap(
+        answer_pivot, answer_heatmap_path, experiment_title=experiment_title
+    )
+    print()
+
+    # Display preview
+    print(f"{'='*70}")
+    print("PREVIEW: Accuracy Pivot Table")
+    print(f"{'='*70}\n")
+    print(pivot.round(3))
+    print()
+
+    print(f"{'='*70}")
+    print("ANALYSIS COMPLETE")
+    print(f"{'='*70}")
+    print(f"Output directory: {accuracy_dir}")
+    print("  • accuracy_pivot.csv: Raw accuracy data")
+    print("  • accuracy_counts.csv: Sample counts per cell")
+    print("  • pvalues_vs_chance.csv: Statistical significance")
+    print("  • accuracy_heatmap.png: Accuracy visualization")
+    print("  • answer_choice_ratio.csv: Proportion choosing answer 1")
+    print("  • answer_choice_counts.csv: Raw counts (1/2) per cell")
+    print("  • answer_choice_heatmap.png: Ordering bias visualization")
+    print(f"{'='*70}\n")
+
+
+if __name__ == "__main__":
+    main()

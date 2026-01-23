@@ -203,7 +203,9 @@ def _configure_thinking_model_params(
 
     # For dual-mode models WITHOUT -thinking suffix, explicitly disable reasoning
     if not is_thinking_model(model_name):
-        _disable_reasoning_for_instruct_mode(model_name, config_params, inspect_model_str)
+        _disable_reasoning_for_instruct_mode(
+            model_name, config_params, inspect_model_str
+        )
         return
 
     # Set reasoning_history for all thinking models (default: "all")
@@ -344,6 +346,11 @@ def get_task_function(
         ("UT", "PW-Q", "Pref"): pairwise_query,
         ("AT", "IND-Q", "Rec"): individual_query,
         ("UT", "IND-Q", "Rec"): individual_query,
+        (
+            "UT",
+            "IND-Q",
+            "Pref",
+        ): individual_query,  # Pref tasks use same function as Rec
     }
 
     key = (tags, format_type, base_task)

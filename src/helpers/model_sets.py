@@ -53,16 +53,16 @@ def get_model_set(model_set_name: str | None = None) -> list[str]:
             "qwen-2.5-7b",
             "qwen-2.5-72b",
             "qwen-3.0-80b",
-            #"qwen-3.0-235b",
+            # "qwen-3.0-235b",
             # Together AI - DeepSeek (weakest to strongest)
             "deepseek-3.1",
             # XAI (weakest to strongest)
-            #"grok-4.1-fast",
+            # "grok-4.1-fast",
             # Moonshot (weakest to strongest)
             "kimi-k2",
         ]
     elif model_set_name.lower() == "test_dr":
-        return [    
+        return [
             # OpenAI (weakest to strongest)
             "gpt-4o-mini",
             # Anthropic (weakest to strongest)
@@ -101,29 +101,56 @@ def get_model_set(model_set_name: str | None = None) -> list[str]:
         return [
             # OpenAI (weakest to strongest)
             ## OS
-            "gpt-oss-20b-thinking",
+            # "gpt-oss-20b-thinking",
             "gpt-oss-120b-thinking",
             ## Not OS
-            "o3-thinking",
-            "o3-mini-thinking",
+            # "o3-thinking",
+            # "o3-mini-thinking",
             # Anthropic (weakest to strongest)
-            "haiku-3.5-thinking",
-            "sonnet-3.7-thinking",
-            "sonnet-4.5-thinking",
+            # "haiku-3.5-thinking",
+            # "sonnet-3.7-thinking",
+            # "sonnet-4.5-thinking",
             "opus-4.1-thinking",
             # Google Gemini (weakest to strongest)
-            "gemini-2.0-flash-lite-thinking",
-            "gemini-2.0-flash-thinking",
-            "gemini-2.5-flash-thinking",
+            # "gemini-2.0-flash-lite-thinking",
+            # "gemini-2.0-flash-thinking",
+            # "gemini-2.5-flash-thinking",
             "gemini-2.5-pro-thinking",
             # Together
             ## OS
-            "sonnet-3.7-thinking",
-            #"grok-3-mini-thinking",
-            "ll-3.3-70b-dsR1-thinking",
+            # "grok-3-mini-thinking",
+            # "ll-3.3-70b-dsR1-thinking",
             "qwen-3.0-80b-thinking",
-            "qwen-3.0-235b-thinking",
+            # "qwen-3.0-235b-thinking",
             "deepseek-r1-thinking",
+            "kimi-k2-thinking",
+        ]
+    elif model_set_name.lower() == "test_eval_cot-r":
+        return [
+            # OpenAI (weakest to strongest)
+            ## OS
+            # "gpt-oss-20b-thinking",
+            # "gpt-oss-120b-thinking",
+            ## Not OS
+            # "o3-thinking",
+            # "o3-mini-thinking",
+            # Anthropic (weakest to strongest)
+            # "haiku-3.5-thinking",
+            # "sonnet-3.7-thinking",
+            # "sonnet-4.5-thinking",
+            # "opus-4.1-thinking",
+            # Google Gemini (weakest to strongest)
+            # "gemini-2.0-flash-lite-thinking",
+            # "gemini-2.0-flash-thinking",
+            # "gemini-2.5-flash-thinking",
+            # "gemini-2.5-pro-thinking",
+            # Together
+            ## OS
+            # "grok-3-mini-thinking",
+            # "ll-3.3-70b-dsR1-thinking",
+            "qwen-3.0-80b-thinking",
+            # "qwen-3.0-235b-thinking",
+            # "deepseek-r1-thinking",
             "kimi-k2-thinking",
         ]
     elif (
@@ -163,9 +190,7 @@ def get_model_set(model_set_name: str | None = None) -> list[str]:
             "sonnet-4.5",
             "opus-4.1",
         ]
-    elif (
-        model_set_name.lower() == "eval_cot-r_and_cot-i"
-    ):
+    elif model_set_name.lower() == "eval_cot-r_and_cot-i":
         return [
             ### CoT-R
             # OpenAI (weakest to strongest)
@@ -206,11 +231,8 @@ def get_model_set(model_set_name: str | None = None) -> list[str]:
             "ll-3.1-405b-thinking",
             # Together AI - DeepSeek (weakest to strongest)
             "deepseek-3.1-thinking",
-
         ]
-    elif (
-        model_set_name.lower() == "test_eval_cot-r_and_cot-i"
-    ):
+    elif model_set_name.lower() == "test_eval_cot-r_and_cot-i":
         return [
             # Anthropic (weakest to strongest)
             "haiku-3.5-thinking",
@@ -218,7 +240,6 @@ def get_model_set(model_set_name: str | None = None) -> list[str]:
             "gemini-2.0-flash-lite-thinking",
             # Together AI - Llama (weakest to strongest)
             "ll-3.1-70b-thinking",
-
         ]
     else:
         raise ValueError(

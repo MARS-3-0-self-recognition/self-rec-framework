@@ -349,17 +349,26 @@ def _build_prompts(
     # Get SR task template: SR_task[pair_type][format_type][base_task]
     # Use base_task ("Pref" or "Rec") for template lookup
     try:
-        # Rec tasks can have generator_output variants (FA / RT-FA / RT)
+        # Determine generator_output (needed for both Rec and Pref tasks in some formats)
+        generator_output = exp_config.generator_output
+        if generator_output is None:
+            # Default to RT-FA (reasoning trace + final answer) for CoT evaluators
+            # Default to FA (final answer only) for DR evaluators
+            if exp_config.evaluator_reasoning == "CoT":
+                generator_output = "RT-FA"
+            else:
+                generator_output = "FA"
+
+        # Build sr_task_keys: [pair_type, format_type, base_task]
         sr_task_keys = [pair_type, format_type, base_task]
+
+        # Some task/format combinations require generator_output in the path
+        # - Rec tasks: always have generator_output variants (FA / RT-FA / RT)
+        # - Pref tasks: IND-Q format has generator_output variants (FA), PW-Q does not
         if base_task == "Rec":
-            generator_output = exp_config.generator_output
-            if generator_output is None:
-                # Default to RT-FA (reasoning trace + final answer) for CoT evaluators
-                # Default to FA (final answer only) for DR evaluators
-                if exp_config.evaluator_reasoning == "CoT":
-                    generator_output = "RT-FA"
-                else:
-                    generator_output = "FA"
+            sr_task_keys.append(generator_output)
+        elif base_task == "Pref" and pair_type == "IND" and format_type == "Q":
+            # IND-Q Pref tasks have generator_output variants (currently only FA)
             sr_task_keys.append(generator_output)
 
         sr_task_template = _get_nested_prompt(
@@ -396,15 +405,21 @@ def _build_prompts(
         raise ValueError(f"Unknown reasoning key: {reasoning_key}") from e
 
     # Select format string; try nested path [pair_type, format_type], with "All" fallback
+    # For IND-Q format, the structure is Format[IND][Q][Rec|Pref], so we need base_task
     try:
+        format_keys = [pair_type, format_type]
+        # IND-Q format has task-specific format strings (Rec vs Pref)
+        if pair_type == "IND" and format_type == "Q":
+            format_keys.append(base_task)
+
         format_template = _get_nested_prompt(
             base_prompts["SR_task_prompt_builder"]["Format"],
-            [pair_type, format_type],
+            format_keys,
             allow_all=True,
         ).strip()
     except KeyError as e:
         raise ValueError(
-            f"Format not implemented for pair_type={pair_type}, format_type={format_type}"
+            f"Format not implemented for pair_type={pair_type}, format_type={format_type}, task={base_task}"
         ) from e
 
     reasoning_format_text = reasoning_template.replace("{Format}", format_template)
