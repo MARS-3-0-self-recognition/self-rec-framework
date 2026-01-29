@@ -359,7 +359,81 @@ MODEL_CAPABILITY_TIERS: dict[str, int] = {
     "deepseek-3.1_fw": 5,  # Very large MoE model (671B total)
     "deepseek-r1_fw": 5,  # Very large reasoning model (671B total)
 }
-
+# LM Arena rankings from https://lmarena.ai/leaderboard/text
+# Rankings are based on Elo scores from the leaderboard (as of Jan 16, 2026).
+# Lower rank number = higher position on leaderboard (rank 1 is best).
+# Models not found on leaderboard are marked as None.
+LM_ARENA_RANKINGS: dict[str, int | None] = {
+    # OpenAI
+    "gpt-4o-mini": 152,  # gpt-4o-mini-2024-07-18, score: 1318
+    "gpt-4o": 18,  # chatgpt-4o-latest-20250326, score: 1442 (using latest version)
+    "gpt-4.1-mini": 80,  # gpt-4.1-mini-2025-04-14, score: 1382
+    "gpt-4.1": 47,  # gpt-4.1-2025-04-14, score: 1413
+    "gpt-5-mini": None,  # Not found on leaderboard
+    "gpt-5-mini-thinking": None,  # Not found on leaderboard
+    "gpt-5": 21,  # gpt-5.1, score: 1435 (using closest match)
+    "gpt-5-thinking": 21,  # gpt-5.1, score: 1435 (using closest match)
+    "gpt-oss-20b-thinking": 151,  # gpt-oss-20b, score: 1318
+    "gpt-oss-120b-thinking": 101,  # gpt-oss-120b, score: 1354
+    "o3": 24,  # o3-2025-04-16, score: 1433
+    "o3-thinking": 24,  # o3-2025-04-16, score: 1433
+    "o3-mini": 107,  # o3-mini, score: 1348
+    "o3-mini-thinking": 107,  # o3-mini, score: 1348
+    # Anthropic
+    "sonnet-4.5": 13,  # claude-sonnet-4-5-20250929, score: 1450
+    "sonnet-4.5-thinking": 11,  # claude-sonnet-4-5-20250929-thinking-32k, score: 1451
+    "sonnet-3.7": None,  # claude-3-7-sonnet-20250219 not found (thinking version at rank 73)
+    "sonnet-3.7-thinking": 73,  # claude-3-7-sonnet-20250219-thinking-32k, score: 1389
+    "haiku-3.5": 138,  # claude-3-5-haiku-20241022, score: 1324
+    "haiku-3.5-thinking": 138,  # claude-3-5-haiku-20241022, score: 1324
+    "haiku-4.5": 56,  # claude-haiku-4-5-20251001, score: 1403
+    "haiku-4.5-thinking": 56,  # claude-haiku-4-5-20251001, score: 1403
+    "opus-4.1": 15,  # claude-opus-4-1-20250805, score: 1445
+    "opus-4.1-thinking": 14,  # claude-opus-4-1-20250805-thinking-16k, score: 1449
+    # Google
+    "gemini-2.0-flash": 96,  # gemini-2.0-flash-001, score: 1361
+    "gemini-2.0-flash-thinking": 96,  # gemini-2.0-flash-001, score: 1361
+    "gemini-2.0-flash-lite": 102,  # gemini-2.0-flash-lite-preview-02-05, score: 1353
+    "gemini-2.0-flash-lite-thinking": 102,  # gemini-2.0-flash-lite-preview-02-05, score: 1353
+    "gemini-2.5-flash": 53,  # gemini-2.5-flash, score: 1409
+    "gemini-2.5-flash-thinking": 53,  # gemini-2.5-flash, score: 1409
+    "gemini-2.5-pro": 10,  # gemini-2.5-pro, score: 1451
+    "gemini-2.5-pro-thinking": 10,  # gemini-2.5-pro, score: 1451
+    # XAI
+    "grok-3-mini": 98,  # grok-3-mini-beta, score: 1356 (using closest match)
+    "grok-3-mini-thinking": 98,  # grok-3-mini-beta, score: 1356 (using closest match)
+    "grok-4.1-fast": 25,  # grok-4-1-fast-reasoning, score: 1430
+    "grok-4.1-fast-thinking": 25,  # grok-4-1-fast-reasoning, score: 1430
+    # Together - Llama
+    "ll-3.1-8b": 225,  # llama-3.1-8b-instruct, score: 1212
+    "ll-3.1-70b": 173,  # llama-3.1-70b-instruct, score: 1294
+    "ll-3.3-70b-dsR1-thinking": None,  # Not found on leaderboard
+    "ll-3.1-405b": 125,  # llama-3.1-405b-instruct-bf16, score: 1336 (using bf16 version)
+    # Together - Qwen
+    "qwen-2.5-7b": None,  # qwen2.5-7b not found (qwen1.5-7b-chat at rank 262)
+    "qwen-2.5-72b": 170,  # qwen2.5-72b-instruct, score: 1303
+    "qwen-3.0-80b": 59,  # qwen3-next-80b-a3b-instruct, score: 1401
+    "qwen-3.0-80b-thinking": 90,  # qwen3-next-80b-a3b-thinking, score: 1369
+    "qwen-3.0-235b": 33,  # qwen3-235b-a22b-instruct-2507, score: 1422
+    "qwen-3.0-235b-thinking": 62,  # qwen3-235b-a22b-thinking-2507, score: 1398
+    # Together - DeepSeek
+    "deepseek-3.0": 97,  # deepseek-v3, score: 1358
+    "deepseek-3.1": 42,  # deepseek-v3.1, score: 1417
+    "deepseek-r1-thinking": 37,  # deepseek-r1-0528, score: 1418
+    # Moonshot
+    "kimi-k2": 38,  # kimi-k2-0905-preview, score: 1418
+    "kimi-k2-thinking": 26,  # kimi-k2-thinking-turbo, score: 1429
+    # Fireworks - Llama
+    "ll-3.1-8b_fw": 225,  # Same as Together version
+    "ll-3.1-70b_fw": 173,  # Same as Together version
+    "ll-3.1-405b_fw": 125,  # Same as Together version
+    # Fireworks - Qwen
+    "qwen-3.0-30b_fw": 78,  # qwen3-30b-a3b-instruct-2507, score: 1383
+    "qwen-3.0-235b_fw": 45,  # qwen3-vl-235b-a22b-instruct, score: 1415
+    # Fireworks - DeepSeek
+    "deepseek-3.1_fw": 42,  # Same as Together version
+    "deepseek-r1_fw": 37,  # Same as Together version (deepseek-r1-0528)
+}
 # Build a reverse mapping that preserves ALL short names per inspect name.
 # Multiple short names (e.g., "sonnet-4.5" and "sonnet-4.5-thinking") can
 # legitimately map to the same inspect model, so we store a list rather than

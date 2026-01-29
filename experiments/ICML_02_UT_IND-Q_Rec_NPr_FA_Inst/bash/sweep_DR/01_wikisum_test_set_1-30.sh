@@ -28,6 +28,15 @@ for model in "${MODEL_NAMES[@]}"; do
     MODEL_NAMES_ARG+=("$model")
 done
 
+# Build generator_models argument
+GENERATOR_MODELS_ARG=()
+if [ ${#GENERATOR_MODELS[@]} -gt 0 ]; then
+    GENERATOR_MODELS_ARG+=("--generator_models")
+    for generator_model in "${GENERATOR_MODELS[@]}"; do
+        GENERATOR_MODELS_ARG+=("$generator_model")
+    done
+fi
+
 # Build batch argument (if enabled)
 BATCH_ARG=()
 if [[ "$BATCH_MODE" != "false" && -n "$BATCH_MODE" ]]; then
@@ -49,8 +58,9 @@ fi
 # Run sweep experiment
 # ============================================================================
 
-uv run experiments/_scripts/    run_experiment_sweep.py \
+uv run experiments/_scripts/eval/run_experiment_sweep.py \
     --model_names "${MODEL_NAMES_ARG[@]}" \
+    "${GENERATOR_MODELS_ARG[@]}" \
     --treatment_type "$TREATMENT_TYPE" \
     --dataset_dir_path data/input/wikisum/test_set_1-30 \
     --experiment_config "$SCRIPT_DIR/../../config.yaml" \

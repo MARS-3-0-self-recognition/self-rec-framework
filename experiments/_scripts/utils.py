@@ -10,6 +10,10 @@ This module contains common functions used across analysis scripts including:
 """
 
 import pandas as pd
+import numpy as np
+from scipy import stats
+import statsmodels.api as sm
+from statsmodels.stats.multitest import multipletests
 from src.helpers.model_sets import get_model_set
 
 
@@ -328,3 +332,203 @@ def parse_models_from_config(models_str: str | None) -> list[str] | None:
 
     # Otherwise, treat as space-separated list of model names
     return models_str.split()
+
+
+# ============================================================================
+# Statistical Helper Functions
+# ============================================================================
+
+def calculate_binomial_ci(accuracy, n, confidence=0.95):
+    """
+    Calculate confidence interval for binomial proportion.
+    
+    Args:
+        accuracy: Proportion (0-1)
+        n: Sample size (number of independent trials)
+        confidence: Confidence level (default 0.95 for 95% CI)
+    
+    Returns:
+        Tuple of (ci_lower, ci_upper, se)
+        CI bounds are clipped to [0, 1]
+    """
+    if n == 0 or pd.isna(accuracy) or pd.isna(n):
+        return np.nan, np.nan, np.nan
+    
+    # Clip accuracy to valid range to avoid sqrt warnings
+    accuracy = np.clip(accuracy, 0.0, 1.0)
+    
+    z = stats.norm.ppf((1 + confidence) / 2)
+    # Handle edge cases where accuracy is exactly 0 or 1
+    variance = accuracy * (1 - accuracy) / n
+    if variance < 0:
+        variance = 0
+    se = np.sqrt(variance)
+    ci_lower = max(0.0, accuracy - z * se)
+    ci_upper = min(1.0, accuracy + z * se)
+    
+    return ci_lower, ci_upper, se
+
+
+def weighted_regression_with_ci(x, y, weights=None, confidence=0.95, x_min=None, x_max=None):
+    """
+    Weighted regression with proper confidence bands.
+    
+    Args:
+        x: Independent variable (1D array)
+        y: Dependent variable (1D array)
+        weights: Weights for each point (1D array, optional)
+        confidence: Confidence level (default 0.95)
+        x_min: Minimum x value for extending line (optional, defaults to x.min())
+        x_max: Maximum x value for extending line (optional, defaults to x.max())
+    
+    Returns:
+        Dictionary with:
+        - 'x': x values for plotting
+        - 'y_pred': predicted y values
+        - 'ci_lower': lower CI bound
+        - 'ci_upper': upper CI bound
+        - 'slope': regression slope
+        - 'intercept': regression intercept
+        - 'r_squared': R-squared
+        - 'p_value': p-value for slope
+    """
+    x = np.array(x)
+    y = np.array(y)
+    
+    if weights is None:
+        weights = np.ones(len(x))
+    else:
+        weights = np.array(weights)
+    
+    # Remove NaN values
+    valid = ~(np.isnan(x) | np.isnan(y) | np.isnan(weights))
+    x = x[valid]
+    y = y[valid]
+    weights = weights[valid]
+    
+    if len(x) < 2:
+        return None
+    
+    # Fit weighted regression
+    X = sm.add_constant(x)
+    model = sm.WLS(y, X, weights=weights).fit()
+    
+    # Determine x range for predictions
+    if x_min is None:
+        x_min = x.min()
+    if x_max is None:
+        x_max = x.max()
+    
+    # Get predictions with CI over extended range
+    x_grid = np.linspace(x_min, x_max, 100)
+    X_grid = sm.add_constant(x_grid)
+    predictions = model.get_prediction(X_grid)
+    ci = predictions.conf_int(alpha=1-confidence)
+    
+    return {
+        'x': x_grid,
+        'y_pred': predictions.predicted_mean,
+        'ci_lower': ci[:, 0],
+        'ci_upper': ci[:, 1],
+        'slope': model.params[1],
+        'intercept': model.params[0],
+        'r_squared': model.rsquared,
+        'p_value': model.pvalues[1] if len(model.pvalues) > 1 else np.nan
+    }
+
+
+def weighted_correlation(x, y, weights=None):
+    """
+    Calculate weighted Pearson correlation coefficient.
+    
+    Args:
+        x: First variable (1D array)
+        y: Second variable (1D array)
+        weights: Weights for each point (1D array, optional)
+    
+    Returns:
+        Weighted correlation coefficient
+    """
+    x = np.array(x)
+    y = np.array(y)
+    
+    if weights is None:
+        weights = np.ones(len(x))
+    else:
+        weights = np.array(weights)
+    
+    # Remove NaN values
+    valid = ~(np.isnan(x) | np.isnan(y) | np.isnan(weights))
+    x = x[valid]
+    y = y[valid]
+    weights = weights[valid]
+    
+    if len(x) < 2:
+        return np.nan
+    
+    w_sum = np.sum(weights)
+    x_mean = np.sum(weights * x) / w_sum
+    y_mean = np.sum(weights * y) / w_sum
+    
+    cov_xy = np.sum(weights * (x - x_mean) * (y - y_mean)) / w_sum
+    var_x = np.sum(weights * (x - x_mean)**2) / w_sum
+    var_y = np.sum(weights * (y - y_mean)**2) / w_sum
+    
+    if var_x == 0 or var_y == 0:
+        return np.nan
+    
+    return cov_xy / np.sqrt(var_x * var_y)
+
+
+def apply_fdr_correction(p_values, alpha=0.05):
+    """
+    Apply FDR (Benjamini-Hochberg) correction to p-values.
+    
+    Args:
+        p_values: Array or Series of p-values
+        alpha: Significance level (default 0.05)
+    
+    Returns:
+        Tuple of (rejected, pvals_corrected)
+        - rejected: Boolean array indicating which hypotheses are rejected
+        - pvals_corrected: FDR-corrected p-values
+    """
+    p_array = np.array(p_values)
+    valid = ~np.isnan(p_array)
+    
+    if not np.any(valid):
+        return np.zeros(len(p_array), dtype=bool), p_array
+    
+    rejected = np.zeros(len(p_array), dtype=bool)
+    pvals_corrected = p_array.copy()
+    
+    rejected_valid, pvals_corrected_valid, _, _ = multipletests(
+        p_array[valid], method='fdr_bh', alpha=alpha
+    )
+    
+    rejected[valid] = rejected_valid
+    pvals_corrected[valid] = pvals_corrected_valid
+    
+    return rejected, pvals_corrected
+
+
+def get_significance_marker(p_value, p_corrected=None):
+    """
+    Get significance marker string for a p-value.
+    
+    Args:
+        p_value: Uncorrected p-value
+        p_corrected: FDR-corrected p-value (optional, uses this if provided)
+    
+    Returns:
+        String: '' or '*' (for p < 0.05)
+    """
+    if pd.isna(p_value):
+        return ''
+    
+    p_to_use = p_corrected if p_corrected is not None and not pd.isna(p_corrected) else p_value
+    
+    if p_to_use < 0.05:
+        return '*'
+    else:
+        return ''

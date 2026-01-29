@@ -57,7 +57,7 @@ def get_model_set(model_set_name: str | None = None) -> list[str]:
             # Together AI - DeepSeek (weakest to strongest)
             "deepseek-3.1",
             # XAI (weakest to strongest)
-            # "grok-4.1-fast",
+            #"grok-4.1-fast",
             # Moonshot (weakest to strongest)
             "kimi-k2",
         ]
@@ -154,42 +154,10 @@ def get_model_set(model_set_name: str | None = None) -> list[str]:
             "kimi-k2-thinking",
         ]
     elif (
-        model_set_name.lower() == "eval_cot_and_dr"
-        or model_set_name.lower() == "eval_cot_and_instruct"
+        model_set_name.lower() == "eval_cot-r_and_dr"
+        or model_set_name.lower() == "cot-r_and_dr"
     ):
-        return [
-            ## DR
-            # OpenAI (weakest to strongest)
-            "gpt-4o-mini",
-            "gpt-4.1-mini",
-            "gpt-4o",
-            "gpt-4.1",
-            # Anthropic (weakest to strongest)
-            "haiku-3.5",
-            "sonnet-3.7",
-            "sonnet-4.5",
-            "opus-4.1",
-            # Google Gemini (weakest to strongest)
-            "gemini-2.0-flash-lite",
-            "gemini-2.0-flash",
-            "gemini-2.5-flash",
-            "gemini-2.5-pro",
-            # Together AI - Llama (weakest to strongest)
-            "ll-3.1-8b",
-            "ll-3.1-70b",
-            "ll-3.1-405b",
-            # Together AI - Qwen (weakest to strongest)
-            "qwen-2.5-7b",
-            "qwen-2.5-72b",
-            "qwen-3.0-80b",
-            # Together AI - DeepSeek (weakest to strongest)
-            "deepseek-3.1",
-            ## Eval CoT
-            # Anthropic (weakest to strongest)
-            "sonnet-3.7",
-            "sonnet-4.5",
-            "opus-4.1",
-        ]
+        return get_model_set("eval_cot-r") + get_model_set("dr")
     elif model_set_name.lower() == "eval_cot-r_and_cot-i":
         return [
             ### CoT-R

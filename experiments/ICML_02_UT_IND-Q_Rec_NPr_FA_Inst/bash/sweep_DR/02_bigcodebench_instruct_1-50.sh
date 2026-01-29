@@ -28,6 +28,15 @@ for model in "${MODEL_NAMES[@]}"; do
     MODEL_NAMES_ARG+=("$model")
 done
 
+# Build generator_models argument
+GENERATOR_MODELS_ARG=()
+if [ ${#GENERATOR_MODELS[@]} -gt 0 ]; then
+    GENERATOR_MODELS_ARG+=("--generator_models")
+    for generator_model in "${GENERATOR_MODELS[@]}"; do
+        GENERATOR_MODELS_ARG+=("$generator_model")
+    done
+fi
+
 # Build batch argument (if enabled)
 BATCH_ARG=()
 if [[ "$BATCH_MODE" != "false" && -n "$BATCH_MODE" ]]; then
@@ -51,6 +60,7 @@ fi
 
 uv run experiments/_scripts/eval/run_experiment_sweep.py \
     --model_names "${MODEL_NAMES_ARG[@]}" \
+    "${GENERATOR_MODELS_ARG[@]}" \
     --treatment_type "$TREATMENT_TYPE" \
     --dataset_dir_path data/input/bigcodebench/instruct_1-50 \
     --experiment_config "$SCRIPT_DIR/../../config.yaml" \

@@ -29,7 +29,29 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from utils import expand_model_names, get_model_family_colors
+import seaborn as sns
+from utils import expand_model_names, get_model_family_colors, add_provider_boundaries
+from src.helpers.model_names import LM_ARENA_RANKINGS
+
+
+def get_model_arena_ranking(model_name: str) -> int | None:
+    """Get model LM Arena ranking (lower is better)."""
+    # Try exact match first
+    if model_name in LM_ARENA_RANKINGS:
+        return LM_ARENA_RANKINGS[model_name]
+
+    # Try without -thinking suffix
+    base_name = model_name.replace("-thinking", "")
+    if base_name in LM_ARENA_RANKINGS:
+        return LM_ARENA_RANKINGS[base_name]
+
+    # Try without _fw suffix
+    if base_name.endswith("_fw"):
+        name_without_fw = base_name[:-3]
+        if name_without_fw in LM_ARENA_RANKINGS:
+            return LM_ARENA_RANKINGS[name_without_fw]
+
+    return None
 
 
 def get_experiment_name_mapping() -> dict[str, str]:
@@ -217,6 +239,129 @@ def plot_evaluator_performance(
     plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     print(f"  ✓ Saved evaluator performance plot to: {output_path}")
+    plt.close()
+
+
+def plot_heatmap_ranked(
+    pivot: pd.DataFrame,
+    output_path: Path,
+    experiment_title: str = "",
+):
+    """
+    Create heatmap of self-recognition accuracy ordered by LM Arena ranking.
+    
+    Both rows (evaluators) and columns (comparison models) are ordered by ranking,
+    with lowest ranked models (worst) appearing first.
+    
+    Args:
+        pivot: Pivot table with evaluators as rows, treatments as columns
+        output_path: Path to save the heatmap image
+        experiment_title: Optional experiment name to include in the title
+    """
+    print("Generating ranked heatmap...")
+
+    # Get rankings for all models
+    def get_rank_or_inf(model_name: str) -> float:
+        rank = get_model_arena_ranking(model_name)
+        # Use negative rank so highest rank numbers (worst models) sort first
+        # For models without ranking, use -inf so they appear last
+        return -float(rank) if rank is not None else float('-inf')
+    
+    # Sort rows (evaluators) by ranking (worst/highest rank number first)
+    row_ranks = {model: get_rank_or_inf(model) for model in pivot.index}
+    sorted_rows = sorted(pivot.index, key=lambda x: row_ranks[x], reverse=True)
+    
+    # Sort columns (comparison models) by ranking (worst/highest rank number first)
+    col_ranks = {model: get_rank_or_inf(model) for model in pivot.columns}
+    sorted_cols = sorted(pivot.columns, key=lambda x: col_ranks[x], reverse=True)
+    
+    # Reorder pivot table
+    pivot_ranked = pivot.reindex(index=sorted_rows, columns=sorted_cols)
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(14, 10))
+
+    # Check if diagonal has data (individual format) or is empty (pairwise format)
+    has_diagonal_data = False
+    for model in pivot_ranked.index:
+        if model in pivot_ranked.columns:
+            if pd.notna(pivot_ranked.loc[model, model]):
+                has_diagonal_data = True
+                break
+
+    # Create mask for diagonal only if it's pairwise format (no diagonal data)
+    mask = pd.DataFrame(False, index=pivot_ranked.index, columns=pivot_ranked.columns)
+    if not has_diagonal_data:
+        # Pairwise format: mask diagonal (evaluator == treatment doesn't exist)
+        for model in pivot_ranked.index:
+            if model in pivot_ranked.columns:
+                mask.loc[model, model] = True
+
+    # Create heatmap
+    sns.heatmap(
+        pivot_ranked,
+        annot=True,
+        fmt=".2f",
+        cmap="RdYlGn",
+        center=0.5,
+        vmin=0.0,
+        vmax=1.0,
+        cbar_kws={"label": "Self-Recognition Accuracy"},
+        mask=mask,
+        linewidths=0.5,
+        linecolor="gray",
+        ax=ax,
+    )
+
+    # Fill diagonal with gray only for pairwise format (when diagonal has no data)
+    if not has_diagonal_data:
+        for i, model in enumerate(pivot_ranked.index):
+            if model in pivot_ranked.columns:
+                j = list(pivot_ranked.columns).index(model)
+                ax.add_patch(
+                    plt.Rectangle((j, i), 1, 1, fill=True, color="lightgray", zorder=10)
+                )
+                ax.text(
+                    j + 0.5,
+                    i + 0.5,
+                    "N/A",
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                    color="black",
+                )
+
+    # Add thicker lines at provider boundaries
+    add_provider_boundaries(ax, pivot_ranked)
+
+    # Labels
+    ax.set_xlabel("Comparison Model (Treatment)\n(Ordered by LM Arena Rank: Worst → Best)", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Evaluator Model\n(Ordered by LM Arena Rank: Worst → Best)", fontsize=12, fontweight="bold")
+
+    # Build title with optional experiment name
+    if experiment_title:
+        title = f"Self-Recognition Accuracy Matrix (Ranked): {experiment_title}\n(How well each model identifies its own outputs vs. others, ordered by LM Arena ranking)"
+    else:
+        title = "Self-Recognition Accuracy Matrix (Ranked)\n(How well each model identifies its own outputs vs. others, ordered by LM Arena ranking)"
+
+    ax.set_title(
+        title,
+        fontsize=14,
+        fontweight="bold",
+        pad=20,
+    )
+
+    # Rotate labels for readability
+    plt.xticks(rotation=45, ha="right")
+    plt.yticks(rotation=0)
+
+    # Tight layout
+    plt.tight_layout()
+
+    # Save
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    print(f"  ✓ Saved ranked heatmap to: {output_path}")
+
     plt.close()
 
 
@@ -437,6 +582,22 @@ def main():
     print(f"✓ Found accuracy_pivot.csv, loading from: {accuracy_pivot_path}")
     pivot = pd.read_csv(accuracy_pivot_path, index_col=0)
 
+    # Try to load counts table for error bars
+    counts_pivot_path = output_dir / "recognition_accuracy" / "accuracy_counts.csv"
+    pivot_counts = None
+    if counts_pivot_path.exists():
+        print(f"✓ Found accuracy_counts.csv, loading from: {counts_pivot_path}")
+        pivot_counts = pd.read_csv(counts_pivot_path, index_col=0)
+        # Ensure same order as pivot
+        if model_order:
+            row_order = [m for m in model_order if m in pivot_counts.index]
+            col_order = [m for m in model_order if m in pivot_counts.columns]
+            if row_order:
+                pivot_counts = pivot_counts.reindex(index=row_order, columns=col_order)
+        print(f"  ✓ Loaded counts table: {pivot_counts.shape[0]} rows × {pivot_counts.shape[1]} columns\n")
+    else:
+        print(f"  ⚠ accuracy_counts.csv not found (error bars will be unavailable)\n")
+
     # Ensure model order is applied
     if model_order:
         row_order = [m for m in model_order if m in pivot.index]
@@ -473,21 +634,46 @@ def main():
     experiment_mapping = get_experiment_name_mapping()
     experiment_title = experiment_mapping.get(experiment_code, experiment_code)
 
-    # Compute performance (raw scores 0-1)
+    # Compute performance (raw scores 0-1) and total sample counts
     if has_diagonal_data:
         print("Individual format detected: Computing average recognition accuracy\n")
         performance_scores = compute_individual_performance(pivot)
         deviation_scores = compute_individual_deviation(pivot)
+        # Compute total n_samples per evaluator for individual format
+        # n_samples = n_samples(C_j) + sum(n_samples(T_i))
+        total_counts = None
+        if pivot_counts is not None:
+            total_counts = pd.Series(dtype=float, index=pivot.index)
+            for evaluator in pivot.index:
+                total_n = 0
+                # Add control (diagonal) count
+                if evaluator in pivot_counts.index and evaluator in pivot_counts.columns:
+                    control_n = pivot_counts.loc[evaluator, evaluator]
+                    if pd.notna(control_n):
+                        total_n += control_n
+                # Add treatment counts (off-diagonal)
+                if evaluator in pivot_counts.index:
+                    treatment_n = pivot_counts.loc[evaluator].sum() - (pivot_counts.loc[evaluator, evaluator] if evaluator in pivot_counts.columns else 0)
+                    total_n += treatment_n
+                total_counts.loc[evaluator] = total_n if total_n > 0 else pd.NA
     else:
         print(
             "Pairwise format detected: Computing average accuracy across treatments\n"
         )
         performance_scores = compute_pairwise_performance(pivot)
         deviation_scores = compute_pairwise_deviation(pivot)
+        # Compute total n_samples per evaluator for pairwise format
+        # n_samples = sum(n_samples across all treatments)
+        total_counts = None
+        if pivot_counts is not None:
+            total_counts = pivot_counts.sum(axis=1)
 
-    # Save performance scores
+    # Save performance scores with counts
     performance_path = performance_dir / "evaluator_performance.csv"
-    performance_scores.to_frame("performance").to_csv(performance_path)
+    perf_df = performance_scores.to_frame("performance")
+    if total_counts is not None:
+        perf_df["n_samples"] = total_counts
+    perf_df.to_csv(performance_path)
     print(f"  ✓ Saved performance scores to: {performance_path}")
 
     # Save deviation scores
@@ -515,6 +701,15 @@ def main():
     )
     print()
 
+    # Generate ranked heatmap (ordered by LM Arena ranking)
+    heatmap_ranked_path = performance_dir / "accuracy_heatmap_ranked.png"
+    plot_heatmap_ranked(
+        pivot,
+        heatmap_ranked_path,
+        experiment_title=experiment_title,
+    )
+    print()
+
     # Display preview
     print(f"{'='*70}")
     print("PREVIEW: Evaluator Performance (Raw Scores)")
@@ -537,6 +732,9 @@ def main():
     print("  • evaluator_deviation.csv: Deviation from chance scores")
     print(
         "  • evaluator_deviation.png: Bar chart (deviation with pos/neg color coding)"
+    )
+    print(
+        "  • accuracy_heatmap_ranked.png: Heatmap ordered by LM Arena ranking (lowest ranked first)"
     )
     print(f"{'='*70}\n")
 

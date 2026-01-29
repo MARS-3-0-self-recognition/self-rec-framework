@@ -91,6 +91,7 @@ def _add_task_if_needed(
     description: str,
     overwrite: bool,
     shared_log_dir: Path,
+    skip_batch_in_progress: bool = False,
 ):
     """
     Helper to add a task to the list if it doesn't already exist (or if overwrite=True).
@@ -190,13 +191,23 @@ def _add_task_if_needed(
                     # If it doesn't, it's an orphaned/canceled batch job that should be overwritten
                     if has_results(log):
                         # Has results - might be legitimate in-progress batch job
-                        print(
-                            f"  ⏳ {description}: batch job in progress (has results), skipping"
-                        )
-                        print(
-                            "     (Use scripts/list_active_batches.py to check status)"
-                        )
-                        return
+                        # Default behavior: re-run (usually indicates stuck eval file)
+                        # Only skip if explicitly requested via --skip_batch_in_progress
+                        if skip_batch_in_progress:
+                            print(
+                                f"  ⏳ {description}: batch job in progress (has results), skipping"
+                            )
+                            print(
+                                "     (Use scripts/list_active_batches.py to check status)"
+                            )
+                            return
+                        else:
+                            # Default: re-run (usually indicates stuck eval file)
+                            print(
+                                f"  ↻ {description}: batch job in progress (has results), re-running (use --skip_batch_in_progress to skip)"
+                            )
+                            for old_log in existing_logs:
+                                old_log.unlink()
                     else:
                         # No results - orphaned/canceled batch job, overwrite it
                         print(
@@ -308,6 +319,8 @@ def run_sweep_experiment(
     batch: bool | int | str = False,
     max_tasks: int = 8,
     yes: bool = False,
+    generator_models: list[str] | None = None,
+    skip_batch_in_progress: bool = False,
 ):
     """
     Run sweep experiments across multiple models and treatments.
@@ -321,7 +334,7 @@ def run_sweep_experiment(
     Task names are automatically generated to preserve comparison information in log filenames.
 
     Args:
-        model_names: List of model names to evaluate
+        model_names: List of model names to evaluate (Evaluators)
         treatment_type: One of 'other_models', 'caps', 'typos'
         dataset_dir_path: Path to dataset subset (e.g., 'data/input/pku_saferlhf/mismatch_1-20')
         experiment_config: Path to experiment config YAML
@@ -330,6 +343,8 @@ def run_sweep_experiment(
                Can be True (default config), int (batch size), or str (path to config file)
         max_tasks: Maximum number of tasks to run in parallel (default: 8)
         yes: If True, skip confirmation prompt and run immediately
+        generator_models: Optional list of models to generate data from. If provided,
+                          evaluators will be paired against these models.
     """
     dataset_path = Path(dataset_dir_path)
 
@@ -372,8 +387,11 @@ def run_sweep_experiment(
     print(f"Experiment: {experiment_name}")
     print(f"Format: {'Pairwise' if is_pairwise else 'Individual'}")
     print(f"Treatment type: {treatment_type}")
-    print(f"Models to evaluate: {len(model_names)}")
+    print(f"Evaluator models: {len(model_names)}")
     print(f"  {', '.join(model_names)}")
+    if generator_models:
+        print(f"Generator models: {len(generator_models)}")
+        print(f"  {', '.join(generator_models)}")
     print(f"Mode: {'OVERWRITE' if overwrite else 'SKIP existing'}")
     print(f"Log directory: {shared_log_dir}")
     print(f"{'=' * 70}\n")
@@ -438,7 +456,16 @@ def run_sweep_experiment(
 
         if treatment_type == "other_models":
             # Model vs Model comparisons
-            other_models = [m for m in model_names if m != model_name]
+
+            # Determine target models (generators)
+            # If generator_models provided, compare against them (excluding self)
+            # Else, compare against all other evaluators (excluding self)
+            if generator_models:
+                other_models = [m for m in generator_models if m != model_name]
+                should_run_control = model_name in generator_models
+            else:
+                other_models = [m for m in model_names if m != model_name]
+                should_run_control = True
 
             for other_model in other_models:
                 # Get data model name for other model too
@@ -466,6 +493,7 @@ def run_sweep_experiment(
                         f"{model_name} vs {other_model}",
                         overwrite,
                         shared_log_dir,
+                        skip_batch_in_progress,
                     )
                 else:
                     # Individual: evaluate other model's data as treatment
@@ -482,10 +510,11 @@ def run_sweep_experiment(
                         f"{model_name} evaluating {other_model}",
                         overwrite,
                         shared_log_dir,
+                        skip_batch_in_progress,
                     )
 
-            # For individual mode, also evaluate control dataset
-            if not is_pairwise:
+            # For individual mode, also evaluate control dataset (if appropriate)
+            if not is_pairwise and should_run_control:
                 _, _, treatment_name_ctrl = parse_dataset_path(control_path)
                 _add_task_if_needed(
                     tasks_to_run,
@@ -500,26 +529,24 @@ def run_sweep_experiment(
                     f"{model_name} (control)",
                     overwrite,
                     shared_log_dir,
+                    skip_batch_in_progress,
                 )
 
         elif treatment_type in ["caps", "typos"]:
             # Model vs its own treatments
-            treatment_dict = (
-                datasets["caps_treatments"]
-                if treatment_type == "caps"
-                else datasets["typos_treatments"]
-            )
-            # Use data_model_name to find treatments (COT-I models use base model's treatments)
-            treatments = treatment_dict.get(data_model_name, [])
+            # If generator_models provided, evaluate treatments of those models
+            # Else, evaluate treatments of the evaluator model itself
 
-            if not treatments:
-                print(f"  No {treatment_type} treatments found for {model_name}")
-                continue
+            if generator_models:
+                targets = generator_models
+                should_run_control = model_name in generator_models
+            else:
+                targets = [model_name]
+                should_run_control = True
 
-            _, _, treatment_name_ctrl = parse_dataset_path(control_path)
-
-            # For individual mode, first evaluate control
-            if not is_pairwise:
+            # Evaluate control first (if appropriate)
+            if not is_pairwise and should_run_control:
+                _, _, treatment_name_ctrl = parse_dataset_path(control_path)
                 _add_task_if_needed(
                     tasks_to_run,
                     exp_config,
@@ -533,41 +560,71 @@ def run_sweep_experiment(
                     f"{model_name} (control)",
                     overwrite,
                     shared_log_dir,
+                    skip_batch_in_progress,
                 )
 
-            # Evaluate each treatment
-            for treatment_name in treatments:
-                if is_pairwise:
-                    _add_task_if_needed(
-                        tasks_to_run,
-                        exp_config,
-                        model_name,
-                        treatment_name_ctrl,
-                        treatment_name,
-                        dataset_name,
-                        data_subset,
-                        experiment_name,
-                        True,
-                        f"{model_name} vs {treatment_name}",
-                        overwrite,
-                        shared_log_dir,
-                    )
-                else:
-                    # Individual: evaluate treatment as treatment
-                    _add_task_if_needed(
-                        tasks_to_run,
-                        exp_config,
-                        model_name,
-                        treatment_name,
-                        None,
-                        dataset_name,
-                        data_subset,
-                        experiment_name,
-                        False,
-                        f"{model_name} evaluating {treatment_name}",
-                        overwrite,
-                        shared_log_dir,
-                    )
+            for target_model in targets:
+                target_data_model = get_data_model_name(target_model)
+                
+                treatment_dict = (
+                    datasets["caps_treatments"]
+                    if treatment_type == "caps"
+                    else datasets["typos_treatments"]
+                )
+                
+                treatments = treatment_dict.get(target_data_model, [])
+
+                if not treatments:
+                    print(f"  No {treatment_type} treatments found for {target_model}")
+                    continue
+
+                # Control is the base version of the target model
+                # Note: In pairwise mode, we compare Target Base vs Target Treatment
+                # But task definition uses 'model_name' (evaluator) to define 'control' usually?
+                # Actually, check _add_task_if_needed logic for pairwise.
+                # It uses treatment_name_ctrl and treatment_name_treat.
+                # treatment_name_ctrl comes from control_path.
+                
+                # If target != model_name, we need control_path to point to target's base data
+                target_control_path = (
+                    f"data/input/{dataset_name}/{data_subset}/{target_data_model}/data.json"
+                )
+                _, _, treatment_name_ctrl = parse_dataset_path(target_control_path)
+
+                for treatment_name in treatments:
+                    if is_pairwise:
+                        _add_task_if_needed(
+                            tasks_to_run,
+                            exp_config,
+                            model_name,
+                            treatment_name_ctrl,
+                            treatment_name,
+                            dataset_name,
+                            data_subset,
+                            experiment_name,
+                            True,
+                            f"{model_name} evaluating {target_model} vs {treatment_name}",
+                            overwrite,
+                            shared_log_dir,
+                            skip_batch_in_progress,
+                        )
+                    else:
+                        # Individual: evaluate treatment as treatment
+                        _add_task_if_needed(
+                            tasks_to_run,
+                            exp_config,
+                            model_name,
+                            treatment_name,
+                            None,
+                            dataset_name,
+                            data_subset,
+                            experiment_name,
+                            False,
+                            f"{model_name} evaluating {treatment_name}",
+                            overwrite,
+                            shared_log_dir,
+                            skip_batch_in_progress,
+                        )
 
     total_evals = len(tasks_to_run)
 
@@ -846,6 +903,16 @@ if __name__ == "__main__":
                 # Replace -set with a placeholder that doesn't start with -
                 sys.argv[i] = "SET_PLACEHOLDER"
 
+    if "--generator_models" in sys.argv:
+        gen_models_idx = sys.argv.index("--generator_models")
+        # Find where generator_models arguments end (next flag or end of args)
+        for i in range(gen_models_idx + 1, len(sys.argv)):
+            if sys.argv[i] == "-set" and (
+                i + 1 < len(sys.argv) and not sys.argv[i + 1].startswith("--")
+            ):
+                # Replace -set with a placeholder that doesn't start with -
+                sys.argv[i] = "SET_PLACEHOLDER"
+
     parser = argparse.ArgumentParser(
         description="Sweep run experiments across multiple models and treatments",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -879,8 +946,15 @@ Examples:
         type=str,
         nargs="+",
         required=True,
-        help="List of model names to evaluate (e.g., 'haiku-3-5 gpt-4.1') or model sets (e.g., '-set cot' for gen_cot set). "
+        help="List of model names to evaluate (Evaluators) (e.g., 'haiku-3-5 gpt-4.1') or model sets (e.g., '-set cot' for gen_cot set). "
         "Can mix individual models and sets.",
+    )
+    parser.add_argument(
+        "--generator_models",
+        type=str,
+        nargs="+",
+        help="Optional: List of model names to generate data from (Generators). If provided, evaluators will be paired against these models. "
+        "Supports individual models and sets (e.g., '-set cot').",
     )
     parser.add_argument(
         "--treatment_type",
@@ -928,6 +1002,12 @@ Examples:
         default=False,
         help="Skip confirmation prompt and run immediately",
     )
+    parser.add_argument(
+        "--skip_batch_in_progress",
+        action="store_true",
+        default=False,
+        help="Skip evaluations when batch job is in progress (default: re-run, as this usually indicates a stuck eval file)",
+    )
 
     args = parser.parse_args()
 
@@ -937,8 +1017,17 @@ Examples:
             arg.replace("SET_PLACEHOLDER", "-set") for arg in args.model_names
         ]
 
+    if args.generator_models:
+        args.generator_models = [
+            arg.replace("SET_PLACEHOLDER", "-set") for arg in args.generator_models
+        ]
+
     # Expand model set references (e.g., '-set cot' -> list of models)
     expanded_model_names = expand_model_names(args.model_names)
+    
+    expanded_generator_models = None
+    if args.generator_models:
+        expanded_generator_models = expand_model_names(args.generator_models)
 
     # Parse batch argument
     # Check environment variable if --batch wasn't explicitly provided
@@ -959,4 +1048,6 @@ Examples:
         batch=batch_value,
         max_tasks=args.max_tasks,
         yes=args.yes,
+        generator_models=expanded_generator_models,
+        skip_batch_in_progress=args.skip_batch_in_progress,
     )

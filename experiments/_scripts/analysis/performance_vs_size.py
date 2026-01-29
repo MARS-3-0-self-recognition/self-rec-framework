@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 """
-Compare model performance vs model size (parameter count), release date, and capability tier.
+Compare model performance vs model size (parameter count), release date, capability tier, and LM Arena ranking.
 
 This script creates scatter plots showing:
-- X-axis: Model size (parameters in billions) OR Release date OR Capability tier
+- X-axis: Model size (parameters in billions) OR Release date OR Capability tier OR LM Arena ranking
 - Y-axis: Performance (recognition accuracy)
 - Different marker shapes for different datasets
 - Color coding by model family
+- Per-dataset fit lines
 
-Creates five plots:
+Creates six plots:
 1. Performance vs Size (known sizes only)
 2. Performance vs Size (known + estimated sizes)
 3. Performance vs Release Date (known dates only)
 4. Performance vs Release Date (known + estimated dates)
 5. Performance vs Capability Tier
+6. Performance vs LM Arena Ranking
 
 Usage:
     uv run experiments/_scripts/analysis/performance_vs_size.py \
@@ -27,6 +29,7 @@ Output:
         - performance_vs_date_known.png: Scatter plot (known dates only)
         - performance_vs_date_all.png: Scatter plot (known + estimated dates)
         - performance_vs_tier.png: Scatter plot (capability tiers)
+        - performance_vs_arena_ranking.png: Scatter plot (LM Arena rankings)
 """
 
 import argparse
@@ -40,14 +43,22 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+from matplotlib.legend_handler import HandlerTuple
 from datetime import datetime
-from utils import expand_model_names, get_model_provider
+from utils import (
+    expand_model_names, 
+    get_model_provider,
+    calculate_binomial_ci,
+    weighted_regression_with_ci,
+    weighted_correlation
+)
 from src.helpers.model_names import (
     MODEL_PARAMETER_COUNTS,
     MODEL_PARAMETER_COUNTS_ESTIMATED,
     MODEL_RELEASE_DATES,
     MODEL_RELEASE_DATES_ESTIMATED,
     MODEL_CAPABILITY_TIERS,
+    LM_ARENA_RANKINGS,
 )
 
 
@@ -211,6 +222,36 @@ def get_model_capability_tier(model_name: str) -> int | None:
     return None
 
 
+def get_model_arena_ranking(model_name: str) -> int | None:
+    """
+    Get model LM Arena ranking from LM_ARENA_RANKINGS.
+
+    Lower rank = better performance (rank 1 is best).
+
+    Args:
+        model_name: Short model name (e.g., "gpt-4o", "haiku-3.5", "ll-3.1-8b_fw")
+
+    Returns:
+        Arena ranking (int, lower is better), or None if unknown
+    """
+    # Try exact match first
+    if model_name in LM_ARENA_RANKINGS:
+        return LM_ARENA_RANKINGS[model_name]
+
+    # Try without -thinking suffix
+    base_name = model_name.replace("-thinking", "")
+    if base_name in LM_ARENA_RANKINGS:
+        return LM_ARENA_RANKINGS[base_name]
+
+    # Try without _fw suffix
+    if base_name.endswith("_fw"):
+        name_without_fw = base_name[:-3]
+        if name_without_fw in LM_ARENA_RANKINGS:
+            return LM_ARENA_RANKINGS[name_without_fw]
+
+    return None
+
+
 def extract_dataset_name(full_path: str) -> str:
     """
     Extract short dataset name from full path.
@@ -272,6 +313,14 @@ def plot_performance_vs_size(
         "bigcodebench": "D",  # diamond
     }
 
+    # Define colors for datasets (for fit lines)
+    dataset_colors = {
+        "wikisum": "#1f77b4",  # blue
+        "sharegpt": "#ff7f0e",  # orange
+        "pku_saferlhf": "#2ca02c",  # green
+        "bigcodebench": "#d62728",  # red
+    }
+
     # Define colors for model families
     family_colors = {
         "OpenAI": "#10a37f",  # OpenAI green
@@ -316,7 +365,7 @@ def plot_performance_vs_size(
             size = model_sizes[model]
             performance = df_filtered.loc[model, dataset]
 
-            if pd.isna(performance):
+            if pd.isna(performance) or performance == 0:
                 continue
 
             # Get model family and color
@@ -343,6 +392,9 @@ def plot_performance_vs_size(
             plotted_families.add(family)
             plotted_datasets.add((dataset, marker))
 
+    # Track which datasets have fit lines (dict: dataset -> correlation)
+    datasets_with_fit = {}
+
     # Add fit lines for each dataset
     for dataset in datasets:
         if len(dataset_data[dataset]) < 2:
@@ -356,6 +408,9 @@ def plot_performance_vs_size(
         # Use log of x values for fitting
         log_x_vals = np.log10(x_vals)
 
+        # Calculate correlation in log space
+        correlation = np.corrcoef(log_x_vals, y_vals)[0, 1]
+
         # Fit linear regression: y = a * log10(x) + b
         coeffs = np.polyfit(log_x_vals, y_vals, 1)
 
@@ -365,24 +420,27 @@ def plot_performance_vs_size(
         y_line = coeffs[0] * np.log10(x_line) + coeffs[1]
 
         # Get dataset color for fit line
-        # line_color = dataset_colors.get(short_name, 'gray')
+        line_color = dataset_colors.get(short_name, "gray")
 
-        # Plot fit line with dataset color
+        # Plot fit line with dataset color (no label - will combine with marker)
         ax.plot(
             x_line,
             y_line,
             linestyle="--",
             linewidth=2,
             alpha=0.7,
-            # color=line_color,
-            label=short_name,
-        )  # Don't add to legend
+            color=line_color,
+            label=None,
+        )
+        datasets_with_fit[dataset] = correlation
 
     # Create custom legend
     # Family colors (one entry per family)
     family_handles = []
     for family in sorted(plotted_families):
         color = family_colors.get(family, family_colors["Unknown"])
+        # Remove "Together-" prefix for display
+        display_name = family.replace("Together-", "")
         family_handles.append(
             plt.Line2D(
                 [0],
@@ -393,31 +451,58 @@ def plot_performance_vs_size(
                 markersize=10,
                 markeredgecolor="black",
                 markeredgewidth=0.5,
-                label=family,
+                label=display_name,
             )
         )
 
-    # Dataset markers (one entry per dataset)
+    # Dataset markers combined with fit lines (side by side using HandlerTuple)
     dataset_handles = []
+    dataset_labels = []
     for dataset, marker in sorted(plotted_datasets, key=lambda x: x[0]):
         short_name = extract_dataset_name(dataset)
-        dataset_handles.append(
-            plt.Line2D(
-                [0],
-                [0],
-                marker=marker,
-                color="w",
-                markerfacecolor="gray",
-                markersize=10,
-                markeredgecolor="black",
-                markeredgewidth=0.5,
-                label=short_name,
-            )
+        line_color = dataset_colors.get(short_name, "gray")
+
+        # Marker handle
+        h_marker = plt.Line2D(
+            [0],
+            [0],
+            marker=marker,
+            color="w",
+            markerfacecolor="gray",
+            markersize=10,
+            markeredgecolor="black",
+            markeredgewidth=0.5,
         )
 
-    # Combine legends
+        if dataset in datasets_with_fit:
+            correlation = datasets_with_fit[dataset]
+            # Line handle
+            h_line = plt.Line2D(
+                [0],
+                [0],
+                linestyle="--",
+                color=line_color,
+                linewidth=2,
+            )
+            dataset_handles.append((h_marker, h_line))
+            dataset_labels.append(f"{short_name} (r={correlation:.2f})")
+        else:
+            dataset_handles.append(h_marker)
+            dataset_labels.append(short_name)
+
+    # Combine legends: families, datasets
     all_handles = family_handles + dataset_handles
-    ax.legend(handles=all_handles, loc="upper left", fontsize=9, framealpha=0.9, ncol=2)
+    all_labels = [h.get_label() for h in family_handles] + dataset_labels
+
+    ax.legend(
+        handles=all_handles,
+        labels=all_labels,
+        loc="upper left",
+        fontsize=9,
+        framealpha=0.9,
+        ncol=2,
+        handler_map={tuple: HandlerTuple(ndivide=None)},
+    )
 
     # Add reference line at chance (0.5)
     ax.axhline(
@@ -555,7 +640,7 @@ def plot_performance_vs_date(
             date = model_dates[model]
             performance = df_filtered.loc[model, dataset]
 
-            if pd.isna(performance):
+            if pd.isna(performance) or performance == 0:
                 continue
 
             # Get model family and color
@@ -583,6 +668,9 @@ def plot_performance_vs_date(
             plotted_families.add(family)
             plotted_datasets.add((dataset, marker))
 
+    # Track which datasets have fit lines (dict: dataset -> correlation)
+    datasets_with_fit = {}
+
     # Add fit lines for each dataset
     for dataset in datasets:
         if len(dataset_data[dataset]) < 2:
@@ -591,6 +679,9 @@ def plot_performance_vs_date(
         short_name = extract_dataset_name(dataset)
         x_vals = [x for x, y in dataset_data[dataset]]
         y_vals = [y for x, y in dataset_data[dataset]]
+
+        # Calculate correlation
+        correlation = np.corrcoef(x_vals, y_vals)[0, 1]
 
         # Fit linear regression
         coeffs = np.polyfit(x_vals, y_vals, 1)
@@ -606,7 +697,7 @@ def plot_performance_vs_date(
         # Get dataset color for fit line
         line_color = dataset_colors.get(short_name, "gray")
 
-        # Plot fit line with dataset color
+        # Plot fit line with dataset color (no label - will combine with marker)
         ax.plot(
             x_line_dates,
             y_line,
@@ -615,13 +706,16 @@ def plot_performance_vs_date(
             alpha=0.7,
             color=line_color,
             label=None,
-        )  # Don't add to legend
+        )
+        datasets_with_fit[dataset] = correlation
 
     # Create custom legend
     # Family colors (one entry per family)
     family_handles = []
     for family in sorted(plotted_families):
         color = family_colors.get(family, family_colors["Unknown"])
+        # Remove "Together-" prefix for display
+        display_name = family.replace("Together-", "")
         family_handles.append(
             plt.Line2D(
                 [0],
@@ -632,31 +726,58 @@ def plot_performance_vs_date(
                 markersize=10,
                 markeredgecolor="black",
                 markeredgewidth=0.5,
-                label=family,
+                label=display_name,
             )
         )
 
-    # Dataset markers (one entry per dataset)
+    # Dataset markers combined with fit lines
     dataset_handles = []
+    dataset_labels = []
     for dataset, marker in sorted(plotted_datasets, key=lambda x: x[0]):
         short_name = extract_dataset_name(dataset)
-        dataset_handles.append(
-            plt.Line2D(
-                [0],
-                [0],
-                marker=marker,
-                color="w",
-                markerfacecolor="gray",
-                markersize=10,
-                markeredgecolor="black",
-                markeredgewidth=0.5,
-                label=short_name,
-            )
+        line_color = dataset_colors.get(short_name, "gray")
+
+        # Marker handle
+        h_marker = plt.Line2D(
+            [0],
+            [0],
+            marker=marker,
+            color="w",
+            markerfacecolor="gray",
+            markersize=10,
+            markeredgecolor="black",
+            markeredgewidth=0.5,
         )
 
-    # Combine legends
+        if dataset in datasets_with_fit:
+            correlation = datasets_with_fit[dataset]
+            # Line handle
+            h_line = plt.Line2D(
+                [0],
+                [0],
+                linestyle="--",
+                color=line_color,
+                linewidth=2,
+            )
+            dataset_handles.append((h_marker, h_line))
+            dataset_labels.append(f"{short_name} (r={correlation:.2f})")
+        else:
+            dataset_handles.append(h_marker)
+            dataset_labels.append(short_name)
+
+    # Combine legends: families, datasets
     all_handles = family_handles + dataset_handles
-    ax.legend(handles=all_handles, loc="upper left", fontsize=9, framealpha=0.9, ncol=2)
+    all_labels = [h.get_label() for h in family_handles] + dataset_labels
+
+    ax.legend(
+        handles=all_handles,
+        labels=all_labels,
+        loc="upper left",
+        fontsize=9,
+        framealpha=0.9,
+        ncol=2,
+        handler_map={tuple: HandlerTuple(ndivide=None)},
+    )
 
     # Add reference line at chance (0.5)
     ax.axhline(
@@ -794,7 +915,7 @@ def plot_performance_vs_tier(
             tier = model_tiers[model]
             performance = df_filtered.loc[model, dataset]
 
-            if pd.isna(performance):
+            if pd.isna(performance) or performance == 0:
                 continue
 
             # Get model family and color
@@ -821,6 +942,9 @@ def plot_performance_vs_tier(
             plotted_families.add(family)
             plotted_datasets.add((dataset, marker))
 
+    # Track which datasets have fit lines (dict: dataset -> correlation)
+    datasets_with_fit = {}
+
     # Add fit lines for each dataset
     for dataset in datasets:
         if len(dataset_data[dataset]) < 2:
@@ -829,6 +953,9 @@ def plot_performance_vs_tier(
         short_name = extract_dataset_name(dataset)
         x_vals = [x for x, y in dataset_data[dataset]]
         y_vals = [y for x, y in dataset_data[dataset]]
+
+        # Calculate correlation
+        correlation = np.corrcoef(x_vals, y_vals)[0, 1]
 
         # Fit linear regression
         coeffs = np.polyfit(x_vals, y_vals, 1)
@@ -841,7 +968,7 @@ def plot_performance_vs_tier(
         # Get dataset color for fit line
         line_color = dataset_colors.get(short_name, "gray")
 
-        # Plot fit line with dataset color
+        # Plot fit line with dataset color (no label - will combine with marker)
         ax.plot(
             x_line,
             y_line,
@@ -850,13 +977,16 @@ def plot_performance_vs_tier(
             alpha=0.7,
             color=line_color,
             label=None,
-        )  # Don't add to legend
+        )
+        datasets_with_fit[dataset] = correlation
 
     # Create custom legend
     # Family colors (one entry per family)
     family_handles = []
     for family in sorted(plotted_families):
         color = family_colors.get(family, family_colors["Unknown"])
+        # Remove "Together-" prefix for display
+        display_name = family.replace("Together-", "")
         family_handles.append(
             plt.Line2D(
                 [0],
@@ -867,31 +997,58 @@ def plot_performance_vs_tier(
                 markersize=10,
                 markeredgecolor="black",
                 markeredgewidth=0.5,
-                label=family,
+                label=display_name,
             )
         )
 
-    # Dataset markers (one entry per dataset)
+    # Dataset markers combined with fit lines
     dataset_handles = []
+    dataset_labels = []
     for dataset, marker in sorted(plotted_datasets, key=lambda x: x[0]):
         short_name = extract_dataset_name(dataset)
-        dataset_handles.append(
-            plt.Line2D(
-                [0],
-                [0],
-                marker=marker,
-                color="w",
-                markerfacecolor="gray",
-                markersize=10,
-                markeredgecolor="black",
-                markeredgewidth=0.5,
-                label=short_name,
-            )
+        line_color = dataset_colors.get(short_name, "gray")
+
+        # Marker handle
+        h_marker = plt.Line2D(
+            [0],
+            [0],
+            marker=marker,
+            color="w",
+            markerfacecolor="gray",
+            markersize=10,
+            markeredgecolor="black",
+            markeredgewidth=0.5,
         )
 
-    # Combine legends
+        if dataset in datasets_with_fit:
+            correlation = datasets_with_fit[dataset]
+            # Line handle
+            h_line = plt.Line2D(
+                [0],
+                [0],
+                linestyle="--",
+                color=line_color,
+                linewidth=2,
+            )
+            dataset_handles.append((h_marker, h_line))
+            dataset_labels.append(f"{short_name} (r={correlation:.2f})")
+        else:
+            dataset_handles.append(h_marker)
+            dataset_labels.append(short_name)
+
+    # Combine legends: families, datasets
     all_handles = family_handles + dataset_handles
-    ax.legend(handles=all_handles, loc="upper left", fontsize=9, framealpha=0.9, ncol=2)
+    all_labels = [h.get_label() for h in family_handles] + dataset_labels
+
+    ax.legend(
+        handles=all_handles,
+        labels=all_labels,
+        loc="upper left",
+        fontsize=9,
+        framealpha=0.9,
+        ncol=2,
+        handler_map={tuple: HandlerTuple(ndivide=None)},
+    )
 
     # Add reference line at chance (0.5)
     ax.axhline(
@@ -932,6 +1089,416 @@ def plot_performance_vs_tier(
     plt.close()
 
 
+def plot_performance_vs_arena_ranking(
+    df: pd.DataFrame,
+    output_path: Path,
+    title: str,
+    experiment_title: str = "",
+    df_counts: pd.DataFrame | None = None,
+):
+    """
+    Create a scatter plot of performance vs LM Arena ranking.
+
+    Lower rank = better performance (rank 1 is best).
+
+    Args:
+        df: DataFrame with models as rows, datasets as columns, performance values
+        output_path: Path to save the plot
+        title: Chart title
+        experiment_title: Optional experiment name for title
+    """
+    print(f"Generating scatter plot: {title}...")
+
+    # Get model arena rankings
+    model_rankings = {}
+    for model in df.index:
+        ranking = get_model_arena_ranking(model)
+        if ranking is not None:
+            model_rankings[model] = ranking
+
+    if not model_rankings:
+        print("  ⚠ No models with known arena rankings found")
+        return
+
+    # Filter to models with known rankings
+    available_models = [m for m in df.index if m in model_rankings]
+    if not available_models:
+        print("  ⚠ No models with known arena rankings in the data")
+        return
+
+    df_filtered = df.loc[available_models]
+    
+    # Filter counts to match filtered models and columns
+    if df_counts is not None:
+        # Filter rows (models) to match available_models
+        df_counts = df_counts.reindex(available_models)
+        # Filter columns (datasets) to match df_filtered
+        common_cols = df_counts.columns.intersection(df_filtered.columns)
+        if len(common_cols) > 0:
+            df_counts = df_counts[common_cols]
+            print(f"  ✓ Filtered counts to {len(available_models)} models × {len(common_cols)} datasets")
+            print(f"     Common columns: {list(common_cols)}")
+        else:
+            print(f"  ⚠ Warning: No matching columns between counts and performance data")
+            print(f"     Performance columns: {list(df_filtered.columns)}")
+            print(f"     Counts columns: {list(df_counts.columns)}")
+            df_counts = None
+    else:
+        print(f"  ⚠ No counts data available (error bars will be omitted)")
+
+    # Set up the plot
+    fig, ax = plt.subplots(figsize=(14, 10))
+
+    # Define marker shapes for datasets (different shapes)
+    dataset_markers = {
+        "wikisum": "o",  # circle
+        "sharegpt": "s",  # square
+        "pku_saferlhf": "^",  # triangle
+        "bigcodebench": "D",  # diamond
+    }
+
+    # Define colors for datasets (for fit lines)
+    dataset_colors = {
+        "wikisum": "#1f77b4",  # blue
+        "sharegpt": "#ff7f0e",  # orange
+        "pku_saferlhf": "#2ca02c",  # green
+        "bigcodebench": "#d62728",  # red
+    }
+
+    # Define colors for model families
+    family_colors = {
+        "OpenAI": "#10a37f",  # OpenAI green
+        "Anthropic": "#ea580c",  # Claude red-orange
+        "Google": "#fbbf24",  # Google yellow
+        "Together-Llama": "#3b82f6",  # Blue
+        "Together-Qwen": "#8b5cf6",  # Purple
+        "Together-DeepSeek": "#06b6d4",  # Cyan
+        "XAI": "#000000",  # Black
+        "Moonshot": "#ec4899",  # Pink
+        "Unknown": "#808080",  # Gray
+    }
+
+    # Get unique datasets and assign markers
+    datasets = df_filtered.columns.tolist()
+    dataset_to_marker = {}
+    marker_idx = 0
+    marker_list = ["o", "s", "^", "D", "v", "<", ">", "p", "*", "h", "H", "X"]
+
+    for dataset in datasets:
+        short_name = extract_dataset_name(dataset)
+        if short_name in dataset_markers:
+            dataset_to_marker[dataset] = dataset_markers[short_name]
+        else:
+            # Assign a marker from the list
+            dataset_to_marker[dataset] = marker_list[marker_idx % len(marker_list)]
+            marker_idx += 1
+
+    # Collect data points per dataset for fit lines
+    dataset_data = {}  # dataset -> list of (x, y) tuples
+
+    # Track error bars
+    error_bar_count = 0
+    total_points = 0
+
+    # Calculate x-axis range for extending regression lines
+    all_rankings = list(model_rankings.values())
+    if all_rankings:
+        x_min = min(all_rankings)
+        x_max = max(all_rankings)
+        x_range = x_max - x_min
+        padding = max(x_range * 0.05, 1.0)  # 5% padding or at least 1.0
+        x_min -= padding
+        x_max += padding
+    else:
+        x_min = None
+        x_max = None
+
+    # Plot each model-dataset combination
+    plotted_families = set()
+    plotted_datasets = set()
+
+    for dataset in datasets:
+        short_name = extract_dataset_name(dataset)
+        marker = dataset_to_marker[dataset]
+        dataset_data[dataset] = []
+
+        for model in available_models:
+            ranking = model_rankings[model]
+            performance = df_filtered.loc[model, dataset]
+
+            if pd.isna(performance) or performance == 0:
+                continue
+
+            total_points += 1
+
+            # Get model family and color
+            family = get_model_provider(model)
+            color = family_colors.get(family, family_colors["Unknown"])
+
+            # Calculate error bar if counts available
+            yerr = None
+            if df_counts is not None:
+                try:
+                    n = df_counts.loc[model, dataset]
+                    if pd.notna(n) and n > 0:
+                        from utils import calculate_binomial_ci
+                        _, _, se = calculate_binomial_ci(performance, n)
+                        if pd.notna(se) and se > 0:
+                            yerr = 1.96 * se  # 95% CI half-width
+                except (KeyError, IndexError):
+                    # Model or dataset not in counts - skip error bar
+                    pass
+            
+            # Plot error bar first if available
+            if yerr is not None and yerr > 0:
+                error_bar_count += 1
+                ax.errorbar(
+                    ranking,
+                    performance,
+                    yerr=yerr,
+                    fmt='none',
+                    ecolor=color,
+                    alpha=0.6,
+                    capsize=3,
+                    capthick=1.0,
+                    linewidth=1.5,
+                    zorder=1
+                )
+
+            # Plot point
+            ax.scatter(
+                ranking,
+                performance,
+                marker=marker,
+                color=color,
+                s=100,
+                alpha=0.7,
+                edgecolors="black",
+                linewidths=0.5,
+                label=None,
+                zorder=2
+            )  # We'll create custom legend
+
+            # Collect data for fit line
+            dataset_data[dataset].append((ranking, performance))
+
+            # Track for legend
+            plotted_families.add(family)
+            plotted_datasets.add((dataset, marker))
+
+    # Track which datasets have fit lines (dict: dataset -> correlation)
+    datasets_with_fit = {}
+
+    # Add fit lines for each dataset with weighted regression and confidence bands
+    for dataset in datasets:
+        if len(dataset_data[dataset]) < 2:
+            continue  # Need at least 2 points for a line
+
+        short_name = extract_dataset_name(dataset)
+        x_vals = np.array([x for x, y in dataset_data[dataset]])
+        y_vals = np.array([y for x, y in dataset_data[dataset]])
+
+        # Prepare weights for weighted regression if counts available
+        weights = None
+        if df_counts is not None:
+            # Get counts for points in this dataset
+            dataset_counts = []
+            for x_val, y_val in dataset_data[dataset]:
+                # Find model with this ranking
+                matching_model = None
+                for model in available_models:
+                    if model_rankings.get(model) == x_val:
+                        matching_model = model
+                        break
+                
+                if matching_model and matching_model in df_counts.index and dataset in df_counts.columns:
+                    n = df_counts.loc[matching_model, dataset]
+                    if pd.notna(n) and n > 0:
+                        dataset_counts.append(n)
+                    else:
+                        dataset_counts.append(np.nan)
+                else:
+                    dataset_counts.append(np.nan)
+            
+            if len(dataset_counts) == len(y_vals) and not np.all(np.isnan(dataset_counts)):
+                n_vals = np.array(dataset_counts)
+                valid_n = ~np.isnan(n_vals) & (n_vals > 0)
+                if np.any(valid_n):
+                    p_clipped = np.clip(y_vals, 0.05, 0.95)
+                    weights = np.where(valid_n, n_vals / (p_clipped * (1 - p_clipped)), 1.0)
+
+        # Get dataset color for fit line
+        line_color = dataset_colors.get(short_name, "gray")
+
+        # Use weighted regression if weights available
+        if weights is not None and not np.all(np.isnan(weights)):
+            from utils import weighted_regression_with_ci, weighted_correlation
+            reg_result = weighted_regression_with_ci(x_vals, y_vals, weights=weights, x_min=x_min, x_max=x_max)
+            if reg_result:
+                correlation = weighted_correlation(x_vals, y_vals, weights)
+                # Plot confidence band
+                ax.fill_between(
+                    reg_result['x'],
+                    reg_result['ci_lower'],
+                    reg_result['ci_upper'],
+                    color=line_color,
+                    alpha=0.15,
+                    zorder=0
+                )
+                # Plot fit line
+                ax.plot(
+                    reg_result['x'],
+                    reg_result['y_pred'],
+                    linestyle="--",
+                    linewidth=2,
+                    alpha=0.7,
+                    color=line_color,
+                    label=None,
+                    zorder=1
+                )
+                datasets_with_fit[dataset] = correlation if not np.isnan(correlation) else np.corrcoef(x_vals, y_vals)[0, 1]
+            else:
+                # Fallback to unweighted
+                correlation = np.corrcoef(x_vals, y_vals)[0, 1]
+                coeffs = np.polyfit(x_vals, y_vals, 1)
+                if x_min is not None and x_max is not None:
+                    x_line = np.linspace(x_min, x_max, 100)
+                else:
+                    x_line = np.linspace(x_vals.min(), x_vals.max(), 100)
+                y_line = coeffs[0] * x_line + coeffs[1]
+                ax.plot(x_line, y_line, linestyle="--", linewidth=2, alpha=0.7, color=line_color, label=None)
+                datasets_with_fit[dataset] = correlation
+        else:
+            # Unweighted regression (no confidence band)
+            correlation = np.corrcoef(x_vals, y_vals)[0, 1]
+            coeffs = np.polyfit(x_vals, y_vals, 1)
+            if x_min is not None and x_max is not None:
+                x_line = np.linspace(x_min, x_max, 100)
+            else:
+                x_line = np.linspace(x_vals.min(), x_vals.max(), 100)
+            y_line = coeffs[0] * x_line + coeffs[1]
+            ax.plot(
+                x_line,
+                y_line,
+                linestyle="--",
+                linewidth=2,
+                alpha=0.7,
+                color=line_color,
+                label=None,
+            )
+            datasets_with_fit[dataset] = correlation
+
+    # Create custom legend
+    # Family colors (one entry per family)
+    family_handles = []
+    for family in sorted(plotted_families):
+        color = family_colors.get(family, family_colors["Unknown"])
+        # Remove "Together-" prefix for display
+        display_name = family.replace("Together-", "")
+        family_handles.append(
+            plt.Line2D(
+                [0],
+                [0],
+                marker="o",
+                color="w",
+                markerfacecolor=color,
+                markersize=10,
+                markeredgecolor="black",
+                markeredgewidth=0.5,
+                label=display_name,
+            )
+        )
+
+    # Dataset markers combined with fit lines
+    dataset_handles = []
+    dataset_labels = []
+    for dataset, marker in sorted(plotted_datasets, key=lambda x: x[0]):
+        short_name = extract_dataset_name(dataset)
+        line_color = dataset_colors.get(short_name, "gray")
+
+        # Marker handle
+        h_marker = plt.Line2D(
+            [0],
+            [0],
+            marker=marker,
+            color="w",
+            markerfacecolor="gray",
+            markersize=10,
+            markeredgecolor="black",
+            markeredgewidth=0.5,
+        )
+
+        if dataset in datasets_with_fit:
+            correlation = datasets_with_fit[dataset]
+            # Line handle
+            h_line = plt.Line2D(
+                [0],
+                [0],
+                linestyle="--",
+                color=line_color,
+                linewidth=2,
+            )
+            dataset_handles.append((h_marker, h_line))
+            dataset_labels.append(f"{short_name} (r={correlation:.2f})")
+        else:
+            dataset_handles.append(h_marker)
+            dataset_labels.append(short_name)
+
+    # Combine legends: families, datasets
+    all_handles = family_handles + dataset_handles
+    all_labels = [h.get_label() for h in family_handles] + dataset_labels
+
+    ax.legend(
+        handles=all_handles,
+        labels=all_labels,
+        loc="center left",
+        bbox_to_anchor=(1.02, 0.5),
+        fontsize=9,
+        framealpha=0.9,
+        handler_map={tuple: HandlerTuple(ndivide=None)},
+    )
+
+    # Add reference line at chance (0.5)
+    ax.axhline(
+        y=0.5,
+        color="gray",
+        linestyle="--",
+        linewidth=1,
+        alpha=0.5,
+        label="Chance (0.5)",
+    )
+
+    # Labels and title
+    ax.set_xlabel(
+        "LM Arena Ranking (Lower = Better)", fontsize=12, fontweight="bold"
+    )
+    ax.set_ylabel("Recognition Accuracy", fontsize=12, fontweight="bold")
+
+    # Set x-axis limits (already calculated above for regression lines)
+    ax.set_xlim(x_min, x_max)
+
+    # Set y-axis limits
+    ax.set_ylim(0, 1.05)
+
+    full_title = title
+    if experiment_title:
+        full_title = f"{title}\n{experiment_title}"
+    ax.set_title(full_title, fontsize=13, fontweight="bold", pad=20)
+
+    # Add grid
+    ax.grid(alpha=0.3, linestyle="--")
+    ax.set_axisbelow(True)
+
+    # Report error bar statistics
+    if df_counts is not None:
+        print(f"  Error bars: {error_bar_count}/{total_points} points have error bars")
+
+    plt.tight_layout(rect=[0, 0, 0.85, 1])
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    print(f"  ✓ Saved scatter plot to: {output_path}")
+    plt.close()
+
+
 def main():
     # Preprocess sys.argv to handle -set before argparse sees it
     if "--model_names" in sys.argv:
@@ -943,7 +1510,7 @@ def main():
                 sys.argv[i] = "SET_PLACEHOLDER"
 
     parser = argparse.ArgumentParser(
-        description="Compare model performance vs model size, release date, and capability tier",
+        description="Compare model performance vs model size, release date, capability tier, and LM Arena ranking",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         allow_abbrev=False,
     )
@@ -988,6 +1555,22 @@ def main():
     # Load data
     print("Loading aggregated performance data...")
     df = pd.read_csv(aggregated_file, index_col=0)
+    
+    # Try to load counts data for error bars
+    counts_file = aggregated_file.parent / "aggregated_counts.csv"
+    df_counts = None
+    if counts_file.exists():
+        try:
+            df_counts = pd.read_csv(counts_file, index_col=0)
+            print(f"  ✓ Loaded counts data: {df_counts.shape[0]} models × {df_counts.shape[1]} datasets\n")
+            # Filter to match df
+            if model_order:
+                available_models = [m for m in model_order if m in df_counts.index]
+                if available_models:
+                    df_counts = df_counts.reindex(available_models)
+            df_counts = df_counts.reindex(df.index)
+        except Exception as e:
+            print(f"  ⚠ Could not load counts file: {e}\n")
 
     # Filter and order models if specified
     if model_order:
@@ -1073,6 +1656,17 @@ def main():
     )
     print()
 
+    # Generate arena ranking plot
+    arena_plot_path = output_dir / "performance_vs_arena_ranking.png"
+    plot_performance_vs_arena_ranking(
+        df,
+        arena_plot_path,
+        title="Performance vs LM Arena Ranking",
+        experiment_title=experiment_title,
+        df_counts=df_counts,
+    )
+    print()
+
     # Display summary
     print(f"{'='*70}")
     print("MODEL SIZE SUMMARY")
@@ -1139,6 +1733,30 @@ def main():
     print()
 
     print(f"{'='*70}")
+    print("LM ARENA RANKING SUMMARY")
+    print(f"{'='*70}\n")
+
+    # Count models with known rankings
+    known_ranking_count = 0
+    unknown_ranking_count = 0
+    ranking_values = []
+
+    for model in df.index:
+        ranking = get_model_arena_ranking(model)
+        if ranking is not None:
+            known_ranking_count += 1
+            ranking_values.append(ranking)
+        else:
+            unknown_ranking_count += 1
+
+    print(f"Models with known arena rankings: {known_ranking_count}")
+    print(f"Models with unknown arena rankings: {unknown_ranking_count}")
+    if ranking_values:
+        print(f"Ranking range: {min(ranking_values)} (best) to {max(ranking_values)} (worst)")
+        print(f"Average ranking: {sum(ranking_values) / len(ranking_values):.1f}")
+    print()
+
+    print(f"{'='*70}")
     print("ANALYSIS COMPLETE")
     print(f"{'='*70}")
     print(f"Output directory: {output_dir}")
@@ -1147,6 +1765,7 @@ def main():
     print("  • performance_vs_date_known.png: Scatter plot (known dates only)")
     print("  • performance_vs_date_all.png: Scatter plot (known + estimated dates)")
     print("  • performance_vs_tier.png: Scatter plot (capability tiers)")
+    print("  • performance_vs_arena_ranking.png: Scatter plot (LM Arena rankings)")
     print(f"{'='*70}\n")
 
 

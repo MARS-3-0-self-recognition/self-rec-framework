@@ -10,12 +10,19 @@ MODEL_NAMES=(
     "dr"
 )
 
+# Generator models to use in the sweep
+# Can be individual models or model sets (e.g., "-set dr")
+# Format: space-separated list
+# Leave empty to default to MODEL_NAMES
+GENERATOR_MODELS=(
+)
+
 # Treatment type for the experiment
 # Options: "other_models", "caps", "typos"
 TREATMENT_TYPE="other_models"
 
 # Maximum number of tasks to run in parallel
-MAX_TASKS=10
+MAX_TASKS=20
 
 # Skip confirmation prompt (yes flag)
 # Set to "true" to enable -y flag, "false" to disable

@@ -325,6 +325,77 @@ def plot_above_chance_bar_chart(
     plt.close()
 
 
+def plot_model_variance_chart(
+    variances: pd.Series,
+    output_path: Path,
+    title: str,
+    experiment_title: str = "",
+):
+    """
+    Create a bar chart showing variance of each model's performance across datasets.
+
+    Args:
+        variances: Series with models as index, variance values
+        output_path: Path to save the plot
+        title: Chart title
+        experiment_title: Optional experiment name for title
+    """
+    print(f"Generating model variance chart: {title}...")
+
+    if len(variances) == 0:
+        print("  ⚠ No data to plot")
+        return
+
+    # Sort by value (descending)
+    variances = variances.sort_values(ascending=False)
+
+    # Set up the plot
+    fig, ax = plt.subplots(figsize=(max(14, len(variances) * 0.4), 8))
+
+    # Create bar chart
+    x_pos = range(len(variances))
+    ax.bar(x_pos, variances.values, color="#3b82f6", alpha=0.7, edgecolor="black", linewidth=0.5)
+
+    # Set x-axis labels
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(variances.index, rotation=45, ha="right", fontsize=9)
+
+    # Set y-axis limits
+    max_val = variances.max()
+    padding = max_val * 0.1 if max_val > 0 else 0.05
+    ax.set_ylim(0, max_val + padding)
+
+    # Labels and title
+    ax.set_ylabel("Variance Across Datasets", fontsize=12, fontweight="bold")
+    ax.set_xlabel("Evaluator Model", fontsize=12, fontweight="bold")
+
+    full_title = title
+    if experiment_title:
+        full_title = f"{title}\n{experiment_title}"
+    ax.set_title(full_title, fontsize=13, fontweight="bold", pad=20)
+
+    # Add value labels on top of bars
+    for i, (model, var_val) in enumerate(variances.items()):
+        ax.text(
+            i,
+            var_val + padding * 0.02,
+            f"{var_val:.4f}",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+            rotation=90,
+        )
+
+    # Add grid
+    ax.grid(axis="y", alpha=0.3, linestyle="--")
+    ax.set_axisbelow(True)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    print(f"  ✓ Saved variance chart to: {output_path}")
+    plt.close()
+
+
 def main():
     # Preprocess sys.argv to handle -set before argparse sees it
     if "--model_names" in sys.argv:
@@ -395,8 +466,12 @@ def main():
     # Compute percentage above chance
     above_chance_pct = compute_above_chance_percentage(df, chance_level=0.5)
     print(
-        f"  ✓ Computed percentage above chance for {len(above_chance_pct)} datasets\n"
+        f"  ✓ Computed percentage above chance for {len(above_chance_pct)} datasets"
     )
+
+    # Compute variance per model (across datasets)
+    model_variances = df.var(axis=1)  # Variance across columns (datasets) for each model
+    print(f"  ✓ Computed variance across datasets for {len(model_variances)} models\n")
 
     # Determine output directory (same as input file)
     output_dir = aggregated_file.parent
@@ -426,7 +501,13 @@ def main():
     )
     averages_path = output_dir / "dataset_averages.csv"
     stats_df.to_csv(averages_path)
-    print(f"  ✓ Saved dataset statistics to: {averages_path}\n")
+    print(f"  ✓ Saved dataset statistics to: {averages_path}")
+
+    # Save model variance CSV
+    variance_df = pd.DataFrame({"variance": model_variances})
+    variance_path = output_dir / "model_variance.csv"
+    variance_df.to_csv(variance_path)
+    print(f"  ✓ Saved model variance to: {variance_path}\n")
 
     # Generate plots
     averages_plot_path = output_dir / "dataset_averages.png"
@@ -449,6 +530,16 @@ def main():
     )
     print()
 
+    # Generate model variance chart
+    variance_plot_path = output_dir / "model_variance.png"
+    plot_model_variance_chart(
+        model_variances,
+        variance_plot_path,
+        title="Variance of Model Performance Across Datasets",
+        experiment_title=experiment_title,
+    )
+    print()
+
     # Display preview
     print(f"{'='*70}")
     print("PREVIEW: Dataset Averages (with Std Dev)")
@@ -464,6 +555,13 @@ def main():
     print()
 
     print(f"{'='*70}")
+    print("PREVIEW: Model Variance (Across Datasets)")
+    print(f"{'='*70}\n")
+    preview_variance = model_variances.sort_values(ascending=False)
+    print(preview_variance.round(6))
+    print()
+
+    print(f"{'='*70}")
     print("ANALYSIS COMPLETE")
     print(f"{'='*70}")
     print(f"Output directory: {output_dir}")
@@ -472,6 +570,8 @@ def main():
     )
     print("  • dataset_averages.png: Bar chart with error bars")
     print("  • dataset_above_chance.png: Percentage of models above chance per dataset")
+    print("  • model_variance.csv: Variance of each model's performance across datasets")
+    print("  • model_variance.png: Bar chart showing variance per model")
     print(f"{'='*70}\n")
 
 

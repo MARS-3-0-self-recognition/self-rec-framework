@@ -14,5 +14,5 @@ DATASET_SUBSETS=(
 # Use -set {set_name} for model sets, or list individual models
 MODEL_NAMES=(
     "-set"
-    "eval_cot-r"
+    "eval_cot-r_and_dr"
 )
