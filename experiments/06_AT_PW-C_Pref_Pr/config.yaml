@@ -1,7 +1,0 @@
-temperature: 1.0
-max_final_answer_tokens: null
-
-tags: "AT"
-format: "PW-C"
-task: "Pref"
-priming: True

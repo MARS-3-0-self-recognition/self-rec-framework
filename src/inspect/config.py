@@ -16,8 +16,11 @@ class ExperimentConfig:
     format: str  # "PW-C", "PW-Q", "IND-C", "IND-Q"
     task: str  # "Rec" or "Pref" or "Pref-N", "Pref-S", "Pref-Q" (N=Neutral, S=Submission, Q=Quality)
     priming: bool
-    # Optional selector for SR reasoning style (e.g., "Instruct", "Pseudo-CoT", "CoT")
-    sr_reasoning_type: Optional[str] = None
+    # Evaluator reasoning mode: "DR" (direct response) or "CoT" (chain of thought)
+    # When "CoT", the actual prompt variant is determined by model type:
+    #   - Thinking models (-thinking suffix) → "CoT-R" (trained reasoning)
+    #   - Instruct models → "CoT-I" (prompted reasoning)
+    evaluator_reasoning: Optional[str] = None
     dataset_name: Optional[str] = (
         None  # Optional, will be inferred from dataset path if not provided
     )
@@ -41,7 +44,10 @@ class ExperimentConfig:
 
     # Prompt variant selection
     # Controls how generator outputs are inserted into UT transcripts
-    # Valid values: "FA" | "CoT" | "CoT-FA"
+    # Valid values: "FA" | "RT-FA" | "RT"
+    #   FA = Final Answer only
+    #   RT-FA = Reasoning Trace + Final Answer
+    #   RT = Reasoning Trace only
     generator_output: Optional[str] = None
 
     # Built prompts (set after initialization)
@@ -91,7 +97,7 @@ def load_experiment_config(
         or config_dict.get("max_tokens"),  # Backward compat
         max_thinking_tokens=config_dict.get("max_thinking_tokens"),
         seed=config_dict.get("seed"),
-        sr_reasoning_type=config_dict.get("sr_reasoning_type"),
+        evaluator_reasoning=config_dict.get("evaluator_reasoning"),
         generator_output=config_dict.get("generator_output"),
         reasoning_effort=config_dict.get("reasoning_effort", "high"),
         reasoning_summary=config_dict.get("reasoning_summary", None),
@@ -104,25 +110,53 @@ def load_experiment_config(
     return exp_config
 
 
-def ensure_reasoning_type(
+def ensure_evaluator_reasoning(
     exp_config: ExperimentConfig, evaluator_model_name: str
 ) -> None:
     """
-    Set a default SR reasoning type based on evaluator model name if none is provided,
+    Set a default evaluator reasoning mode based on evaluator model name if none is provided,
     then rebuild prompts so SR_task_prompt reflects the selection.
 
-    Default: "CoT" for models ending with "-thinking", otherwise "Instruct".
+    Default: "CoT" for models ending with "-thinking", otherwise "DR" (direct response).
     Caller should invoke this before using SR_task_prompt in evaluation tasks.
     """
-    if exp_config.sr_reasoning_type is not None:
-        return
+    if exp_config.evaluator_reasoning is None:
+        exp_config.evaluator_reasoning = (
+            "CoT" if evaluator_model_name.endswith("-thinking") else "DR"
+        )
 
-    exp_config.sr_reasoning_type = (
-        "CoT" if evaluator_model_name.endswith("-thinking") else "Instruct"
-    )
+    # Rebuild prompts with evaluator model name to resolve CoT variant
+    _build_prompts(exp_config, evaluator_model_name)
 
-    # Rebuild prompts to reflect the selected reasoning type
-    _build_prompts(exp_config)
+
+def _resolve_reasoning_prompt_key(
+    evaluator_reasoning: str, evaluator_model_name: str
+) -> str:
+    """
+    Resolve the evaluator_reasoning config value to the actual prompt key.
+
+    Args:
+        evaluator_reasoning: "DR" or "CoT"
+        evaluator_model_name: The evaluator model name (used to determine CoT variant)
+
+    Returns:
+        The prompt key to use: "DR", "CoT-I", or "CoT-R"
+    """
+    if evaluator_reasoning == "DR":
+        return "DR"
+    elif evaluator_reasoning == "CoT":
+        # CoT variant depends on model type:
+        # - Thinking models use CoT-R (trained reasoning)
+        # - Instruct models use CoT-I (prompted reasoning)
+        if evaluator_model_name and evaluator_model_name.endswith("-thinking"):
+            return "CoT-R"
+        else:
+            return "CoT-I"
+    else:
+        raise ValueError(
+            f"Invalid evaluator_reasoning: {evaluator_reasoning}. "
+            "Must be 'DR' or 'CoT'."
+        )
 
 
 def load_base_prompts() -> dict:
@@ -233,7 +267,9 @@ def _get_nested_prompt(
     raise KeyError(f"Key '{current_key}' not found and no 'All' fallback available")
 
 
-def _build_prompts(exp_config: ExperimentConfig) -> None:
+def _build_prompts(
+    exp_config: ExperimentConfig, evaluator_model_name: str | None = None
+) -> None:
     """
     Build prompts for an ExperimentConfig by combining base and dataset prompts.
     Modifies the exp_config in place.
@@ -245,6 +281,7 @@ def _build_prompts(exp_config: ExperimentConfig) -> None:
 
     Args:
         exp_config: ExperimentConfig instance to populate with prompts
+        evaluator_model_name: Optional evaluator model name (used to resolve CoT variant)
 
     Raises:
         ValueError: If the experiment combination is not implemented
@@ -293,22 +330,45 @@ def _build_prompts(exp_config: ExperimentConfig) -> None:
     exp_config.generation_prompt = dataset_prompts["generation_prompt"]
 
     # Build SR task prompt
-    sr_task_preface = base_prompts["SR_task_preface"][exp_config.tags].strip()
+    # SR_task_preface structure:
+    #   AT.All - for all AT tasks
+    #   UT.{C|Q} - for UT tasks based on format_type
+    try:
+        if exp_config.tags == "AT":
+            sr_task_preface_keys = [exp_config.tags]  # Will find "All" wildcard
+        else:  # UT
+            sr_task_preface_keys = [exp_config.tags, format_type]
+        sr_task_preface = _get_nested_prompt(
+            base_prompts["SR_task_preface"], sr_task_preface_keys
+        ).strip()
+    except KeyError as e:
+        raise ValueError(
+            f"SR_task_preface not implemented for tags={exp_config.tags}, format={format_type}"
+        ) from e
 
     # Get SR task template: SR_task[pair_type][format_type][base_task]
     # Use base_task ("Pref" or "Rec") for template lookup
     try:
-        # Rec tasks can have generator_output variants (FA / CoT / CoT-FA)
+        # Determine generator_output (needed for both Rec and Pref tasks in some formats)
+        generator_output = exp_config.generator_output
+        if generator_output is None:
+            # Default to RT-FA (reasoning trace + final answer) for CoT evaluators
+            # Default to FA (final answer only) for DR evaluators
+            if exp_config.evaluator_reasoning == "CoT":
+                generator_output = "RT-FA"
+            else:
+                generator_output = "FA"
+
+        # Build sr_task_keys: [pair_type, format_type, base_task]
         sr_task_keys = [pair_type, format_type, base_task]
+
+        # Some task/format combinations require generator_output in the path
+        # - Rec tasks: always have generator_output variants (FA / RT-FA / RT)
+        # - Pref tasks: IND-Q format has generator_output variants (FA), PW-Q does not
         if base_task == "Rec":
-            generator_output = exp_config.generator_output
-            if generator_output is None:
-                if exp_config.sr_reasoning_type == "CoT":
-                    generator_output = "CoT-FA"
-                elif exp_config.sr_reasoning_type:
-                    generator_output = "FA"
-                else:
-                    generator_output = "FA"
+            sr_task_keys.append(generator_output)
+        elif base_task == "Pref" and pair_type == "IND" and format_type == "Q":
+            # IND-Q Pref tasks have generator_output variants (currently only FA)
             sr_task_keys.append(generator_output)
 
         sr_task_template = _get_nested_prompt(
@@ -326,32 +386,40 @@ def _build_prompts(exp_config: ExperimentConfig) -> None:
     sr_task_prompt = sr_task_template.replace("{SR_task_preface}", sr_task_preface)
 
     # Build reasoning+format string using SR_task_prompt_builder
-    # Select reasoning style: match generator_output default logic
-    # If sr_reasoning_type is not provided, default to "Instruct" (not "CoT")
-    # to align with generator_output="FA" default
-    if exp_config.sr_reasoning_type is None:
-        # Default to "Instruct" when no reasoning type specified
-        # This aligns with generator_output="FA" default (no CoT in output)
-        reasoning_type = "Instruct"
+    # Resolve evaluator_reasoning ("DR" or "CoT") to the actual prompt key:
+    # - "DR" → "DR"
+    # - "CoT" + thinking model → "CoT-R"
+    # - "CoT" + instruct model → "CoT-I"
+    if exp_config.evaluator_reasoning is None:
+        # Default to "DR" when no evaluator reasoning specified
+        reasoning_key = "DR"
     else:
-        reasoning_type = exp_config.sr_reasoning_type
+        reasoning_key = _resolve_reasoning_prompt_key(
+            exp_config.evaluator_reasoning, evaluator_model_name
+        )
     try:
         reasoning_template = base_prompts["SR_task_prompt_builder"]["Reasoning"][
-            reasoning_type
+            reasoning_key
         ].strip()
     except KeyError as e:
-        raise ValueError(f"Unknown reasoning type: {reasoning_type}") from e
+        raise ValueError(f"Unknown reasoning key: {reasoning_key}") from e
 
     # Select format string; try nested path [pair_type, format_type], with "All" fallback
+    # For IND-Q format, the structure is Format[IND][Q][Rec|Pref], so we need base_task
     try:
+        format_keys = [pair_type, format_type]
+        # IND-Q format has task-specific format strings (Rec vs Pref)
+        if pair_type == "IND" and format_type == "Q":
+            format_keys.append(base_task)
+
         format_template = _get_nested_prompt(
             base_prompts["SR_task_prompt_builder"]["Format"],
-            [pair_type, format_type],
+            format_keys,
             allow_all=True,
         ).strip()
     except KeyError as e:
         raise ValueError(
-            f"Format not implemented for pair_type={pair_type}, format_type={format_type}"
+            f"Format not implemented for pair_type={pair_type}, format_type={format_type}, task={base_task}"
         ) from e
 
     reasoning_format_text = reasoning_template.replace("{Format}", format_template)
@@ -390,24 +458,30 @@ def _build_prompts(exp_config: ExperimentConfig) -> None:
     if exp_config.tags == "UT":
         transcript_preface = base_prompts["UT_transcript"]["preface"].strip()
         # Decide which generator output variant to use.
-        # Default: FA for non-CoT runs; CoT-FA when reasoning type is CoT and no override is provided.
+        # Default: FA for non-CoT runs; RT-FA when evaluator reasoning is CoT and no override is provided.
         generator_output = exp_config.generator_output
         if generator_output is None:
-            if exp_config.sr_reasoning_type == "CoT":
-                generator_output = "CoT-FA"
-            elif exp_config.sr_reasoning_type:
-                generator_output = "FA"
+            # Default to RT-FA (reasoning trace + final answer) for CoT evaluators
+            # Default to FA (final answer only) for DR evaluators
+            if exp_config.evaluator_reasoning == "CoT":
+                generator_output = "RT-FA"
             else:
                 generator_output = "FA"
 
         # Get transcript template:
         #   - Pairwise (PW-*): UT_transcript[pair_type][format_type][generator_output]
-        #   - Individual (IND-*): UT_transcript[pair_type][format_type]
+        #   - Individual (IND-C): UT_transcript[IND][C] (string, no generator_output variants)
+        #   - Individual (IND-Q): UT_transcript[IND][Q][generator_output] (has FA/RT-FA/RT variants)
         try:
             if pair_type == "PW":
                 transcript_keys = [pair_type, format_type, generator_output]
             elif pair_type == "IND":
-                transcript_keys = [pair_type, format_type]
+                if format_type == "Q":
+                    # IND-Q has generator_output variants (FA, RT-FA, RT)
+                    transcript_keys = [pair_type, format_type, generator_output]
+                else:
+                    # IND-C is a simple string
+                    transcript_keys = [pair_type, format_type]
             else:
                 raise ValueError(
                     f"Unsupported pair_type for UT_transcript: {pair_type}"

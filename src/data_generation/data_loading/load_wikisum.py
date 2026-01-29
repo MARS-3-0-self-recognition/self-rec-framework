@@ -10,16 +10,16 @@ Paper: WikiSum: Coherent Summarization Dataset for Efficient Human-Evaluation
 
 Usage:
     # Load first 100 samples from validation set
-    uv run data_loader/load_wikisum.py --num_samples=100 --split=validation
+    uv run src/data_generation/data_loading/load_wikisum.py --num_samples=100 --split=validation
 
     # Load specific range of samples (5-15 inclusive)
-    uv run data_loader/load_wikisum.py --range=5-15 --split=validation
+    uv run src/data_generation/data_loading/load_wikisum.py --range=5-15 --split=validation
 
     # Load 200 samples with custom dataset name
-    uv run data_loader/load_wikisum.py --num_samples=200 --dataset_name=wikisum_200
+    uv run src/data_generation/data_loading/load_wikisum.py --num_samples=200 --dataset_name=wikisum_200
 
     # Load samples 100-199 from test split
-    uv run data_loader/load_wikisum.py --range=100-199 --split=test
+    uv run src/data_generation/data_loading/load_wikisum.py --range=1-30 --split=test --dataset_name=test_set_1-30
 
 Note: Must specify either --num_samples or --range (one required, mutually exclusive)
 """

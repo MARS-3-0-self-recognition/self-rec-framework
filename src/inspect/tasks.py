@@ -62,6 +62,116 @@ def _get_model_with_custom_base_url(model_name: str, inspect_model_str: str):
     return inspect_model_str
 
 
+def _is_dual_mode_model(model_name: str) -> bool:
+    """
+    Check if a model is a dual-mode model that can switch between instruct and thinking modes.
+
+    Dual-mode models (Claude 3.7+) have thinking/reasoning that can be enabled/disabled
+    at the API level. When using these models WITHOUT the "-thinking" suffix, we need to
+    explicitly disable reasoning.
+
+    Note: Gemini 2.5 models are NOT dual-mode - they always use reasoning and it cannot
+    be disabled via the API.
+
+    Args:
+        model_name: Short model name (e.g., "gemini-2.5-pro", "sonnet-4.5")
+
+    Returns:
+        True if the model is dual-mode (can switch), False otherwise
+    """
+    # Extract base model name (remove -thinking suffix if present)
+    base_name = get_base_model_name(model_name)
+
+    # Dual-mode models that can switch between instruct and thinking modes
+    # Note: Gemini 2.5 models are NOT included - they always use reasoning
+    dual_mode_prefixes = [
+        "sonnet-3.7",  # Claude 3.7 Sonnet
+        "sonnet-4.5",  # Claude 4.5 Sonnet
+        "opus-4.1",  # Claude 4.1 Opus
+        "grok-3-mini",  # Grok 3 Mini
+    ]
+
+    return any(base_name.startswith(prefix) for prefix in dual_mode_prefixes)
+
+
+def _is_always_reasoning_model(model_name: str) -> bool:
+    """
+    Check if a model always uses reasoning and cannot be used in instruct mode.
+
+    These models (like Gemini 2.5) have reasoning enabled by default and it cannot
+    be disabled via the API. They should only be called with the "-thinking" suffix.
+
+    Args:
+        model_name: Short model name (e.g., "gemini-2.5-pro", "sonnet-4.5")
+
+    Returns:
+        True if the model always uses reasoning, False otherwise
+    """
+    # Extract base model name (remove -thinking suffix if present)
+    base_name = get_base_model_name(model_name)
+
+    # Models that always use reasoning (cannot be disabled)
+    always_reasoning_prefixes = [
+        "gemini-2.5",  # Gemini 2.5 Flash/Pro - always uses reasoning
+    ]
+
+    return any(base_name.startswith(prefix) for prefix in always_reasoning_prefixes)
+
+
+class AlwaysReasoningModelError(Exception):
+    """Raised when trying to use an always-reasoning model without -thinking suffix."""
+
+    pass
+
+
+def _disable_reasoning_for_instruct_mode(
+    model_name: str,
+    config_params: dict,
+    inspect_model_str: str | None = None,
+) -> None:
+    """
+    Explicitly disable reasoning/thinking for dual-mode models used in instruct mode.
+
+    Dual-mode models (Claude 3.7+) have thinking that can be enabled/disabled.
+    When using these models WITHOUT the "-thinking" suffix, we ensure reasoning is off.
+
+    Raises:
+        AlwaysReasoningModelError: If the model always uses reasoning and cannot be
+            used in instruct mode (e.g., Gemini 2.5).
+
+    Args:
+        model_name: Short model name (e.g., "gemini-2.5-pro", "sonnet-4.5")
+        config_params: Dictionary to update with GenerateConfig parameters
+        inspect_model_str: Inspect model string (for provider detection)
+    """
+    # Only disable reasoning for models used WITHOUT -thinking suffix
+    if is_thinking_model(model_name):
+        return  # Model has -thinking suffix, reasoning should be enabled
+
+    # Check if this is an always-reasoning model being used without -thinking
+    if _is_always_reasoning_model(model_name):
+        raise AlwaysReasoningModelError(
+            f"Model '{model_name}' always uses reasoning and cannot be used in instruct mode. "
+            f"Use '{model_name}-thinking' instead to explicitly enable reasoning mode."
+        )
+
+    if not _is_dual_mode_model(model_name):
+        return  # Not a dual-mode model, no need to disable reasoning
+
+    # Explicitly disable reasoning for dual-mode models in instruct mode
+    if inspect_model_str:
+        if "anthropic" in inspect_model_str:
+            # Anthropic: Don't enable extended_thinking (it's off by default)
+            # Just ensure we don't set any thinking-related parameters
+            # Note: Anthropic models may still show reasoning if they've been fine-tuned
+            # to include it, but the API-level thinking feature is off by default
+            pass
+        elif "openai" in inspect_model_str and "grok" in model_name.lower():
+            # XAI/Grok: Use reasoning_effort="none" if available, otherwise just don't enable it
+            # Note: Grok models may have different behavior; this is a best-effort approach
+            pass
+
+
 def _configure_thinking_model_params(
     model_name: str,
     config: ExperimentConfig,
@@ -79,21 +189,28 @@ def _configure_thinking_model_params(
     - reasoning_summary: OpenAI models only (None, "auto", "last", "concise", default: None)
     - reasoning_history: All thinking models ("all" or "none", default: "all")
 
+    For dual-mode models (Gemini 2.5, Claude 3.7+) without -thinking suffix:
+    - Explicitly disable reasoning by setting reasoning_tokens=0 (Google)
+
     Args:
         model_name: Short model name (e.g., "sonnet-4.5-thinking")
         config: ExperimentConfig with max_final_answer_tokens, max_thinking_tokens, and reasoning parameters
         config_params: Dictionary to update with GenerateConfig parameters
         model: Optional inspect model string (for provider detection)
     """
+    # Determine provider if model string provided
+    inspect_model_str = str(model) if model else None
+
+    # For dual-mode models WITHOUT -thinking suffix, explicitly disable reasoning
     if not is_thinking_model(model_name):
+        _disable_reasoning_for_instruct_mode(
+            model_name, config_params, inspect_model_str
+        )
         return
 
     # Set reasoning_history for all thinking models (default: "all")
     if config.reasoning_history:
         config_params["reasoning_history"] = config.reasoning_history
-
-    # Determine provider if model string provided
-    inspect_model_str = str(model) if model else None
 
     # For models that support separate reasoning_tokens parameter
     if needs_reasoning_params(model_name):
@@ -229,6 +346,11 @@ def get_task_function(
         ("UT", "PW-Q", "Pref"): pairwise_query,
         ("AT", "IND-Q", "Rec"): individual_query,
         ("UT", "IND-Q", "Rec"): individual_query,
+        (
+            "UT",
+            "IND-Q",
+            "Pref",
+        ): individual_query,  # Pref tasks use same function as Rec
     }
 
     key = (tags, format_type, base_task)
@@ -295,9 +417,9 @@ def pairwise_query(
         Task object configured with logprobs enabled
     """
     config = exp_config
-    from src.inspect.config import ensure_reasoning_type
+    from src.inspect.config import ensure_evaluator_reasoning
 
-    ensure_reasoning_type(config, model_name)
+    ensure_evaluator_reasoning(config, model_name)
 
     inspect_model_str: str = inspect_model_name(model_name)
     # Get model object (handles custom base URLs for XAI/Grok, etc.)
@@ -399,9 +521,9 @@ def pairwise_conversation_assistant_tags(
         Task object configured with logprobs enabled
     """
     config = exp_config
-    from src.inspect.config import ensure_reasoning_type
+    from src.inspect.config import ensure_evaluator_reasoning
 
-    ensure_reasoning_type(config, model_name)
+    ensure_evaluator_reasoning(config, model_name)
 
     inspect_model_str: str = inspect_model_name(model_name)
 
@@ -625,9 +747,9 @@ def pairwise_conversation_user_tags(
         Task object configured with logprobs enabled
     """
     config = exp_config
-    from src.inspect.config import ensure_reasoning_type
+    from src.inspect.config import ensure_evaluator_reasoning
 
-    ensure_reasoning_type(config, model_name)
+    ensure_evaluator_reasoning(config, model_name)
 
     inspect_model_str: str = inspect_model_name(model_name)
     # Get model object (handles custom base URLs for XAI/Grok, etc.)
@@ -712,9 +834,9 @@ def individual_conversation_assistant_tags(
         Task object configured with logprobs enabled
     """
     config = exp_config
-    from src.inspect.config import ensure_reasoning_type
+    from src.inspect.config import ensure_evaluator_reasoning
 
-    ensure_reasoning_type(config, model_name)
+    ensure_evaluator_reasoning(config, model_name)
 
     inspect_model_str: str = inspect_model_name(model_name)
     # Get model object (handles custom base URLs for XAI/Grok, etc.)
@@ -910,10 +1032,16 @@ def individual_query(
     # Create Inspect samples
     inspect_samples = []
     for sample_data in dataset_samples:
-        # Format the prompt using the config template
+        # Format generation prompt from content
+        generation_prompt = config.generation_prompt.format(
+            content=sample_data["content"]
+        )
+
+        # Format the SR task prompt using the config template
         prompt = config.SR_task_prompt.format(
-            content=sample_data["content"],
+            generation_prompt=generation_prompt,
             output=sample_data["output"],
+            reasoning=sample_data.get("reasoning", ""),
             correct_choice_token=sample_data["metadata"].get(
                 "correct_choice_token", "1"
             ),

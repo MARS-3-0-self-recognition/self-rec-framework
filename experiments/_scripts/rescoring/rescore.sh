@@ -1,0 +1,1 @@
+uv run experiments/scripts/rescoring/rescore_eval_file.py --eval_file data/results/pku_saferlhf/mismatch_1-20/17_UT_PW-Q_Rec_NPr_CoT/2025-12-17T00-03-32+01-00_qwen-3.0-235b-thinking-eval-on-qwen-3.0-235b-thinking-vs-sonnet-3.7-thinking_MbsSDsmpi9NYeyePC4U9aG.eval --output_file temp.eval
