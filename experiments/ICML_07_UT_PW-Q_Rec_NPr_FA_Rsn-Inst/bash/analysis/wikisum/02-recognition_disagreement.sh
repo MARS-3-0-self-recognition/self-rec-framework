@@ -37,19 +37,39 @@ fi
 # Source the configuration file (loads DATASET_SUBSETS and MODEL_NAMES)
 source "$CONFIG_FILE"
 
+# Optional: load parent analysis config (e.g. COMBINE_DATASETS for combined-experiment analyses)
+ANALYSIS_CONFIG="$SCRIPT_DIR/../config.sh"
+[[ -f "$ANALYSIS_CONFIG" ]] && source "$ANALYSIS_CONFIG"
+
 # ============================================================================
 # Build full dataset paths
 # ============================================================================
 
 FULL_DATASET_PATHS=()
-for subset in "${DATASET_SUBSETS[@]}"; do
-    FULL_DATASET_PATHS+=("$DATASET_PATH/$subset/$EXP_DIR")
-done
+if [[ -n "${COMBINE_DATASETS+x}" && "${#COMBINE_DATASETS[@]}" -gt 0 ]]; then
+    for subset in "${DATASET_SUBSETS[@]}"; do
+        for exp in "${COMBINE_DATASETS[@]}"; do
+            FULL_DATASET_PATHS+=("$DATASET_PATH/$subset/$exp")
+        done
+    done
+else
+    for subset in "${DATASET_SUBSETS[@]}"; do
+        FULL_DATASET_PATHS+=("$DATASET_PATH/$subset/$EXP_DIR")
+    done
+fi
+
+# When combining experiments, write output under current experiment name
+if [[ -n "${COMBINE_DATASETS+x}" && "${#COMBINE_DATASETS[@]}" -gt 0 ]]; then
+    EXTRA_OUTPUT_ARGS=(--output_experiment_name "$EXP_DIR")
+else
+    EXTRA_OUTPUT_ARGS=()
+fi
 
 # ============================================================================
 # Run analysis script
 # ============================================================================
 
 uv run "experiments/_scripts/analysis/$ANALYSIS_SCRIPT" \
+        "${EXTRA_OUTPUT_ARGS[@]}" \
         --results_dir "${FULL_DATASET_PATHS[@]}" \
         --model_names "${MODEL_NAMES[@]}"

@@ -1121,6 +1121,13 @@ def main():
         help="Optional custom output directory name (used when combining multiple subsets). "
         "If not provided, uses 'combined' when multiple dirs are given.",
     )
+    parser.add_argument(
+        "--output_experiment_name",
+        type=str,
+        default=None,
+        help="When combining multiple results_dirs (e.g. from COMBINE_DATASETS), use this as the "
+        "experiment name in the output path so outputs go to data/analysis/{dataset}/{subset}/<this>.",
+    )
 
     args = parser.parse_args()
 
@@ -1157,15 +1164,19 @@ def main():
             output_dir = Path("data/analysis") / relative_path
         else:
             # Multiple directories: use combined or custom name
+            if args.output_experiment_name:
+                experiment_name = args.output_experiment_name
             if args.output_name:
                 subset_name = args.output_name
             else:
-                # Auto-generate combined name from subset names
+                # Ordered unique subset names (e.g. training_set_1-20+test_set_1-30 for wikisum)
                 subset_names = []
                 for d in results_dirs:
                     d_parts = d.parts
                     if len(d_parts) >= 4:
-                        subset_names.append(d_parts[3])  # The subset part
+                        s = d_parts[3]
+                        if s not in subset_names:
+                            subset_names.append(s)
                 subset_name = "+".join(subset_names) if subset_names else "combined"
 
             output_dir = (

@@ -2267,7 +2267,7 @@ def main():
         pd.DataFrame(data_points).to_csv(output_dir / "rank_distance_data.csv", index=False)
         
     # Get experiment name from output dir path for title
-    exp_name = output_dir.parent.parent.name # Assuming data/analysis/_aggregated_data/{EXP}/{TIMESTAMP}
+    exp_name = output_dir.parent.parent.name  # Assuming data/analysis/_aggregated_data/{EXP}/{TIMESTAMP}
     if not exp_name.startswith("ICML"):
         # Try finding ICML string in path
         for part in output_dir.parts:
@@ -2275,10 +2275,18 @@ def main():
                 exp_name = part
                 break
 
+    # Detect IND experiments by name (e.g. ICML_02_UT_IND-Q_..., ICML_08_UT_IND-Q_Rec_NPr_FA_Rsn-Inst)
+    # If IND and --exclude_self was not passed, remove self-comparisons from data_points now
+    is_ind_experiment = "_IND" in exp_name
+    if is_ind_experiment and self_comparison_points and not args.exclude_self:
+        data_points = [p for p in data_points if p["evaluator"] != p["generator"]]
+        print(f"Auto-detected IND experiment from name; excluded self-comparisons ({len(data_points)} cross-model points).")
+    use_ind = (args.exclude_self or is_ind_experiment) and bool(self_comparison_points)
+
     # Calculate self_scores for IND experiments (needed for all plots)
     self_scores = None
     self_score_n_samples = None  # Also track n_samples for error propagation
-    if args.exclude_self and self_comparison_points:
+    if use_ind:
         # IND experiment: calculate adjusted data
         self_df = pd.DataFrame(self_comparison_points)
         # Weighted average if n_samples available
@@ -2354,7 +2362,7 @@ def main():
     )
     
     # Plot aggregated (for PW) or adjusted (for IND)
-    if args.exclude_self and self_comparison_points:
+    if use_ind:
         
         # Still plot aggregated for reference
         plot_rank_distance_aggregated(data_points, output_dir / "rank_distance_aggregated.png", experiment_title=exp_name)

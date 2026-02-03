@@ -21,6 +21,7 @@ Output:
 
 import argparse
 import sys
+from collections import Counter
 from pathlib import Path
 from datetime import datetime
 
@@ -42,6 +43,10 @@ from utils import (
 )
 
 
+# Suffix for reasoning/thinking models; instruct name = thinking_name.removesuffix(THINKING_SUFFIX)
+THINKING_SUFFIX = "-thinking"
+
+
 def extract_dataset_name(full_path: str) -> str:
     """
     Extract short dataset name from full path.
@@ -54,10 +59,53 @@ def extract_dataset_name(full_path: str) -> str:
     return full_path.split("/")[0]
 
 
+def _get_thinking_instruct_pairs(
+    df1: pd.DataFrame,
+    df2: pd.DataFrame,
+) -> tuple[list[str], list[str]]:
+    """
+    Find thinking (exp1) <-> instruct (exp2) pairs. Exp1 model names must end with THINKING_SUFFIX;
+    instruct name is the same name with that suffix removed. Errors if two thinking names
+    map to the same instruct name.
+
+    Returns:
+        (thinking_names, instruct_names) parallel lists, both ordered; instruct_names unique.
+    """
+    thinking_models = [m for m in df1.index if str(m).endswith(THINKING_SUFFIX)]
+    if not thinking_models:
+        raise ValueError(
+            f"No models in exp1 end with '{THINKING_SUFFIX}'. "
+            "Cannot run reasoning-vs-instruct comparison."
+        )
+    instruct_names = []
+    for m in thinking_models:
+        base = str(m).removesuffix(THINKING_SUFFIX)
+        if base not in df2.index:
+            continue
+        instruct_names.append(base)
+    if not instruct_names:
+        raise ValueError(
+            f"No exp1 thinking-models had a matching instruct model in exp2. "
+            f"Exp1 thinking models: {thinking_models}; exp2 index: {list(df2.index)}."
+        )
+    # Check one-to-one: no duplicate instruct name
+    if len(instruct_names) != len(set(instruct_names)):
+        counts = Counter(instruct_names)
+        dups = [k for k, v in counts.items() if v > 1]
+        raise ValueError(
+            f"Duplicate instruct name(s) from thinking models: {dups}. "
+            "Each instruct name must map from exactly one thinking model."
+        )
+    # Rebuild thinking list in same order (only those with a pair)
+    thinking_names = [m for m in thinking_models if str(m).removesuffix(THINKING_SUFFIX) in df2.index]
+    return thinking_names, instruct_names
+
+
 def load_and_compare(
     exp1_file: Path,
     exp2_file: Path,
     model_order: list[str] | None = None,
+    reasoning_vs_instruct: bool = False,
 ) -> pd.DataFrame:
     """
     Load both performance files and compute difference (exp1 - exp2).
@@ -65,39 +113,35 @@ def load_and_compare(
     Args:
         exp1_file: Path to first experiment's aggregated_performance.csv
         exp2_file: Path to second experiment's aggregated_performance.csv
-        model_order: Optional list of models to filter/order
+        model_order: Optional list of models to filter/order (by instruct name in reasoning_vs_instruct mode)
+        reasoning_vs_instruct: If True, pair exp1 models ending with -thinking to exp2 instruct names.
 
     Returns:
         DataFrame with models as index, datasets as columns, differences as values
     """
-    # Load both files
     df1 = pd.read_csv(exp1_file, index_col=0)
     df2 = pd.read_csv(exp2_file, index_col=0)
 
-    # Find common models (exclude models that don't exist in both)
-    common_models = df1.index.intersection(df2.index)
-
-    if len(common_models) == 0:
-        raise ValueError("No common models found between the two experiments!")
-
-    # Filter to common models
-    df1 = df1.loc[common_models]
-    df2 = df2.loc[common_models]
-
-    # Find common datasets
     common_datasets = df1.columns.intersection(df2.columns)
-
     if len(common_datasets) == 0:
         raise ValueError("No common datasets found between the two experiments!")
-
-    # Filter to common datasets
     df1 = df1[common_datasets]
     df2 = df2[common_datasets]
 
-    # Compute difference: exp1 - exp2
-    df_diff = df1 - df2
+    if reasoning_vs_instruct:
+        thinking_names, instruct_names = _get_thinking_instruct_pairs(df1, df2)
+        df1_paired = df1.loc[thinking_names].copy()
+        df1_paired.index = instruct_names
+        df2_paired = df2.loc[instruct_names]
+        df_diff = df1_paired - df2_paired
+    else:
+        common_models = df1.index.intersection(df2.index)
+        if len(common_models) == 0:
+            raise ValueError("No common models found between the two experiments!")
+        df1 = df1.loc[common_models]
+        df2 = df2.loc[common_models]
+        df_diff = df1 - df2
 
-    # Filter and order models if specified
     if model_order:
         available_models = [m for m in model_order if m in df_diff.index]
         if available_models:
@@ -195,7 +239,7 @@ def plot_diverging_stacked_bar_chart(
     df_negative[df_negative > 0] = 0
 
     # Set up the plot
-    fig, ax = plt.subplots(figsize=(14, max(8, len(df) * 0.4)))
+    fig, ax = plt.subplots(figsize=(20, max(8, len(df) * 0.4)))
 
     # Choose colors for datasets
     n_datasets = len(df.columns)
@@ -234,10 +278,10 @@ def plot_diverging_stacked_bar_chart(
     # Add reference line at 0
     ax.axvline(
         x=0,
-        color="black",
+        color="#333333",
         linestyle="--",
-        linewidth=1,
-        alpha=0.5,
+        linewidth=1.5,
+        alpha=1.0,
         label="No difference",
     )
 
@@ -348,10 +392,10 @@ def plot_grouped_bar_chart(
         df_counts_exp2 = df_counts_exp2.reindex(index=df.index, columns=df.columns)
         print(f"  ✓ Processed counts for {exp2_name}: {df_counts_exp2.shape[0]} models × {df_counts_exp2.shape[1]} datasets")
 
-    # Create figure
+    # Create figure (wider for many bars)
     n_models = len(df)
     n_datasets = len(df.columns)
-    fig_width = max(14, n_models * n_datasets * 0.15)
+    fig_width = max(20, n_models * n_datasets * 0.22)
     fig, ax = plt.subplots(figsize=(fig_width, 8))
 
     # Define colors
@@ -606,7 +650,7 @@ def plot_grouped_bar_chart(
                 print(f"  ⚠ No valid p-values for significance testing")
 
     # Add reference line at 0
-    ax.axhline(y=0, color="black", linestyle="--", linewidth=1, alpha=0.8, label="No difference")
+    ax.axhline(y=0, color="#333333", linestyle="--", linewidth=1.5, alpha=1.0, label="No difference")
 
     # Labels and title
     ax.set_xlabel("Evaluator Model", fontsize=12, fontweight="bold")
@@ -619,7 +663,7 @@ def plot_grouped_bar_chart(
     ax.grid(axis="y", alpha=0.3, linestyle="--")
     ax.set_axisbelow(True)
     
-    # Legend - add significance marker if any markers were added
+    # Legend - add significance marker if any; No difference 2nd to last, * p last
     handles, labels = ax.get_legend_handles_labels()
     # Check if any significance markers were added
     has_significance = any('*' in str(text.get_text()) for text in ax.texts)
@@ -629,6 +673,13 @@ def plot_grouped_bar_chart(
         sig_handle = Rectangle((0, 0), 1, 1, fill=False, edgecolor='none', visible=False)
         handles.append(sig_handle)
         labels.append("* p < 0.05")
+    # Reorder so "No difference" is 2nd to last, * p < 0.05 last
+    others_h = [h for h, l in zip(handles, labels) if l not in ("No difference", "* p < 0.05")]
+    others_l = [l for h, l in zip(handles, labels) if l not in ("No difference", "* p < 0.05")]
+    ref_pair = next(((h, l) for h, l in zip(handles, labels) if l == "No difference"), (None, None))
+    sig_pair = next(((h, l) for h, l in zip(handles, labels) if l == "* p < 0.05"), (None, None))
+    handles = others_h + ([ref_pair[0]] if ref_pair[0] is not None else []) + ([sig_pair[0]] if sig_pair[0] is not None else [])
+    labels = others_l + ([ref_pair[1]] if ref_pair[1] is not None else []) + ([sig_pair[1]] if sig_pair[1] is not None else [])
     ax.legend(handles=handles, labels=labels, title="Dataset", loc="center left", bbox_to_anchor=(1.02, 0.5))
     
     # Rotate x labels if many models
@@ -644,6 +695,7 @@ def load_original_data(
     exp1_file: Path,
     exp2_file: Path,
     model_order: list[str] | None = None,
+    reasoning_vs_instruct: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Load both performance files and return original data (not differences).
@@ -651,36 +703,34 @@ def load_original_data(
     Args:
         exp1_file: Path to first experiment's aggregated_performance.csv
         exp2_file: Path to second experiment's aggregated_performance.csv
-        model_order: Optional list of models to filter/order
+        model_order: Optional list of models to filter/order (by instruct name in reasoning_vs_instruct mode)
+        reasoning_vs_instruct: If True, pair exp1 -thinking models to exp2 instruct; both returned with instruct index.
 
     Returns:
-        Tuple of (df1, df2) - both DataFrames with models as index, datasets as columns
+        Tuple of (df1, df2) - both DataFrames with same index (instruct names in reasoning mode), datasets as columns
     """
-    # Load both files
     df1 = pd.read_csv(exp1_file, index_col=0)
     df2 = pd.read_csv(exp2_file, index_col=0)
 
-    # Find common models
-    common_models = df1.index.intersection(df2.index)
-
-    if len(common_models) == 0:
-        raise ValueError("No common models found between the two experiments!")
-
-    # Filter to common models
-    df1 = df1.loc[common_models]
-    df2 = df2.loc[common_models]
-
-    # Find common datasets
     common_datasets = df1.columns.intersection(df2.columns)
-
     if len(common_datasets) == 0:
         raise ValueError("No common datasets found between the two experiments!")
-
-    # Filter to common datasets
     df1 = df1[common_datasets]
     df2 = df2[common_datasets]
 
-    # Filter and order models if specified
+    if reasoning_vs_instruct:
+        thinking_names, instruct_names = _get_thinking_instruct_pairs(df1, df2)
+        df1_paired = df1.loc[thinking_names].copy()
+        df1_paired.index = instruct_names
+        df2_paired = df2.loc[instruct_names]
+        df1, df2 = df1_paired, df2_paired
+    else:
+        common_models = df1.index.intersection(df2.index)
+        if len(common_models) == 0:
+            raise ValueError("No common models found between the two experiments!")
+        df1 = df1.loc[common_models]
+        df2 = df2.loc[common_models]
+
     if model_order:
         available_models = [m for m in model_order if m in df1.index]
         if available_models:
@@ -993,9 +1043,9 @@ def plot_performance_scatter(
         label='1:1 line'
     )
     
-    # Add horizontal and vertical lines at 0.5
-    ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
-    ax.axvline(x=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+    # Add horizontal and vertical lines at 0.5 (chance)
+    ax.axhline(y=0.5, color='#333333', linestyle='--', linewidth=1.5, alpha=1.0)
+    ax.axvline(x=0.5, color='#333333', linestyle='--', linewidth=1.5, alpha=1.0)
     
     # Set axis labels
     ax.set_xlabel(f"{exp2_name} Performance", fontsize=12, fontweight="bold")
@@ -1005,10 +1055,10 @@ def plot_performance_scatter(
     title = f"Performance Comparison: {exp1_name} vs {exp2_name}"
     ax.set_title(title, fontsize=13, fontweight="bold", pad=20)
     
-    # Set equal aspect ratio and limits (using extended range)
+    # Set equal aspect ratio and limits (0 to 1 for performance)
     ax.set_aspect('equal', adjustable='box')
-    ax.set_xlim(line_min, line_max)
-    ax.set_ylim(line_min, line_max)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
     
     # Add grid
     ax.grid(alpha=0.3, linestyle='--')
@@ -1071,6 +1121,11 @@ def main():
         help="List of model names to include (filters and orders results). "
         "Supports -set notation (e.g., --model_names -set dr) or explicit names",
     )
+    parser.add_argument(
+        "--reasoning_vs_instruct",
+        action="store_true",
+        help="Pair exp1 models ending with -thinking to exp2 instruct names (one row per base model).",
+    )
 
     args = parser.parse_args()
 
@@ -1104,16 +1159,28 @@ def main():
     print(f"  File: {exp2_file}")
     print()
 
+    reasoning_vs_instruct = getattr(args, "reasoning_vs_instruct", False)
+    if reasoning_vs_instruct:
+        print("Mode: reasoning vs instruct (pairing exp1 -thinking models to exp2 instruct names)\n")
+
     # Load and compute differences
     print("Loading and comparing performance data...")
     try:
-        df_diff = load_and_compare(exp1_file, exp2_file, model_order=model_order)
+        df_diff = load_and_compare(
+            exp1_file, exp2_file,
+            model_order=model_order,
+            reasoning_vs_instruct=reasoning_vs_instruct,
+        )
         print(
             f"  ✓ Computed differences: {df_diff.shape[0]} models × {df_diff.shape[1]} datasets"
         )
-        
+
         # Also load original data for scatter plot
-        df1_orig, df2_orig = load_original_data(exp1_file, exp2_file, model_order=model_order)
+        df1_orig, df2_orig = load_original_data(
+            exp1_file, exp2_file,
+            model_order=model_order,
+            reasoning_vs_instruct=reasoning_vs_instruct,
+        )
         print(
             f"  ✓ Loaded original data: {df1_orig.shape[0]} models × {df1_orig.shape[1]} datasets\n"
         )
@@ -1169,6 +1236,18 @@ def main():
     
     if df_counts_exp1 is None or df_counts_exp2 is None:
         print(f"  ⚠ Warning: Missing counts data (error bars and significance will be omitted)\n")
+
+    # In reasoning_vs_instruct mode, align count DFs to instruct-name index (for plots)
+    if reasoning_vs_instruct and df_counts_exp1 is not None and df_counts_exp2 is not None:
+        df1_temp = pd.read_csv(exp1_file, index_col=0)
+        df2_temp = pd.read_csv(exp2_file, index_col=0)
+        _thinking, _instruct = _get_thinking_instruct_pairs(df1_temp, df2_temp)
+        instruct_to_thinking = dict(zip(_instruct, _thinking))
+        reindex_instruct = [i for i in df1_orig.index if i in instruct_to_thinking]
+        reindex_thinking = [instruct_to_thinking[i] for i in reindex_instruct]
+        df_counts_exp1 = df_counts_exp1.reindex(reindex_thinking)
+        df_counts_exp1.index = reindex_instruct
+        df_counts_exp2 = df_counts_exp2.reindex(reindex_instruct)
 
     # Generate plots
     plot_path = output_dir / "performance_contrast.png"

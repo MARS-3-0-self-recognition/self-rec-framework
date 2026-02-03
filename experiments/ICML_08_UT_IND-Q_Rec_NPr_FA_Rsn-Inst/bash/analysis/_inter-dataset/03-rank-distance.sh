@@ -96,8 +96,8 @@ echo "Model Names: ${MODEL_NAMES[@]}"
 # Run analysis script
 # ============================================================================
 
-# Build arguments
-ARGS=("--accuracy_files" "${ACCURACY_FILES[@]}" "--output_dir" "$LATEST_DIR")
+# Build arguments (IND experiments: exclude self-comparisons for adjusted rank-distance plots)
+ARGS=("--accuracy_files" "${ACCURACY_FILES[@]}" "--output_dir" "$LATEST_DIR" "--exclude_self")
 
 if [ ${#MODEL_NAMES[@]} -gt 0 ]; then
     ARGS+=("--model_names" "${MODEL_NAMES[@]}")

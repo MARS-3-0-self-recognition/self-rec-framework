@@ -511,6 +511,13 @@ def main():
         default=None,
         help="Optional custom output directory name (used when combining multiple subsets)",
     )
+    parser.add_argument(
+        "--output_experiment_name",
+        type=str,
+        default=None,
+        help="When combining multiple results_dirs (e.g. from COMBINE_DATASETS), use this as the "
+        "experiment name in the output path so outputs go to data/analysis/{dataset}/{subset}/<this>.",
+    )
 
     args = parser.parse_args()
 
@@ -542,6 +549,8 @@ def main():
             relative_path = Path(*parts[2:])
             output_dir = Path("data/analysis") / relative_path
         else:
+            if args.output_experiment_name:
+                experiment_name = args.output_experiment_name
             if args.output_name:
                 subset_name = args.output_name
             else:
@@ -549,7 +558,9 @@ def main():
                 for d in results_dirs:
                     d_parts = d.parts
                     if len(d_parts) >= 4:
-                        subset_names.append(d_parts[3])
+                        s = d_parts[3]
+                        if s not in subset_names:
+                            subset_names.append(s)
                 subset_name = "+".join(subset_names) if subset_names else "combined"
 
             output_dir = (
@@ -616,20 +627,23 @@ def main():
         print("⚠ No data to analyze!")
         return
 
-    # Detect format (individual has diagonal data, pairwise doesn't)
+    # Extract experiment name for title (needed for IND detection and display)
+    experiment_code = first_dir.name
+    if "_" in experiment_code:
+        parts = experiment_code.split("_", 1)
+        if parts[0].isdigit():
+            experiment_code = parts[1]
+
+    # Detect format: individual has diagonal data (or experiment name contains _IND)
     has_diagonal_data = False
     for model in pivot.index:
         if model in pivot.columns:
             if pd.notna(pivot.loc[model, model]):
                 has_diagonal_data = True
                 break
-
-    # Extract experiment name for title
-    experiment_code = first_dir.name
-    if "_" in experiment_code:
-        parts = experiment_code.split("_", 1)
-        if parts[0].isdigit():
-            experiment_code = parts[1]
+    if "_IND" in experiment_code:
+        has_diagonal_data = True
+        print("IND experiment detected from name: Using individual-format metrics.\n")
 
     experiment_mapping = get_experiment_name_mapping()
     experiment_title = experiment_mapping.get(experiment_code, experiment_code)
