@@ -30,9 +30,13 @@ charts/
 test.py
 
 # Project
-results/
-data/
+data/*
+!data/analysis/
 !data/*debug
+# Under data/analysis: only track .csv files (any depth)
+data/analysis/**/*
+!data/analysis/**/
+!data/analysis/**/*.csv
 
 _external/
 CLAUDE.md

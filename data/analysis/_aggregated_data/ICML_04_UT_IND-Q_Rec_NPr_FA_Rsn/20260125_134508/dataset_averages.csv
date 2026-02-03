@@ -1,0 +1,3 @@
+,average_accuracy,std_dev,pct_above_chance
+wikisum/training_set_1-20+test_set_1-30,0.5462263217498292,0.059393178304227925,83.33333333333334
+sharegpt/english_26+english2_74,0.5592006611231523,0.03976319982754471,100.0

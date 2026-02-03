@@ -1,0 +1,9 @@
+evaluator,gpt-oss-20b-thinking,gpt-oss-120b-thinking,sonnet-3.7-thinking,grok-3-mini-thinking,ll-3.3-70b-dsR1-thinking,qwen-3.0-80b-thinking,deepseek-r1-thinking,kimi-k2-thinking
+gpt-oss-20b-thinking,0,52,52,52,52,52,52,52
+gpt-oss-120b-thinking,52,0,52,52,52,52,52,52
+sonnet-3.7-thinking,52,52,0,52,52,52,52,52
+grok-3-mini-thinking,52,52,52,0,52,52,52,52
+ll-3.3-70b-dsR1-thinking,52,52,52,52,0,52,52,52
+qwen-3.0-80b-thinking,52,52,52,52,52,0,52,52
+deepseek-r1-thinking,52,52,52,52,52,52,0,52
+kimi-k2-thinking,52,52,52,52,52,52,52,0

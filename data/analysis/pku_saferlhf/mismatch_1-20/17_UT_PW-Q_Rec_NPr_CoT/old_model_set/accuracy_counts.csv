@@ -1,0 +1,11 @@
+evaluator,gpt-oss-20b-thinking,gpt-oss-120b-thinking,sonnet-3.7-thinking,sonnet-4.5-thinking,opus-4.1-thinking,gemini-2.5-flash-thinking,gemini-2.5-pro-thinking,ll-3.3-70b-dsR1-thinking,qwen-3.0-80b-thinking,deepseek-r1-thinking
+gpt-oss-20b-thinking,0,40,40,40,40,40,40,40,40,40
+gpt-oss-120b-thinking,40,0,40,40,40,40,40,40,40,40
+sonnet-3.7-thinking,40,40,0,40,40,40,40,40,40,40
+sonnet-4.5-thinking,40,40,40,0,40,40,40,40,40,40
+opus-4.1-thinking,40,40,40,40,0,40,40,40,40,40
+gemini-2.5-flash-thinking,40,40,40,40,40,0,40,40,40,40
+gemini-2.5-pro-thinking,40,40,40,40,40,40,0,40,40,40
+ll-3.3-70b-dsR1-thinking,40,40,40,40,40,40,40,0,40,40
+qwen-3.0-80b-thinking,40,40,40,40,40,40,40,40,0,40
+deepseek-r1-thinking,40,40,40,40,40,40,40,40,40,0

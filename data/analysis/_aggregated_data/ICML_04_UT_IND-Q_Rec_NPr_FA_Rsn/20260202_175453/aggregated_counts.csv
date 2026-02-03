@@ -1,0 +1,7 @@
+evaluator,wikisum/training_set_1-20+test_set_1-30,sharegpt/english_26+english2_74,pku_saferlhf/mismatch_1-20+test_mismatch_1-20+test-mismatch_10_100-200,bigcodebench/instruct_1-50
+gpt-oss-120b-thinking,2352.0,4658.0,2400.0,2400.0
+opus-4.1-thinking,2352.0,4658.0,2400.0,2400.0
+gemini-2.5-pro-thinking,2352.0,4658.0,2400.0,2400.0
+qwen-3.0-80b-thinking,2352.0,4658.0,2400.0,2400.0
+deepseek-r1-thinking,2352.0,4658.0,2400.0,2400.0
+kimi-k2-thinking,2352.0,4658.0,2400.0,2400.0
