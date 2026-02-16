@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "self-rec-framework"
 version = "0.1.0"
-description = "Add your description here"
+description = "Self-recognition framework for LLMs"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -30,7 +30,9 @@ dependencies = [
 ]
 
 [tool.setuptools]
-packages = ["src"]
+# Package structure: self_rec_framework/src/...
+# Allows imports like: from self_rec_framework.src.helpers.model_names import ...
+packages = {find = {where = ["."], include = ["self_rec_framework*"], exclude = ["experiments*", "scripts*", "data*", "*.egg-info", "build", "dist", "tests*"]}}
 
 [project.optional-dependencies]
 dev = [
