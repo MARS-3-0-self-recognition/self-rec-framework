@@ -29,14 +29,19 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.legend_handler import HandlerTuple
+from matplotlib.ticker import MultipleLocator
 from utils import (
-    expand_model_names, 
+    expand_model_names,
     get_model_provider,
+    provider_to_model_name,
     calculate_binomial_ci,
     weighted_regression_with_ci,
     weighted_correlation,
     apply_fdr_correction,
-    get_significance_marker
+    get_significance_marker,
+    format_evaluator_model_display_name,
+    save_figure_minimal_version,
+    save_figure_no_r_version,
 )
 from src.helpers.model_names import LM_ARENA_RANKINGS
 
@@ -117,6 +122,16 @@ def extract_dataset_name(full_path: str) -> str:
         return parts[analysis_idx + 1]
     except ValueError:
         return parts[0]
+
+def format_dataset_display_name(dataset_name: str) -> str:
+    """Format dataset name for display in legends (neater capitalization)."""
+    mapping = {
+        "wikisum": "WikiSum",
+        "pku_saferlhf": "PKU-SafeRLHF",
+        "bigcodebench": "BigCodeBench",
+        "sharegpt": "ShareGPT",
+    }
+    return mapping.get(dataset_name.lower(), dataset_name)
 
 def adjust_data_points(data_points, self_scores):
     """
@@ -349,10 +364,24 @@ def plot_rank_distance(data_points, output_path, experiment_title="", self_score
                 linewidth=2
             )
             legend_handles.append((h_marker, h_line))
-            legend_labels.append(f"{dataset} (r={correlation:.2f})")
+            display_name = format_dataset_display_name(dataset)
+            legend_labels.append(f"{display_name} (r={correlation:.2f})")
         else:
             legend_handles.append(h_marker)
-            legend_labels.append(dataset)
+            display_name = format_dataset_display_name(dataset)
+            legend_labels.append(display_name)
+
+    # Add chance line to legend at the end
+    chance_handle = plt.Line2D(
+        [0], [0],
+        color="#555555",
+        linestyle="--",
+        linewidth=1.0,
+        alpha=0.8,
+        label="Chance (0.5)"
+    )
+    legend_handles.append(chance_handle)
+    legend_labels.append("Chance (0.5)")
 
     ax.legend(
         handles=legend_handles,
@@ -366,7 +395,7 @@ def plot_rank_distance(data_points, output_path, experiment_title="", self_score
     )
 
     # Reference lines
-    ax.axhline(y=0.5, color="gray", linestyle=":", linewidth=1.5, alpha=0.7, label="Chance (0.5)")
+    ax.axhline(y=0.5, color="#555555", linestyle="--", linewidth=1.0, alpha=0.8, label="Chance (0.5)")
     ax.axvline(x=0, color="black", linestyle="-", linewidth=1, alpha=0.3, label="Equal Rank")
 
     # Labels
@@ -387,6 +416,7 @@ def plot_rank_distance(data_points, output_path, experiment_title="", self_score
     
     # Y-axis limits
     ax.set_ylim(0, 1.05)
+    ax.yaxis.set_major_locator(MultipleLocator(0.1))
 
     plt.tight_layout(rect=[0, 0, 0.85, 1])
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
@@ -523,7 +553,7 @@ def plot_rank_distance_aggregated(data_points, output_path, experiment_title="")
             # Fallback to unweighted
             correlation = np.corrcoef(x_vals, y_vals)[0, 1]
             coeffs = np.polyfit(x_vals, y_vals, 1)
-            x_min, x_max = x_vals.min(), x_vals.max()
+            # Use the padded x_min and x_max calculated earlier
             x_line = np.linspace(x_min, x_max, 100)
             y_line = coeffs[0] * x_line + coeffs[1]
             ax.plot(x_line, y_line, linestyle="-", linewidth=3, alpha=0.9, color="black", label=f"Global Fit (r={correlation:.2f})")
@@ -531,21 +561,46 @@ def plot_rank_distance_aggregated(data_points, output_path, experiment_title="")
         # Unweighted regression
         correlation = np.corrcoef(x_vals, y_vals)[0, 1]
         coeffs = np.polyfit(x_vals, y_vals, 1)
-        x_min, x_max = x_vals.min(), x_vals.max()
+        # Use the padded x_min and x_max calculated earlier
         x_line = np.linspace(x_min, x_max, 100)
         y_line = coeffs[0] * x_line + coeffs[1]
         ax.plot(x_line, y_line, linestyle="-", linewidth=3, alpha=0.9, color="black", label=f"Global Fit (r={correlation:.2f})")
 
+    # Reference lines
+    ax.axhline(y=0.5, color="#555555", linestyle="--", linewidth=1.0, alpha=0.8, label="Chance (0.5)")
+    ax.axvline(x=0, color="black", linestyle="-", linewidth=1, alpha=0.3, label="Equal Rank")
+    
+    # Get legend handles/labels and ensure Chance (0.5) is at the end
+    handles, labels = ax.get_legend_handles_labels()
+    # Remove Chance (0.5) if it exists, then add it at the end
+    chance_idx = None
+    for i, label in enumerate(labels):
+        if label == "Chance (0.5)":
+            chance_idx = i
+            break
+    if chance_idx is not None:
+        handles.pop(chance_idx)
+        labels.pop(chance_idx)
+    # Add chance handle at the end
+    chance_handle = plt.Line2D(
+        [0], [0],
+        color="#555555",
+        linestyle="--",
+        linewidth=1.0,
+        alpha=0.8,
+        label="Chance (0.5)"
+    )
+    handles.append(chance_handle)
+    labels.append("Chance (0.5)")
+
     ax.legend(
+        handles=handles,
+        labels=labels,
         loc="center left",
         bbox_to_anchor=(1.02, 0.5),
         fontsize=10,
         framealpha=0.9
     )
-
-    # Reference lines
-    ax.axhline(y=0.5, color="gray", linestyle=":", linewidth=1.5, alpha=0.7, label="Chance (0.5)")
-    ax.axvline(x=0, color="black", linestyle="-", linewidth=1, alpha=0.3, label="Equal Rank")
 
     # Labels
     ax.set_xlabel("Rank Distance (Evaluator Rank - Generator Rank)\nPositive = Evaluator is worse ranked", fontsize=12, fontweight="bold")
@@ -560,12 +615,20 @@ def plot_rank_distance_aggregated(data_points, output_path, experiment_title="")
     ax.grid(alpha=0.3, linestyle="--")
     ax.set_axisbelow(True)
     
+    # Set x-axis limits to match the padded range used for regression lines
+    ax.set_xlim(x_min, x_max)
+    
     # Y-axis limits
     ax.set_ylim(0, 1.05)
+    ax.yaxis.set_major_locator(MultipleLocator(0.1))
+    ax.tick_params(axis="both", labelsize=18)
 
+    # Ensure tick label size 18 (figure 2e)
+    ax.tick_params(axis="both", labelsize=18)
     plt.tight_layout(rect=[0, 0, 0.85, 1])
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     print(f"  ✓ Saved aggregated plot to: {output_path}")
+    save_figure_minimal_version(ax, output_path)
     plt.close()
 
 def plot_rank_distance_adjusted(cross_model_points, self_scores, output_path, experiment_title="", self_score_n_samples=None):
@@ -721,7 +784,7 @@ def plot_rank_distance_adjusted(cross_model_points, self_scores, output_path, ex
             # Fallback to unweighted
             correlation = np.corrcoef(x_vals, y_vals)[0, 1]
             coeffs = np.polyfit(x_vals, y_vals, 1)
-            x_min, x_max = x_vals.min(), x_vals.max()
+            # Use the padded x_min and x_max calculated earlier
             x_line = np.linspace(x_min, x_max, 100)
             y_line = coeffs[0] * x_line + coeffs[1]
             ax.plot(x_line, y_line, linestyle="-", linewidth=3, alpha=0.9, color="black", label=f"Global Fit (r={correlation:.2f})")
@@ -729,21 +792,46 @@ def plot_rank_distance_adjusted(cross_model_points, self_scores, output_path, ex
         # Unweighted regression
         correlation = np.corrcoef(x_vals, y_vals)[0, 1]
         coeffs = np.polyfit(x_vals, y_vals, 1)
-        x_min, x_max = x_vals.min(), x_vals.max()
+        # Use the padded x_min and x_max calculated earlier
         x_line = np.linspace(x_min, x_max, 100)
         y_line = coeffs[0] * x_line + coeffs[1]
         ax.plot(x_line, y_line, linestyle="-", linewidth=3, alpha=0.9, color="black", label=f"Global Fit (r={correlation:.2f})")
 
+    # Reference lines
+    ax.axhline(y=0.5, color="#555555", linestyle="--", linewidth=1.0, alpha=0.8, label="Chance (0.5)")
+    ax.axvline(x=0, color="black", linestyle="-", linewidth=1, alpha=0.3, label="Equal Rank")
+    
+    # Get legend handles/labels and ensure Chance (0.5) is at the end
+    handles, labels = ax.get_legend_handles_labels()
+    # Remove Chance (0.5) if it exists, then add it at the end
+    chance_idx = None
+    for i, label in enumerate(labels):
+        if label == "Chance (0.5)":
+            chance_idx = i
+            break
+    if chance_idx is not None:
+        handles.pop(chance_idx)
+        labels.pop(chance_idx)
+    # Add chance handle at the end
+    chance_handle = plt.Line2D(
+        [0], [0],
+        color="#555555",
+        linestyle="--",
+        linewidth=1.0,
+        alpha=0.8,
+        label="Chance (0.5)"
+    )
+    handles.append(chance_handle)
+    labels.append("Chance (0.5)")
+
     ax.legend(
+        handles=handles,
+        labels=labels,
         loc="center left",
         bbox_to_anchor=(1.02, 0.5),
         fontsize=10,
         framealpha=0.9
     )
-
-    # Reference lines
-    ax.axhline(y=0.5, color="gray", linestyle=":", linewidth=1.5, alpha=0.7, label="Chance (0.5)")
-    ax.axvline(x=0, color="black", linestyle="-", linewidth=1, alpha=0.3, label="Equal Rank")
 
     # Labels
     ax.set_xlabel("Rank Distance (Evaluator Rank - Generator Rank)\nPositive = Evaluator is worse ranked", fontsize=12, fontweight="bold")
@@ -758,12 +846,20 @@ def plot_rank_distance_adjusted(cross_model_points, self_scores, output_path, ex
     ax.grid(alpha=0.3, linestyle="--")
     ax.set_axisbelow(True)
     
+    # Set x-axis limits to match the padded range used for regression lines
+    ax.set_xlim(x_min, x_max)
+    
     # Y-axis limits
     ax.set_ylim(0, 1.05)
+    ax.yaxis.set_major_locator(MultipleLocator(0.1))
+    ax.tick_params(axis="both", labelsize=18)
 
+    # Ensure tick label size 18 (figure 2f)
+    ax.tick_params(axis="both", labelsize=18)
     plt.tight_layout(rect=[0, 0, 0.85, 1])
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     print(f"  ✓ Saved adjusted plot to: {output_path}")
+    save_figure_minimal_version(ax, output_path)
     plt.close()
 
 def plot_rank_distance_filtered_by_evaluator_rank(data_points, output_path, experiment_title="", self_scores=None):
@@ -854,12 +950,12 @@ def plot_rank_distance_filtered_by_evaluator_rank(data_points, output_path, expe
     plotted_datasets = set()
     
     # Calculate x-axis range for extending regression lines (based on evaluator ranks)
+    # Start at 0 to match figure 2c/2d (performance_vs_arena_ranking)
     all_ranks = filtered_df['evaluator_rank'].values
-    x_min = all_ranks.min()
+    x_min = 0
     x_max = all_ranks.max()
     x_range = x_max - x_min
     padding = max(x_range * 0.05, 1.0)  # 5% padding or at least 1.0
-    x_min -= padding
     x_max += padding
     
     # Plot points and fit lines per dataset
@@ -966,67 +1062,94 @@ def plot_rank_distance_filtered_by_evaluator_rank(data_points, output_path, expe
                 ax.plot(x_line, y_line, linestyle="--", linewidth=2, alpha=0.8, color=line_color)
                 datasets_with_fit[dataset] = correlation
     
-    # Create legend with two parts: model families and datasets
-    legend_handles = []
-    legend_labels = []
+    # Reference line
+    ax.axhline(y=0.5, color="#555555", linestyle="--", linewidth=1.0, alpha=0.8, label="Chance (0.5)")
     
-    # First, add model family entries (for point colors)
+    # Build 3-column legend: Model Name | Dataset | Misc. (column-major order)
+    def _title_handle(text):
+        return plt.Line2D([], [], linestyle="", marker="", label=text)
+
+    def _empty_handle():
+        return plt.Line2D([], [], linestyle="", marker="", label=" ")
+
     unique_families = {}
     for evaluator in unique_evaluators:
         family = get_model_provider(evaluator)
-        # Remove "Together-" prefix for cleaner legend
-        if family.startswith("Together-"):
-            family = family.replace("Together-", "")
         if family not in unique_families:
             unique_families[family] = evaluator_family_colors[evaluator]
-    
+
+    family_handles = []
     for family, color in sorted(unique_families.items()):
-        h_family = plt.Line2D(
+        display_name = provider_to_model_name(family)
+        h = plt.Line2D(
             [0], [0],
-            marker='s',
+            marker='o',
             color='w',
             markerfacecolor=color,
             markersize=10,
             markeredgecolor='black',
             markeredgewidth=0.5,
-            linestyle='None'
+            linestyle='None',
+            label=display_name,
         )
-        legend_handles.append(h_family)
-        legend_labels.append(family)
-    
-    # Add separator (empty entry)
-    legend_handles.append(plt.Line2D([0], [0], visible=False))
-    legend_labels.append("")  # Empty label for spacing
-    
-    # Then, add dataset entries (for markers and lines)
+        family_handles.append(h)
+
+    dataset_handles = []
+    dataset_labels = []
     for dataset, marker, line_color in sorted(plotted_datasets, key=lambda x: x[0]):
         h_marker = plt.Line2D(
             [0], [0],
             marker=marker,
             color='w',
-            markerfacecolor='gray',  # Neutral color for marker
+            markerfacecolor='gray',
             markersize=10,
             markeredgecolor='black',
-            markeredgewidth=0.5
+            markeredgewidth=0.5,
         )
-        
         if dataset in datasets_with_fit:
-            correlation = datasets_with_fit[dataset]
-            h_line = plt.Line2D(
-                [0], [0],
-                linestyle="--",
-                color=line_color,
-                linewidth=2
-            )
-            legend_handles.append((h_marker, h_line))
-            legend_labels.append(f"{dataset} (r={correlation:.2f})")
+            h_line = plt.Line2D([0], [0], linestyle="--", color=line_color, linewidth=2)
+            dataset_handles.append((h_marker, h_line))
+            dataset_labels.append(f"{format_dataset_display_name(dataset)} (r={datasets_with_fit[dataset]:.2f})")
         else:
-            legend_handles.append(h_marker)
-            legend_labels.append(dataset)
-    
-    # Reference line
-    ax.axhline(y=0.5, color="gray", linestyle=":", linewidth=1.5, alpha=0.7, label="Chance (0.5)")
-    
+            dataset_handles.append(h_marker)
+            dataset_labels.append(format_dataset_display_name(dataset))
+
+    chance_handle = plt.Line2D(
+        [0], [0],
+        color="#555555",
+        linestyle="--",
+        linewidth=1.0,
+        alpha=0.8,
+        label="Chance (0.5)",
+    )
+
+    n_fam = len(family_handles)
+    n_ds = len(dataset_handles)
+    max_data_rows = max(n_fam, n_ds, 1)
+
+    col1_handles = [_title_handle("Model Name")]
+    col1_labels = ["Model Name"]
+    for i in range(max_data_rows):
+        col1_handles.append(family_handles[i] if i < n_fam else _empty_handle())
+        col1_labels.append(family_handles[i].get_label() if i < n_fam else " ")
+
+    col2_handles = [_title_handle("Dataset")]
+    col2_labels = ["Dataset"]
+    for i in range(max_data_rows):
+        col2_handles.append(dataset_handles[i] if i < n_ds else _empty_handle())
+        col2_labels.append(dataset_labels[i] if i < n_ds else " ")
+
+    col3_handles = [_title_handle("Misc.")]
+    col3_labels = ["Misc."]
+    col3_handles.append(chance_handle)
+    col3_labels.append("Chance (0.5)")
+    for i in range(max_data_rows - 1):
+        col3_handles.append(_empty_handle())
+        col3_labels.append(" ")
+
+    legend_handles = col1_handles + col2_handles + col3_handles
+    legend_labels = col1_labels + col2_labels + col3_labels
+
     # Labels
     ax.set_xlabel("Evaluator LM Arena Rank\n(Lower rank = Higher capability)", fontsize=12, fontweight="bold")
     y_label = "Adjusted Recognition Accuracy\n(Averaged with Evaluator Self-Score)" if self_scores else "Recognition Accuracy"
@@ -1039,16 +1162,20 @@ def plot_rank_distance_filtered_by_evaluator_rank(data_points, output_path, expe
         full_title += f"\n{experiment_title}"
     ax.set_title(full_title, fontsize=14, fontweight="bold", pad=20)
     
-    # Place legend outside the chart area
+    # Place legend below the chart (3-column format)
     ax.legend(
         handles=legend_handles,
         labels=legend_labels,
-        loc="center left",
-        bbox_to_anchor=(1.02, 0.5),
-        fontsize=10,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.12),
+        ncol=3,
+        fontsize=9,
         framealpha=0.9,
         handler_map={tuple: HandlerTuple(ndivide=None)},
-        title="Model Families (point colors) | Datasets (markers & lines)"
+        borderpad=1.5,
+        labelspacing=1.2,
+        handlelength=2.5,
+        columnspacing=2.0,
     )
     
     # Grid
@@ -1057,14 +1184,18 @@ def plot_rank_distance_filtered_by_evaluator_rank(data_points, output_path, expe
     
     # Y-axis limits
     ax.set_ylim(0, 1.05)
-    
-    # Invert x-axis so lower rank numbers (better models) are on the right
-    ax.invert_xaxis()
-    
-    # Adjust layout to make room for legend outside the plot
-    plt.tight_layout(rect=[0, 0, 0.85, 1])
+    ax.yaxis.set_major_locator(MultipleLocator(0.1))
+    ax.tick_params(axis="both", labelsize=18)
+
+    # X-axis: start at 0 and count up to maximum (0 on left, max on right)
+    ax.set_xlim(0, x_max)
+    # Ensure tick label size 18 (figures 3a, 3b)
+    ax.tick_params(axis="both", labelsize=18)
+    plt.tight_layout(rect=[0, 0, 1, 1])
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     print(f"  ✓ Saved filtered evaluator rank plot to: {output_path}")
+    save_figure_no_r_version(ax, output_path)
+    save_figure_minimal_version(ax, output_path)
     plt.close()
 
 def plot_rank_distance_vs_evaluator_rank(data_points, output_dir, experiment_title="", self_scores=None):
@@ -1168,7 +1299,8 @@ def plot_rank_distance_vs_evaluator_rank(data_points, output_dir, experiment_tit
         ax.set_xlabel("Generator LM Arena Rank\n(Lower rank = Higher capability)", fontsize=12, fontweight="bold")
         ax.set_ylabel("Evaluator LM Arena Rank\n(Lower rank = Higher capability)", fontsize=12, fontweight="bold")
         
-        full_title = f"Evaluator Rank vs Generator Rank\n{dataset.title()}\n(Colored by Performance)"
+        display_name = format_dataset_display_name(dataset)
+        full_title = f"Evaluator Rank vs Generator Rank\n{display_name}\n(Colored by Performance)"
         if self_scores:
             full_title += "\n(Adjusted for Self-Recognition Bias)"
         if experiment_title:
@@ -1283,12 +1415,12 @@ def plot_rank_distance_filtered_by_evaluator_rank_positive(data_points, output_p
     plotted_datasets = set()
     
     # Calculate x-axis range for extending regression lines (based on evaluator ranks)
+    # Start at 0 to match figure 2c/2d (performance_vs_arena_ranking)
     all_ranks = filtered_df['evaluator_rank'].values
-    x_min = all_ranks.min()
+    x_min = 0
     x_max = all_ranks.max()
     x_range = x_max - x_min
     padding = max(x_range * 0.05, 1.0)  # 5% padding or at least 1.0
-    x_min -= padding
     x_max += padding
     
     # Plot points and fit lines per dataset
@@ -1395,67 +1527,94 @@ def plot_rank_distance_filtered_by_evaluator_rank_positive(data_points, output_p
                 ax.plot(x_line, y_line, linestyle="--", linewidth=2, alpha=0.8, color=line_color)
                 datasets_with_fit[dataset] = correlation
     
-    # Create legend with two parts: model families and datasets
-    legend_handles = []
-    legend_labels = []
+    # Reference line
+    ax.axhline(y=0.5, color="#555555", linestyle="--", linewidth=1.0, alpha=0.8, label="Chance (0.5)")
     
-    # First, add model family entries (for point colors)
+    # Build 3-column legend: Model Name | Dataset | Misc. (column-major order)
+    def _title_handle(text):
+        return plt.Line2D([], [], linestyle="", marker="", label=text)
+
+    def _empty_handle():
+        return plt.Line2D([], [], linestyle="", marker="", label=" ")
+
     unique_families = {}
     for evaluator in unique_evaluators:
         family = get_model_provider(evaluator)
-        # Remove "Together-" prefix for cleaner legend
-        if family.startswith("Together-"):
-            family = family.replace("Together-", "")
         if family not in unique_families:
             unique_families[family] = evaluator_family_colors[evaluator]
-    
+
+    family_handles = []
     for family, color in sorted(unique_families.items()):
-        h_family = plt.Line2D(
+        display_name = provider_to_model_name(family)
+        h = plt.Line2D(
             [0], [0],
-            marker='s',
+            marker='o',
             color='w',
             markerfacecolor=color,
             markersize=10,
             markeredgecolor='black',
             markeredgewidth=0.5,
-            linestyle='None'
+            linestyle='None',
+            label=display_name,
         )
-        legend_handles.append(h_family)
-        legend_labels.append(family)
-    
-    # Add separator (empty entry)
-    legend_handles.append(plt.Line2D([0], [0], visible=False))
-    legend_labels.append("")  # Empty label for spacing
-    
-    # Then, add dataset entries (for markers and lines)
+        family_handles.append(h)
+
+    dataset_handles = []
+    dataset_labels = []
     for dataset, marker, line_color in sorted(plotted_datasets, key=lambda x: x[0]):
         h_marker = plt.Line2D(
             [0], [0],
             marker=marker,
             color='w',
-            markerfacecolor='gray',  # Neutral color for marker
+            markerfacecolor='gray',
             markersize=10,
             markeredgecolor='black',
-            markeredgewidth=0.5
+            markeredgewidth=0.5,
         )
-        
         if dataset in datasets_with_fit:
-            correlation = datasets_with_fit[dataset]
-            h_line = plt.Line2D(
-                [0], [0],
-                linestyle="--",
-                color=line_color,
-                linewidth=2
-            )
-            legend_handles.append((h_marker, h_line))
-            legend_labels.append(f"{dataset} (r={correlation:.2f})")
+            h_line = plt.Line2D([0], [0], linestyle="--", color=line_color, linewidth=2)
+            dataset_handles.append((h_marker, h_line))
+            dataset_labels.append(f"{format_dataset_display_name(dataset)} (r={datasets_with_fit[dataset]:.2f})")
         else:
-            legend_handles.append(h_marker)
-            legend_labels.append(dataset)
-    
-    # Reference line
-    ax.axhline(y=0.5, color="gray", linestyle=":", linewidth=1.5, alpha=0.7, label="Chance (0.5)")
-    
+            dataset_handles.append(h_marker)
+            dataset_labels.append(format_dataset_display_name(dataset))
+
+    chance_handle = plt.Line2D(
+        [0], [0],
+        color="#555555",
+        linestyle="--",
+        linewidth=1.0,
+        alpha=0.8,
+        label="Chance (0.5)",
+    )
+
+    n_fam = len(family_handles)
+    n_ds = len(dataset_handles)
+    max_data_rows = max(n_fam, n_ds, 1)
+
+    col1_handles = [_title_handle("Model Name")]
+    col1_labels = ["Model Name"]
+    for i in range(max_data_rows):
+        col1_handles.append(family_handles[i] if i < n_fam else _empty_handle())
+        col1_labels.append(family_handles[i].get_label() if i < n_fam else " ")
+
+    col2_handles = [_title_handle("Dataset")]
+    col2_labels = ["Dataset"]
+    for i in range(max_data_rows):
+        col2_handles.append(dataset_handles[i] if i < n_ds else _empty_handle())
+        col2_labels.append(dataset_labels[i] if i < n_ds else " ")
+
+    col3_handles = [_title_handle("Misc.")]
+    col3_labels = ["Misc."]
+    col3_handles.append(chance_handle)
+    col3_labels.append("Chance (0.5)")
+    for i in range(max_data_rows - 1):
+        col3_handles.append(_empty_handle())
+        col3_labels.append(" ")
+
+    legend_handles = col1_handles + col2_handles + col3_handles
+    legend_labels = col1_labels + col2_labels + col3_labels
+
     # Labels
     ax.set_xlabel("Evaluator LM Arena Rank\n(Lower rank = Higher capability)", fontsize=12, fontweight="bold")
     y_label = "Adjusted Recognition Accuracy\n(Averaged with Evaluator Self-Score)" if self_scores else "Recognition Accuracy"
@@ -1468,16 +1627,20 @@ def plot_rank_distance_filtered_by_evaluator_rank_positive(data_points, output_p
         full_title += f"\n{experiment_title}"
     ax.set_title(full_title, fontsize=14, fontweight="bold", pad=20)
     
-    # Place legend outside the chart area
+    # Place legend below the chart (3-column format)
     ax.legend(
         handles=legend_handles,
         labels=legend_labels,
-        loc="center left",
-        bbox_to_anchor=(1.02, 0.5),
-        fontsize=10,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.12),
+        ncol=3,
+        fontsize=9,
         framealpha=0.9,
         handler_map={tuple: HandlerTuple(ndivide=None)},
-        title="Model Families (point colors) | Datasets (markers & lines)"
+        borderpad=1.5,
+        labelspacing=1.2,
+        handlelength=2.5,
+        columnspacing=2.0,
     )
     
     # Grid
@@ -1486,14 +1649,18 @@ def plot_rank_distance_filtered_by_evaluator_rank_positive(data_points, output_p
     
     # Y-axis limits
     ax.set_ylim(0, 1.05)
-    
-    # Invert x-axis so lower rank numbers (better models) are on the right
-    ax.invert_xaxis()
-    
-    # Adjust layout to make room for legend outside the plot
-    plt.tight_layout(rect=[0, 0, 0.85, 1])
+    ax.yaxis.set_major_locator(MultipleLocator(0.1))
+    ax.tick_params(axis="both", labelsize=18)
+
+    # X-axis: start at 0 and count up to maximum (0 on left, max on right)
+    ax.set_xlim(0, x_max)
+    # Ensure tick label size 18 (figures 3c, 3d)
+    ax.tick_params(axis="both", labelsize=18)
+    plt.tight_layout(rect=[0, 0, 1, 1])
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     print(f"  ✓ Saved filtered evaluator rank plot (positive) to: {output_path}")
+    save_figure_no_r_version(ax, output_path)
+    save_figure_minimal_version(ax, output_path)
     plt.close()
 
 def plot_rank_distance_filtered_by_evaluator_rank_positive_averaged(data_points, output_path, experiment_title="", self_scores=None):
@@ -1702,13 +1869,15 @@ def plot_rank_distance_filtered_by_evaluator_rank_positive_averaged(data_points,
                 linewidth=2
             )
             legend_handles.append((h_marker, h_line))
-            legend_labels.append(f"{dataset} (r={correlation:.2f})")
+            display_name = format_dataset_display_name(dataset)
+            legend_labels.append(f"{display_name} (r={correlation:.2f})")
         else:
             legend_handles.append(h_marker)
-            legend_labels.append(dataset)
+            display_name = format_dataset_display_name(dataset)
+            legend_labels.append(display_name)
     
     # Reference line
-    ax.axhline(y=0.5, color="gray", linestyle=":", linewidth=1.5, alpha=0.7, label="Chance (0.5)")
+    ax.axhline(y=0.5, color="#555555", linestyle="--", linewidth=1.0, alpha=0.8, label="Chance (0.5)")
     
     # Labels
     ax.set_xlabel("Evaluator LM Arena Rank\n(Lower rank = Higher capability)", fontsize=12, fontweight="bold")
@@ -1734,7 +1903,7 @@ def plot_rank_distance_filtered_by_evaluator_rank_positive_averaged(data_points,
         fontsize=10,
         framealpha=0.9,
         handler_map={tuple: HandlerTuple(ndivide=None)},
-        title="Model Families (point colors) | Datasets (markers & lines)"
+        title="Model Families | Datasets"
     )
     
     # Grid
@@ -1743,6 +1912,7 @@ def plot_rank_distance_filtered_by_evaluator_rank_positive_averaged(data_points,
     
     # Y-axis limits
     ax.set_ylim(0, 1.05)
+    ax.yaxis.set_major_locator(MultipleLocator(0.1))
     
     # Invert x-axis so lower rank numbers (better models) are on the right
     ax.invert_xaxis()
@@ -1964,9 +2134,14 @@ def plot_rank_distance_grouped_bar_chart(data_points, output_path, experiment_ti
                             fontweight='bold'
                         )
     
-    # Set x-axis labels
+    # Set x-axis labels (formatted for display)
     ax.set_xticks(x)
-    ax.set_xticklabels(pivot_df.index, rotation=45, ha='right', fontsize=9)
+    ax.set_xticklabels(
+        [format_evaluator_model_display_name(m) for m in pivot_df.index],
+        rotation=45,
+        ha="right",
+        fontsize=18,
+    )
     
     # Labels and title
     ax.set_xlabel("Evaluator Model (ordered by LM Arena Rank)", fontsize=12, fontweight="bold")
@@ -1980,10 +2155,19 @@ def plot_rank_distance_grouped_bar_chart(data_points, output_path, experiment_ti
     ax.set_title(full_title, fontsize=14, fontweight="bold", pad=20)
     
     # Reference line
-    ax.axhline(y=0.5, color="gray", linestyle=":", linewidth=1.5, alpha=0.7, label="Chance (0.5)")
+    ax.axhline(y=0.5, color="#555555", linestyle="--", linewidth=1.0, alpha=0.8, label="Chance (0.5)")
     
-    # Legend - add significance marker if any markers were added
+    # Legend - add significance marker if any markers were added, then ensure Chance (0.5) is at the end
     handles, labels = ax.get_legend_handles_labels()
+    # Remove Chance (0.5) if it exists, we'll add it at the end
+    chance_idx = None
+    for i, label in enumerate(labels):
+        if label == "Chance (0.5)":
+            chance_idx = i
+            break
+    if chance_idx is not None:
+        handles.pop(chance_idx)
+        labels.pop(chance_idx)
     # Check if any significance markers were added
     has_significance = any('*' in str(text.get_text()) for text in ax.texts)
     if has_significance:
@@ -1992,6 +2176,17 @@ def plot_rank_distance_grouped_bar_chart(data_points, output_path, experiment_ti
         sig_handle = Rectangle((0, 0), 1, 1, fill=False, edgecolor='none', visible=False)
         handles.append(sig_handle)
         labels.append("* p < 0.05")
+    # Add chance handle at the very end
+    chance_handle = plt.Line2D(
+        [0], [0],
+        color="#555555",
+        linestyle="--",
+        linewidth=1.0,
+        alpha=0.8,
+        label="Chance (0.5)"
+    )
+    handles.append(chance_handle)
+    labels.append("Chance (0.5)")
     ax.legend(
         handles=handles,
         labels=labels,
@@ -2005,13 +2200,16 @@ def plot_rank_distance_grouped_bar_chart(data_points, output_path, experiment_ti
     # Grid
     ax.grid(alpha=0.3, linestyle="--", axis='y')
     ax.set_axisbelow(True)
-    
+    ax.tick_params(axis="both", labelsize=18)
+
     # Y-axis limits
     ax.set_ylim(0, 1.05)
+    ax.yaxis.set_major_locator(MultipleLocator(0.1))
     
     plt.tight_layout(rect=[0, 0, 0.85, 1])
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     print(f"  ✓ Saved grouped bar chart to: {output_path}")
+    save_figure_minimal_version(ax, output_path)
     plt.close()
 
 def plot_rank_distance_top5_evaluators(data_points, output_path, experiment_title="", is_adjusted=False):
@@ -2115,7 +2313,7 @@ def plot_rank_distance_top5_evaluators(data_points, output_path, experiment_titl
     )
 
     # Reference lines
-    ax.axhline(y=0.5, color="gray", linestyle=":", linewidth=1.5, alpha=0.7, label="Chance (0.5)")
+    ax.axhline(y=0.5, color="#555555", linestyle="--", linewidth=1.0, alpha=0.8, label="Chance (0.5)")
     ax.axvline(x=0, color="black", linestyle="-", linewidth=1, alpha=0.3, label="Equal Rank")
 
     # Labels
@@ -2136,6 +2334,7 @@ def plot_rank_distance_top5_evaluators(data_points, output_path, experiment_titl
     
     # Y-axis limits
     ax.set_ylim(0, 1.05)
+    ax.yaxis.set_major_locator(MultipleLocator(0.1))
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches="tight")

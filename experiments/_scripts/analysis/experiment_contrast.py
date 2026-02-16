@@ -31,15 +31,21 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MultipleLocator
+from matplotlib.legend_handler import HandlerTuple
 from scipy import stats
 from utils import (
-    expand_model_names, 
+    expand_model_names,
     get_model_provider,
+    provider_to_model_name,
     calculate_binomial_ci,
     weighted_regression_with_ci,
     weighted_correlation,
     apply_fdr_correction,
-    get_significance_marker
+    get_significance_marker,
+    save_figure_minimal_version,
+    save_figure_no_r_version,
+    format_evaluator_model_display_name,
 )
 
 
@@ -57,6 +63,16 @@ def extract_dataset_name(full_path: str) -> str:
         "bigcodebench/instruct_1-50" -> "bigcodebench"
     """
     return full_path.split("/")[0]
+
+def format_dataset_display_name(dataset_name: str) -> str:
+    """Format dataset name for display in legends (neater capitalization)."""
+    mapping = {
+        "wikisum": "WikiSum",
+        "pku_saferlhf": "PKU-SafeRLHF",
+        "bigcodebench": "BigCodeBench",
+        "sharegpt": "ShareGPT",
+    }
+    return mapping.get(dataset_name.lower(), dataset_name)
 
 
 def _get_thinking_instruct_pairs(
@@ -528,7 +544,12 @@ def plot_grouped_bar_chart(
                     label=dataset
                 )
         ax.set_xticks(x)
-        ax.set_xticklabels(df.index, rotation=45, ha="right")
+        ax.set_xticklabels(
+            [format_evaluator_model_display_name(m) for m in df.index],
+            rotation=45,
+            ha="right",
+            fontsize=18,
+        )
     else:
         # Fallback to pandas plot (no error bars)
         df.plot(
@@ -542,6 +563,12 @@ def plot_grouped_bar_chart(
         )
         # Get x positions from pandas plot
         x = np.arange(len(df.index))
+        ax.set_xticklabels(
+            [format_evaluator_model_display_name(m) for m in df.index],
+            rotation=45,
+            ha="right",
+            fontsize=18,
+        )
 
     # Add significance markers if counts available
     significance_count = 0
@@ -662,7 +689,9 @@ def plot_grouped_bar_chart(
     # Grid
     ax.grid(axis="y", alpha=0.3, linestyle="--")
     ax.set_axisbelow(True)
-    
+    ax.yaxis.set_major_locator(MultipleLocator(0.1))
+    ax.tick_params(axis="both", labelsize=18)
+
     # Legend - add significance marker if any; No difference 2nd to last, * p last
     handles, labels = ax.get_legend_handles_labels()
     # Check if any significance markers were added
@@ -688,6 +717,7 @@ def plot_grouped_bar_chart(
     plt.tight_layout(rect=[0, 0, 0.85, 1])
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     print(f"  ✓ Saved grouped bar chart to: {output_path}")
+    save_figure_minimal_version(ax, output_path)
     plt.close()
 
 
@@ -876,6 +906,9 @@ def plot_performance_scatter(
     line_min = min(-0.05, data_min - 0.05)
     line_max = max(1.05, data_max + 0.05)
     
+    # Track correlations per dataset for legend
+    datasets_with_fit = {}
+    
     # Plot points grouped by dataset
     for dataset in unique_datasets:
         dataset_data = plot_df[plot_df['dataset'] == dataset]
@@ -886,9 +919,6 @@ def plot_performance_scatter(
             family_data = dataset_data[dataset_data['family'] == family]
             
             color = family_colors_map[family]
-            
-            # Plot points (only label once per dataset, not per family)
-            label = dataset if family == dataset_data['family'].iloc[0] else ""
             
             # Get error bars for this family's data
             xerr = family_data['exp2_err'].values if 'exp2_err' in family_data.columns else None
@@ -927,7 +957,7 @@ def plot_performance_scatter(
                 alpha=0.7,
                 edgecolors='black',
                 linewidths=0.5,
-                label=label,
+                label=None,  # Custom legend will be created
                 zorder=2
             )
         
@@ -979,6 +1009,7 @@ def plot_performance_scatter(
                     reg_result = weighted_regression_with_ci(x_vals_filtered, y_vals_filtered, weights=weights_filtered, x_min=line_min, x_max=line_max)
                     if reg_result:
                         correlation = weighted_correlation(x_vals_filtered, y_vals_filtered, weights_filtered)
+                        datasets_with_fit[dataset] = correlation
                         # Use dataset color for the regression line
                         line_color = dataset_line_colors[dataset]
                         # Plot confidence band
@@ -998,22 +1029,24 @@ def plot_performance_scatter(
                             linestyle='--',
                             linewidth=1.5,
                             alpha=0.7,
-                            label=f"{dataset} fit (R²={correlation**2:.3f})",
+                            label=None,  # Custom legend will be created
                             zorder=1
                         )
                     else:
                         # Fallback to unweighted if weighted regression failed
                         slope, intercept, r_value, p_value, std_err = stats.linregress(x_vals_filtered, y_vals_filtered)
+                        datasets_with_fit[dataset] = r_value
                         x_line = np.linspace(line_min, line_max, 100)
                         y_line = slope * x_line + intercept
                         line_color = dataset_line_colors[dataset]
-                        ax.plot(x_line, y_line, color=line_color, linestyle='--', linewidth=1.5, alpha=0.7, label=f"{dataset} fit (R²={r_value**2:.3f})")
+                        ax.plot(x_line, y_line, color=line_color, linestyle='--', linewidth=1.5, alpha=0.7, label=None)
                 else:
                     # Not enough valid points for regression
                     pass
             else:
                 # Unweighted regression
                 slope, intercept, r_value, p_value, std_err = stats.linregress(x_vals, y_vals)
+                datasets_with_fit[dataset] = r_value
                 
                 # Plot regression line extending to full range
                 x_line = np.linspace(line_min, line_max, 100)
@@ -1029,23 +1062,24 @@ def plot_performance_scatter(
                     linestyle='--',
                     linewidth=1.5,
                     alpha=0.7,
-                    label=f"{dataset} fit (R²={r_value**2:.3f})"
+                    label=None  # Custom legend will be created
                 )
     
     # Add 1:1 reference line (y = x) extending to full range
+    # Use different color from chance lines (#888888 is lighter gray)
     ax.plot(
         [line_min, line_max],
         [line_min, line_max],
-        color='gray',
+        color='#888888',
         linestyle=':',
         linewidth=2,
-        alpha=0.5,
+        alpha=0.7,
         label='1:1 line'
     )
     
     # Add horizontal and vertical lines at 0.5 (chance)
-    ax.axhline(y=0.5, color='#333333', linestyle='--', linewidth=1.5, alpha=1.0)
-    ax.axvline(x=0.5, color='#333333', linestyle='--', linewidth=1.5, alpha=1.0)
+    ax.axhline(y=0.5, color='#555555', linestyle='--', linewidth=1.0, alpha=0.8)
+    ax.axvline(x=0.5, color='#555555', linestyle='--', linewidth=1.0, alpha=0.8)
     
     # Set axis labels
     ax.set_xlabel(f"{exp2_name} Performance", fontsize=12, fontweight="bold")
@@ -1059,18 +1093,130 @@ def plot_performance_scatter(
     ax.set_aspect('equal', adjustable='box')
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
+    ax.xaxis.set_major_locator(MultipleLocator(0.1))
+    ax.yaxis.set_major_locator(MultipleLocator(0.1))
     
     # Add grid
     ax.grid(alpha=0.3, linestyle='--')
     ax.set_axisbelow(True)
-    
+    ax.tick_params(axis="both", labelsize=18)
+
+    # Build 3-column legend: Model Name | Dataset | Misc. (column-major order)
+    # Misc column includes Chance (0.5) and 1:1 line
+    def _title_handle(text):
+        return plt.Line2D([], [], linestyle="", marker="", label=text)
+
+    def _empty_handle():
+        return plt.Line2D([], [], linestyle="", marker="", label=" ")
+
+    family_handles = []
+    for family in sorted(unique_families):
+        color = family_colors_map[family]
+        display_name = provider_to_model_name(family)
+        family_handles.append(
+            plt.Line2D(
+                [0], [0],
+                marker="o",
+                color="w",
+                markerfacecolor=color,
+                markersize=10,
+                markeredgecolor="black",
+                markeredgewidth=0.5,
+                label=display_name,
+            )
+        )
+
+    dataset_handles = []
+    dataset_labels = []
+    for dataset in sorted(unique_datasets):
+        marker = dataset_markers[dataset]
+        line_color = dataset_line_colors[dataset]
+        h_marker = plt.Line2D(
+            [0], [0],
+            marker=marker,
+            color="w",
+            markerfacecolor="gray",
+            markersize=10,
+            markeredgecolor="black",
+            markeredgewidth=0.5,
+        )
+        if dataset in datasets_with_fit:
+            h_line = plt.Line2D([0], [0], linestyle="--", color=line_color, linewidth=2)
+            dataset_handles.append((h_marker, h_line))
+            dataset_labels.append(f"{format_dataset_display_name(dataset)} (r={datasets_with_fit[dataset]:.2f})")
+        else:
+            dataset_handles.append(h_marker)
+            dataset_labels.append(format_dataset_display_name(dataset))
+
+    chance_handle = plt.Line2D(
+        [0], [0],
+        color="#555555",
+        linestyle="--",
+        linewidth=1.0,
+        alpha=0.8,
+        label="Chance (0.5)",
+    )
+    one_to_one_handle = plt.Line2D(
+        [0], [0],
+        color="#888888",
+        linestyle=":",
+        linewidth=2,
+        alpha=0.7,
+        label="1:1 line",
+    )
+
+    n_fam = len(family_handles)
+    n_ds = len(dataset_handles)
+    n_misc = 2  # Chance + 1:1
+    max_data_rows = max(n_fam, n_ds, n_misc)
+
+    col1_handles = [_title_handle("Model Name")]
+    col1_labels = ["Model Name"]
+    for i in range(max_data_rows):
+        col1_handles.append(family_handles[i] if i < n_fam else _empty_handle())
+        col1_labels.append(family_handles[i].get_label() if i < n_fam else " ")
+
+    col2_handles = [_title_handle("Dataset")]
+    col2_labels = ["Dataset"]
+    for i in range(max_data_rows):
+        col2_handles.append(dataset_handles[i] if i < n_ds else _empty_handle())
+        col2_labels.append(dataset_labels[i] if i < n_ds else " ")
+
+    col3_handles = [_title_handle("Misc.")]
+    col3_labels = ["Misc."]
+    col3_handles.append(chance_handle)
+    col3_labels.append("Chance (0.5)")
+    col3_handles.append(one_to_one_handle)
+    col3_labels.append("1:1 line")
+    for i in range(max_data_rows - n_misc):
+        col3_handles.append(_empty_handle())
+        col3_labels.append(" ")
+
+    legend_handles = col1_handles + col2_handles + col3_handles
+    legend_labels = col1_labels + col2_labels + col3_labels
+
     # Add legend (only if multiple families or datasets)
     if len(unique_families) > 1 or len(unique_datasets) > 1:
-        ax.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), fontsize=9)
+        ax.legend(
+            handles=legend_handles,
+            labels=legend_labels,
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.12),
+            ncol=3,
+            fontsize=9,
+            framealpha=0.9,
+            handler_map={tuple: HandlerTuple(ndivide=None)},
+            borderpad=1.5,
+            labelspacing=1.2,
+            handlelength=2.5,
+            columnspacing=2.0,
+        )
     
-    plt.tight_layout(rect=[0, 0, 0.85, 1])
+    plt.tight_layout(rect=[0, 0, 1, 1])
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     print(f"  ✓ Saved scatter plot to: {output_path}")
+    save_figure_no_r_version(ax, output_path)
+    save_figure_minimal_version(ax, output_path)
     plt.close()
 
 

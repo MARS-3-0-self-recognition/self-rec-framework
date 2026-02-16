@@ -44,13 +44,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib.legend_handler import HandlerTuple
+from matplotlib.ticker import MultipleLocator
 from datetime import datetime
 from utils import (
-    expand_model_names, 
+    expand_model_names,
     get_model_provider,
+    provider_to_model_name,
     calculate_binomial_ci,
     weighted_regression_with_ci,
-    weighted_correlation
+    weighted_correlation,
+    save_figure_minimal_version,
+    save_figure_no_r_version,
 )
 from src.helpers.model_names import (
     MODEL_PARAMETER_COUNTS,
@@ -262,6 +266,16 @@ def extract_dataset_name(full_path: str) -> str:
         "bigcodebench/instruct_1-50" -> "bigcodebench"
     """
     return full_path.split("/")[0]
+
+def format_dataset_display_name(dataset_name: str) -> str:
+    """Format dataset name for display in legends (neater capitalization)."""
+    mapping = {
+        "wikisum": "WikiSum",
+        "pku_saferlhf": "PKU-SafeRLHF",
+        "bigcodebench": "BigCodeBench",
+        "sharegpt": "ShareGPT",
+    }
+    return mapping.get(dataset_name.lower(), dataset_name)
 
 
 def plot_performance_vs_size(
@@ -485,10 +499,12 @@ def plot_performance_vs_size(
                 linewidth=2,
             )
             dataset_handles.append((h_marker, h_line))
-            dataset_labels.append(f"{short_name} (r={correlation:.2f})")
+            display_name = format_dataset_display_name(short_name)
+            dataset_labels.append(f"{display_name} (r={correlation:.2f})")
         else:
             dataset_handles.append(h_marker)
-            dataset_labels.append(short_name)
+            display_name = format_dataset_display_name(short_name)
+            dataset_labels.append(display_name)
 
     # Combine legends: families, datasets
     all_handles = family_handles + dataset_handles
@@ -523,6 +539,7 @@ def plot_performance_vs_size(
 
     # Set y-axis limits
     ax.set_ylim(0, 1.05)
+    ax.yaxis.set_major_locator(MultipleLocator(0.1))
 
     full_title = title
     if experiment_title:
@@ -760,10 +777,12 @@ def plot_performance_vs_date(
                 linewidth=2,
             )
             dataset_handles.append((h_marker, h_line))
-            dataset_labels.append(f"{short_name} (r={correlation:.2f})")
+            display_name = format_dataset_display_name(short_name)
+            dataset_labels.append(f"{display_name} (r={correlation:.2f})")
         else:
             dataset_handles.append(h_marker)
-            dataset_labels.append(short_name)
+            display_name = format_dataset_display_name(short_name)
+            dataset_labels.append(display_name)
 
     # Combine legends: families, datasets
     all_handles = family_handles + dataset_handles
@@ -800,6 +819,7 @@ def plot_performance_vs_date(
 
     # Set y-axis limits
     ax.set_ylim(0, 1.05)
+    ax.yaxis.set_major_locator(MultipleLocator(0.1))
 
     full_title = title
     if experiment_title:
@@ -1031,10 +1051,12 @@ def plot_performance_vs_tier(
                 linewidth=2,
             )
             dataset_handles.append((h_marker, h_line))
-            dataset_labels.append(f"{short_name} (r={correlation:.2f})")
+            display_name = format_dataset_display_name(short_name)
+            dataset_labels.append(f"{display_name} (r={correlation:.2f})")
         else:
             dataset_handles.append(h_marker)
-            dataset_labels.append(short_name)
+            display_name = format_dataset_display_name(short_name)
+            dataset_labels.append(display_name)
 
     # Combine legends: families, datasets
     all_handles = family_handles + dataset_handles
@@ -1073,6 +1095,7 @@ def plot_performance_vs_tier(
 
     # Set y-axis limits
     ax.set_ylim(0, 1.05)
+    ax.yaxis.set_major_locator(MultipleLocator(0.1))
 
     full_title = title
     if experiment_title:
@@ -1389,12 +1412,11 @@ def plot_performance_vs_arena_ranking(
             datasets_with_fit[dataset] = correlation
 
     # Create custom legend
-    # Family colors (one entry per family)
+    # Family colors (one entry per family) - use circle marker, model names for labels
     family_handles = []
     for family in sorted(plotted_families):
         color = family_colors.get(family, family_colors["Unknown"])
-        # Remove "Together-" prefix for display
-        display_name = family.replace("Together-", "")
+        display_name = provider_to_model_name(family)
         family_handles.append(
             plt.Line2D(
                 [0],
@@ -1439,33 +1461,88 @@ def plot_performance_vs_arena_ranking(
                 linewidth=2,
             )
             dataset_handles.append((h_marker, h_line))
-            dataset_labels.append(f"{short_name} (r={correlation:.2f})")
+            display_name = format_dataset_display_name(short_name)
+            dataset_labels.append(f"{display_name} (r={correlation:.2f})")
         else:
             dataset_handles.append(h_marker)
-            dataset_labels.append(short_name)
-
-    # Combine legends: families, datasets
-    all_handles = family_handles + dataset_handles
-    all_labels = [h.get_label() for h in family_handles] + dataset_labels
-
-    ax.legend(
-        handles=all_handles,
-        labels=all_labels,
-        loc="center left",
-        bbox_to_anchor=(1.02, 0.5),
-        fontsize=9,
-        framealpha=0.9,
-        handler_map={tuple: HandlerTuple(ndivide=None)},
-    )
+            display_name = format_dataset_display_name(short_name)
+            dataset_labels.append(display_name)
 
     # Add reference line at chance (0.5)
     ax.axhline(
         y=0.5,
-        color="gray",
+        color="#555555",
         linestyle="--",
-        linewidth=1,
-        alpha=0.5,
+        linewidth=1.0,
+        alpha=0.8,
         label="Chance (0.5)",
+    )
+    chance_handle = plt.Line2D(
+        [0], [0],
+        color="#555555",
+        linestyle="--",
+        linewidth=1.0,
+        alpha=0.8,
+        label="Chance (0.5)",
+    )
+
+    # Build 3-column legend: Model Name | Dataset | Misc.
+    # Matplotlib fills column-major (top-to-bottom, then left-to-right), so we build
+    # the flat list as: col1_entries, col2_entries, col3_entries.
+    def _title_handle(text):
+        return plt.Line2D([], [], linestyle="", marker="", label=text)
+
+    def _empty_handle():
+        return plt.Line2D([], [], linestyle="", marker="", label=" ")
+
+    n_fam = len(family_handles)
+    n_ds = len(dataset_handles)
+    max_data_rows = max(n_fam, n_ds, 1)
+    # Build column vectors (header + padded data rows)
+    col1_handles = [_title_handle("Model Name")]
+    col1_labels = ["Model Name"]
+    for i in range(max_data_rows):
+        if i < n_fam:
+            col1_handles.append(family_handles[i])
+            col1_labels.append(family_handles[i].get_label())
+        else:
+            col1_handles.append(_empty_handle())
+            col1_labels.append(" ")
+
+    col2_handles = [_title_handle("Dataset")]
+    col2_labels = ["Dataset"]
+    for i in range(max_data_rows):
+        if i < n_ds:
+            col2_handles.append(dataset_handles[i])
+            col2_labels.append(dataset_labels[i])
+        else:
+            col2_handles.append(_empty_handle())
+            col2_labels.append(" ")
+
+    col3_handles = [_title_handle("Misc.")]
+    col3_labels = ["Misc."]
+    col3_handles.append(chance_handle)
+    col3_labels.append("Chance (0.5)")
+    for i in range(max_data_rows - 1):
+        col3_handles.append(_empty_handle())
+        col3_labels.append(" ")
+
+    legend_handles = col1_handles + col2_handles + col3_handles
+    legend_labels = col1_labels + col2_labels + col3_labels
+
+    ax.legend(
+        handles=legend_handles,
+        labels=legend_labels,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.12),
+        ncol=3,
+        fontsize=9,
+        framealpha=0.9,
+        handler_map={tuple: HandlerTuple(ndivide=None)},
+        borderpad=1.5,
+        labelspacing=1.2,
+        handlelength=2.5,
+        columnspacing=2.0,
     )
 
     # Labels and title
@@ -1479,6 +1556,7 @@ def plot_performance_vs_arena_ranking(
 
     # Set y-axis limits
     ax.set_ylim(0, 1.05)
+    ax.yaxis.set_major_locator(MultipleLocator(0.1))
 
     full_title = title
     if experiment_title:
@@ -1488,14 +1566,20 @@ def plot_performance_vs_arena_ranking(
     # Add grid
     ax.grid(alpha=0.3, linestyle="--")
     ax.set_axisbelow(True)
+    ax.tick_params(axis="both", labelsize=18)
 
     # Report error bar statistics
     if df_counts is not None:
         print(f"  Error bars: {error_bar_count}/{total_points} points have error bars")
 
-    plt.tight_layout(rect=[0, 0, 0.85, 1])
+    # Ensure tick label size 18 (figures 2c, 2d)
+    ax.tick_params(axis="both", labelsize=18)
+    # Extra space below for legend
+    plt.tight_layout(rect=[0, 0, 1, 1])
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     print(f"  ✓ Saved scatter plot to: {output_path}")
+    save_figure_no_r_version(ax, output_path)
+    save_figure_minimal_version(ax, output_path)
     plt.close()
 
 

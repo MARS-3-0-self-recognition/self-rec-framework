@@ -45,6 +45,17 @@ def extract_dataset_name(full_path: str) -> str:
     return full_path.split("/")[0]
 
 
+def format_dataset_display_name(dataset_name: str) -> str:
+    """Format dataset name for display in legends (neater capitalization)."""
+    mapping = {
+        "wikisum": "WikiSum",
+        "pku_saferlhf": "PKU-SafeRLHF",
+        "bigcodebench": "BigCodeBench",
+        "sharegpt": "ShareGPT",
+    }
+    return mapping.get(dataset_name.lower(), dataset_name)
+
+
 def load_and_filter_data(
     aggregated_file: Path,
     model_order: list[str] | None = None,
@@ -160,6 +171,7 @@ def plot_dataset_bar_chart(
 
     # Shorten dataset names
     short_names = [extract_dataset_name(name) for name in values.index]
+    short_names = [format_dataset_display_name(name) for name in short_names]
     values.index = short_names
     errors.index = short_names
 
@@ -251,6 +263,7 @@ def plot_above_chance_bar_chart(
 
     # Shorten dataset names
     short_names = [extract_dataset_name(name) for name in percentages.index]
+    short_names = [format_dataset_display_name(name) for name in short_names]
     percentages.index = short_names
 
     # Sort by value (descending)

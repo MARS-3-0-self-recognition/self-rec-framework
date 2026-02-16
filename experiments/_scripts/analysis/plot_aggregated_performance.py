@@ -18,16 +18,19 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MultipleLocator
 from scipy import stats
 
 # Add parent directory to path to import utils
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils import (
-    get_model_family_colors, 
+    get_model_family_colors,
     get_model_provider,
     calculate_binomial_ci,
     apply_fdr_correction,
-    get_significance_marker
+    get_significance_marker,
+    format_evaluator_model_display_name,
+    save_figure_minimal_version,
 )
 
 
@@ -36,6 +39,16 @@ def extract_dataset_name(full_path: str) -> str:
     Extract short dataset name from full path.
     """
     return full_path.split("/")[0]
+
+def format_dataset_display_name(dataset_name: str) -> str:
+    """Format dataset name for display in legends (neater capitalization)."""
+    mapping = {
+        "wikisum": "WikiSum",
+        "pku_saferlhf": "PKU-SafeRLHF",
+        "bigcodebench": "BigCodeBench",
+        "sharegpt": "ShareGPT",
+    }
+    return mapping.get(dataset_name.lower(), dataset_name)
 
 
 def plot_stacked_bar_chart(
@@ -59,6 +72,7 @@ def plot_stacked_bar_chart(
 
     # Shorten dataset names for legend
     short_names = [extract_dataset_name(name) for name in df_plot.columns]
+    short_names = [format_dataset_display_name(name) for name in short_names]
     df_plot.columns = short_names
 
     if is_deviation:
@@ -214,6 +228,7 @@ def plot_grouped_bar_chart(
 
     # Shorten dataset names for legend
     short_names = [extract_dataset_name(name) for name in df_plot.columns]
+    short_names = [format_dataset_display_name(name) for name in short_names]
     df_plot.columns = short_names
     
     # Sort models
@@ -255,6 +270,7 @@ def plot_grouped_bar_chart(
             df_counts = pd.read_csv(counts_file, index_col=0)
             # Shorten dataset names to match
             counts_short_names = [extract_dataset_name(name) for name in df_counts.columns]
+            counts_short_names = [format_dataset_display_name(name) for name in counts_short_names]
             df_counts.columns = counts_short_names
             # Reindex to match df_plot
             df_counts = df_counts.reindex(df_plot.index)
@@ -307,7 +323,12 @@ def plot_grouped_bar_chart(
                 label=dataset
             )
         ax.set_xticks(x)
-        ax.set_xticklabels(df_plot.index, rotation=45, ha="right")
+        ax.set_xticklabels(
+            [format_evaluator_model_display_name(m) for m in df_plot.index],
+            rotation=45,
+            ha="right",
+            fontsize=18,
+        )
     else:
         # Fallback to pandas plot (no error bars)
         df_plot.plot(
@@ -322,6 +343,12 @@ def plot_grouped_bar_chart(
         # Get x positions from pandas plot for significance markers
         # Pandas uses 0, 1, 2, ... for x positions
         x = np.arange(len(df_plot.index))
+        ax.set_xticklabels(
+            [format_evaluator_model_display_name(m) for m in df_plot.index],
+            rotation=45,
+            ha="right",
+            fontsize=18,
+        )
 
     if is_deviation:
         # Add reference line at 0
@@ -341,6 +368,7 @@ def plot_grouped_bar_chart(
         # So chance line at 0.5 makes sense for the bars.
         ax.axhline(y=0.5, color="#333333", linestyle="--", linewidth=1.5, alpha=1.0, label="Chance (0.5)")
         ax.set_ylim(0, 1)
+        ax.yaxis.set_major_locator(MultipleLocator(0.1))
         
         # Add significance markers if counts available
         if df_counts is not None:
@@ -415,7 +443,8 @@ def plot_grouped_bar_chart(
     # Grid
     ax.grid(axis="y", alpha=0.3, linestyle="--")
     ax.set_axisbelow(True)
-    
+    ax.tick_params(axis="both", labelsize=18)
+
     # Legend - add significance marker if any markers were added; Chance 2nd to last, * p last
     handles, labels = ax.get_legend_handles_labels()
     # Check if any significance markers were added
@@ -441,6 +470,7 @@ def plot_grouped_bar_chart(
     plt.tight_layout(rect=[0, 0, 0.85, 1])
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     print(f"  ✓ Saved grouped bar chart to: {output_path}")
+    save_figure_minimal_version(ax, output_path)
     plt.close()
 
 
@@ -517,6 +547,7 @@ def plot_dataset_grouped_bar_chart(
 
     # Shorten dataset names for legend
     short_names = [extract_dataset_name(name) for name in df_plot.columns]
+    short_names = [format_dataset_display_name(name) for name in short_names]
     df_plot.columns = short_names
     
     # Get all unique model names and create color mapping (single color per family)
@@ -589,13 +620,14 @@ def plot_dataset_grouped_bar_chart(
         
         # Store group label position (center of group)
         group_center = group_start + (len(dataset_data) * bar_width) / 2
-        group_labels.append((group_center, dataset))
+        display_name = format_dataset_display_name(dataset)
+        group_labels.append((group_center, display_name))
 
     # Set x-axis: group labels at center of each group, no model labels
     group_centers = [pos for pos, _ in group_labels]
     group_names = [name for _, name in group_labels]
     ax.set_xticks(group_centers)
-    ax.set_xticklabels(group_names, fontsize=11, fontweight="bold")
+    ax.set_xticklabels(group_names, fontsize=18, fontweight="bold")
     
     # Remove minor ticks and labels
     ax.tick_params(axis='x', which='minor', length=0)
@@ -614,6 +646,7 @@ def plot_dataset_grouped_bar_chart(
         # Add chance line at 0.5
         ax.axhline(y=0.5, color="#333333", linestyle="--", linewidth=1.5, alpha=1.0, label="Chance (0.5)")
         ax.set_ylim(0, 1)
+        ax.yaxis.set_major_locator(MultipleLocator(0.1))
 
     ax.set_xlabel("Dataset", fontsize=12, fontweight="bold")
     ax.set_ylabel(ylabel, fontsize=12, fontweight="bold")

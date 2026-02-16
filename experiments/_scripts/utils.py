@@ -9,6 +9,9 @@ This module contains common functions used across analysis scripts including:
 - Model set expansion for command-line arguments
 """
 
+import re
+from pathlib import Path
+
 import pandas as pd
 import numpy as np
 from scipy import stats
@@ -51,6 +54,32 @@ def get_model_provider(model_name: str) -> str:
         return "Moonshot"
     else:
         return "Unknown"
+
+
+def provider_to_model_name(provider: str) -> str:
+    """
+    Map provider/company name to model name for legend display.
+
+    Args:
+        provider: Provider name from get_model_provider (e.g., "Anthropic", "Together-Llama")
+
+    Returns:
+        Model name for legend (e.g., "Claude", "Llama")
+    """
+    # Strip "Together-" prefix if present
+    base = provider.replace("Together-", "") if provider.startswith("Together-") else provider
+    mapping = {
+        "Anthropic": "Claude",
+        "Google": "Gemini",
+        "OpenAI": "GPT",
+        "Llama": "Llama",
+        "Qwen": "Qwen",
+        "DeepSeek": "DeepSeek",
+        "XAI": "Grok",
+        "Moonshot": "Kimi",
+        "Unknown": "Unknown",
+    }
+    return mapping.get(base, base)
 
 
 def add_provider_boundaries(ax, pivot: pd.DataFrame, linewidth: float = 2.5):
@@ -301,6 +330,73 @@ def expand_model_names(model_names: list[str]) -> list[str]:
             i += 1
 
     return expanded
+
+
+def save_figure_no_r_version(ax, output_path, dpi: int = 300) -> None:
+    """
+    Save a version of the figure with r values stripped from dataset legend labels.
+    E.g. "BigCodeBench (r=-0.61)" -> "BigCodeBench". Used when a version without
+    correlation statistics in the legend is needed.
+    """
+    legend = ax.get_legend()
+    if legend is None:
+        return
+    for t in legend.get_texts():
+        text = t.get_text()
+        new_text = re.sub(r" \(r=-?[\d.]+\)", "", text)
+        if new_text != text:
+            t.set_text(new_text)
+    p = Path(output_path)
+    no_r_path = p.parent / (p.stem + "_no_r" + p.suffix)
+    ax.get_figure().savefig(no_r_path, dpi=dpi, bbox_inches="tight")
+    print(f"  ✓ Saved no-r version to: {no_r_path}")
+
+
+def save_figure_minimal_version(ax, output_path, dpi: int = 300) -> None:
+    """
+    Save a second version of the figure with no title, axis labels, or legend
+    (plot and tick marks only). Used for AIWILD_figures when a minimal version is needed.
+    """
+    ax.set_title("")
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+    legend = ax.get_legend()
+    if legend is not None:
+        legend.remove()
+    p = Path(output_path)
+    minimal_path = p.parent / (p.stem + "_minimal" + p.suffix)
+    ax.get_figure().savefig(minimal_path, dpi=dpi, bbox_inches="tight")
+    print(f"  ✓ Saved minimal version to: {minimal_path}")
+
+
+def format_evaluator_model_display_name(name: str) -> str:
+    """
+    Format evaluator model name for display on x-axis (figures 1 and 2a, 2b).
+    - Replace hyphens with spaces
+    - Title case
+    - Replace 'll' (standalone or prefix like 'll-') with 'Llama'
+    - Replace '-thinking' suffix with ' (R)' at the end
+    - 'gpt' -> 'GPT', '4O' -> '4o', 'Oss' -> 'OSS'
+    - Prepend 'Claude ' for Haiku, Sonnet, Opus (e.g. 'Opus 4.1' -> 'Claude Opus 4.1')
+    """
+    s = name.strip()
+    if s.endswith("-thinking"):
+        s = s[: -len("-thinking")] + " (R)"
+    if s == "ll":
+        s = "Llama"
+    elif s.startswith("ll-"):
+        s = "Llama-" + s[3:]
+    s = s.replace("-", " ")
+    s = s.title()
+    # Apply display fixes: GPT all caps, 4o not 4O, OSS all caps
+    s = s.replace("4O", "4o")
+    s = s.replace("Oss", "OSS")
+    # "Gpt" (from title case) -> "GPT"; handle at word boundaries
+    s = re.sub(r"\bGpt\b", "GPT", s)
+    # Claude model names: add "Claude " before Haiku, Sonnet, Opus
+    if s.startswith("Haiku") or s.startswith("Sonnet") or s.startswith("Opus"):
+        s = "Claude " + s
+    return s
 
 
 def parse_models_from_config(models_str: str | None) -> list[str] | None:

@@ -4,9 +4,17 @@
 # This script automatically finds the newest dated directory for each experiment
 # and copies the specified plot files to the ICML_figure folder.
 #
+# FIGURE_VERSION: which version of each figure to copy
+#   "labeled"  - full figure with title, axis labels, and legend (default)
+#   "minimal"  - plot and tick marks only (no title, axis labels, or legend)
+#   "no_r"     - full figure but with r values hidden in dataset legend labels
+#
 # To add more figures, simply add entries to the FIGURES array below.
 
 set +e  # Don't exit on error - we want to process all figures
+
+# Select which version to copy: "labeled", "minimal", or "no_r"
+FIGURE_VERSION="${FIGURE_VERSION:-labeled}"
 
 # Create output directory
 OUTPUT_DIR="AIWILD_figures"
@@ -41,6 +49,7 @@ echo "=========================================="
 echo "Copying ICML Figures"
 echo "=========================================="
 echo "Output directory: $OUTPUT_DIR"
+echo "Figure version: $FIGURE_VERSION"
 echo ""
 
 # Function to find newest dated directory
@@ -69,7 +78,7 @@ for entry in "${FIGURES[@]}"; do
         output_name="$filename"
     fi
     
-    # Find newest dated directory
+    # Find newest dated directory first (needed for no_r fallback)
     newest_dir=$(find_newest_dir "$experiment_path")
     
     if [ -z "$newest_dir" ]; then
@@ -78,8 +87,25 @@ for entry in "${FIGURES[@]}"; do
         continue
     fi
     
-    # Construct full source path
-    source_file="$experiment_path/$newest_dir/$filename"
+    # Choose source filename based on FIGURE_VERSION
+    base="${filename%.*}"
+    ext="${filename##*.}"
+    if [ "$FIGURE_VERSION" = "minimal" ]; then
+        source_filename="${base}_minimal.${ext}"
+    elif [ "$FIGURE_VERSION" = "no_r" ]; then
+        # Prefer _no_r version; fall back to labeled if it doesn't exist
+        no_r_file="$experiment_path/$newest_dir/${base}_no_r.${ext}"
+        if [ -f "$no_r_file" ]; then
+            source_filename="${base}_no_r.${ext}"
+        else
+            source_filename="$filename"
+        fi
+    else
+        source_filename="$filename"
+    fi
+    
+    # Construct full source path (use source_filename, not filename)
+    source_file="$experiment_path/$newest_dir/$source_filename"
     dest_file="$OUTPUT_DIR/$output_name"
     
     # Check if source file exists
@@ -91,7 +117,7 @@ for entry in "${FIGURES[@]}"; do
     
     # Copy the file
     cp "$source_file" "$dest_file"
-    echo "✓  Copied: $output_name (from $newest_dir)"
+    echo "✓  Copied: $output_name (from $newest_dir, version=$FIGURE_VERSION)"
     ((copied++))
 done
 
