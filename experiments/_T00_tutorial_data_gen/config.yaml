@@ -1,7 +1,6 @@
-temperature: 1.0
+temperature: 0.0
 max_final_answer_tokens: null
 max_thinking_tokens: null
 
 treatments:
-  caps: [S2, S4]
-  typos: [S2, S4]
+  typos: [S2]

@@ -48,6 +48,5 @@ experiments/*
 
 _external/
 _research/
-CLAUDE.md
 _archive/
-scripts/upload_HF_data.py
+CLAUDE.md
