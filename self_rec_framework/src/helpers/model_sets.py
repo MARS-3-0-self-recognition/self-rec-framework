@@ -13,7 +13,7 @@ def get_model_set(model_set_name: str | None = None) -> list[str]:
     """
     if model_set_name is None:
         return []
-    if model_set_name.lower() == "test":
+    if model_set_name.lower() == "test" or model_set_name.lower() == "tutorial":
         return [
             "ll-3.1-8b",
             "qwen-2.5-7b",
@@ -57,7 +57,7 @@ def get_model_set(model_set_name: str | None = None) -> list[str]:
             # Together AI - DeepSeek (weakest to strongest)
             "deepseek-3.1",
             # XAI (weakest to strongest)
-            #"grok-4.1-fast",
+            # "grok-4.1-fast",
             # Moonshot (weakest to strongest)
             "kimi-k2",
         ]

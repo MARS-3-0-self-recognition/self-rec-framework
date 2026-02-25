@@ -30,21 +30,23 @@ charts/
 test.py
 
 # Project
-data/*
-!data/analysis/
-!data/*debug
+data/analysis/*
+data/input/*
+data/results/*
+
+# !data/*debug
 # Under data/analysis: only track .csv files (any depth)
-data/analysis/**/*
-!data/analysis/**/
-!data/analysis/**/*.csv
+# data/analysis/**/*
+# !data/analysis/**/
+# !data/analysis/**/*.csv
+
+# Ignore all under experiments/ except dirs (and their contents) starting with _
+experiments/*
+!experiments/_*/
+!experiments/_*/**/
+!experiments/_*/**/*
 
 _external/
+_research/
+_archive/
 CLAUDE.md
-archive/
-TIMESHEET_REPORT.md
-SGTR_AISI_Challenge_Fund_Performance_Report_1.md
-SGTR_AISI_Challenge_Fund_Performance_Report_2.md
-Slack_discussion.pdf
-report_1/
-report_2_figures/
-upload_HF_data.py
