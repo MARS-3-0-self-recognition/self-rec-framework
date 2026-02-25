@@ -40,8 +40,11 @@ data/results/*
 # !data/analysis/**/
 # !data/analysis/**/*.csv
 
+# Ignore all under experiments/ except dirs (and their contents) starting with _
 experiments/*
-!data/experiments/_*
+!experiments/_*/
+!experiments/_*/**/
+!experiments/_*/**/*
 
 _external/
 _research/
