@@ -1,0 +1,7 @@
+evaluator,performance,n_samples
+gpt-oss-120b-thinking,0.5338252086078172,2400.0
+opus-4.1-thinking,0.5052173913043478,2400.0
+gemini-2.5-pro-thinking,0.5719894598155468,2400.0
+qwen-3.0-80b-thinking,0.5351322969538069,2400.0
+deepseek-r1-thinking,0.5113360694059498,2400.0
+kimi-k2-thinking,0.5673336708117277,2400.0

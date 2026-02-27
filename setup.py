@@ -7,5 +7,6 @@ setup(
     install_requires=[
         "inspect-ai>=0.3.0",
         "pyyaml>=6.0",
+        "huggingface-hub>=0.28.0",
     ],
 )

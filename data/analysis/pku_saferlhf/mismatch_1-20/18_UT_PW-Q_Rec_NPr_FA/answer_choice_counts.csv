@@ -1,0 +1,10 @@
+evaluator,gpt-oss-20b-thinking,gpt-oss-120b-thinking,sonnet-3.7-thinking,grok-3-mini-thinking,ll-3.3-70b-dsR1-thinking,qwen-3.0-80b-thinking,qwen-3.0-235b-thinking,deepseek-r1-thinking,kimi-k2-thinking
+gpt-oss-20b-thinking,0/0,38/1,20/20,20/20,21/19,22/18,20/20,19/21,14/26
+gpt-oss-120b-thinking,39/1,0/0,22/18,26/14,23/17,27/13,32/8,18/22,22/18
+sonnet-3.7-thinking,19/21,20/20,0/0,18/22,16/24,16/24,24/16,17/23,14/26
+grok-3-mini-thinking,20/20,21/19,20/20,0/0,20/20,35/5,37/3,37/3,36/4
+ll-3.3-70b-dsR1-thinking,26/14,29/11,33/7,21/19,0/0,28/12,28/12,28/12,27/13
+qwen-3.0-80b-thinking,20/20,21/19,20/20,30/10,20/20,0/0,32/8,22/18,24/16
+qwen-3.0-235b-thinking,19/21,20/20,33/7,32/8,25/15,33/7,0/0,36/4,36/4
+deepseek-r1-thinking,20/20,21/19,31/9,36/4,25/15,36/4,29/11,0/0,36/4
+kimi-k2-thinking,20/20,20/20,29/11,27/7,23/17,27/7,34/4,30/6,0/0
