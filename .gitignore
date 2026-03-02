@@ -31,7 +31,6 @@ test.py
 
 # Project
 data/analysis/*
-data/input/*
 data/results/*
 
 # !data/*debug

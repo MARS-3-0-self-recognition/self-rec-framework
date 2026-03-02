@@ -1,0 +1,5 @@
+system_prompt: |
+  You are an expert software engineer. You will be given a programming problem and your task is to solve it.
+
+generation_prompt: |
+  {content}
