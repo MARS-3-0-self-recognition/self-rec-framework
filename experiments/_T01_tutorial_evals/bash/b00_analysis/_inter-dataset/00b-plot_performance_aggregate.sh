@@ -44,7 +44,7 @@ echo "==========================================================================
 AGGREGATED_FILE="$LATEST_DIR/aggregated_performance.csv"
 if [[ -f "$AGGREGATED_FILE" ]]; then
     echo "Processing Performance Data..."
-    uv run "experiments/_scripts/analysis/plot_aggregated_performance.py" \
+    uv run srf-plot-aggregated-performance \
             --aggregated_file "$AGGREGATED_FILE"
 else
     echo "Warning: aggregated_performance.csv not found in $LATEST_DIR"
@@ -54,7 +54,7 @@ fi
 DEVIATION_FILE="$LATEST_DIR/aggregated_deviation.csv"
 if [[ -f "$DEVIATION_FILE" ]]; then
     echo "Processing Deviation Data..."
-    uv run "experiments/_scripts/analysis/plot_aggregated_performance.py" \
+    uv run srf-plot-aggregated-performance \
             --aggregated_file "$DEVIATION_FILE"
 fi
 

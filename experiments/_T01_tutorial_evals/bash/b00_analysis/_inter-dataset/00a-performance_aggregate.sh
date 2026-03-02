@@ -60,7 +60,7 @@ echo "Running Data Aggregation"
 echo "=============================================================================="
 
 # Run Data Aggregation
-uv run "experiments/_scripts/analysis/aggregate_performance_data.py" \
+uv run srf-aggregate-performance-data \
         --performance_files "${PERFORMANCE_FILES[@]}" \
         --dataset_names "${DATASET_NAMES[@]}" \
         --model_names "${MODEL_NAMES[@]}" \

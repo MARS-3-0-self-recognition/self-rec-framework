@@ -13,9 +13,9 @@ SCRIPT_NAME="${SCRIPT_NAME%.sh}"  # Remove ".sh" extension
 
 # Map script name to Python file (experiment comparison uses different script)
 if [[ "$SCRIPT_NAME" == "performance_contrast" ]]; then
-    ANALYSIS_SCRIPT="experiment_contrast.py"
+    ENTRY_POINT="srf-experiment-contrast"
 else
-    ANALYSIS_SCRIPT="${SCRIPT_NAME}.py"
+    ENTRY_POINT="srf-${SCRIPT_NAME//_/-}"
 fi
 
 # Extract experiment names from directory name (e.g., ICML_01-vs-ICML_02)
@@ -111,7 +111,7 @@ echo ""
 # Run analysis script
 # ============================================================================
 
-uv run "experiments/_scripts/analysis/$ANALYSIS_SCRIPT" \
+uv run "$ENTRY_POINT" \
         --exp1_file "$EXP1_FILE" \
         --exp2_file "$EXP2_FILE" \
         --exp1_name "$EXP1" \

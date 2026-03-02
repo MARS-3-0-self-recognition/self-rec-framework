@@ -58,7 +58,7 @@ fi
 # Run sweep experiment
 # ============================================================================
 
-uv run experiments/_scripts/eval/run_experiment_sweep.py \
+uv run srf-eval-sweep \
     --model_names "${MODEL_NAMES_ARG[@]}" \
     "${GENERATOR_MODELS_ARG[@]}" \
     --treatment_type "$TREATMENT_TYPE" \

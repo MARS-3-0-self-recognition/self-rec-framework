@@ -32,7 +32,26 @@ dependencies = [
 [tool.setuptools]
 # Package structure: self_rec_framework/src/...
 # Allows imports like: from self_rec_framework.src.helpers.model_names import ...
-packages = {find = {where = ["."], include = ["self_rec_framework*"], exclude = ["experiments*", "scripts*", "data*", "*.egg-info", "build", "dist", "tests*"]}}
+packages = {find = {where = ["."], include = ["self_rec_framework*"], exclude = ["experiments*", "data*", "*.egg-info", "build", "dist", "tests*"]}}
+
+[project.scripts]
+srf-generate = "self_rec_framework.scripts.gen.generate_data:main"
+srf-generate-sweep = "self_rec_framework.scripts.gen.generate_data_sweep:main"
+srf-eval = "self_rec_framework.scripts.eval.run_experiment:main"
+srf-eval-sweep = "self_rec_framework.scripts.eval.run_experiment_sweep:main"
+srf-rescore = "self_rec_framework.scripts.rescoring.rescore_eval_file:main"
+srf-recognition-accuracy = "self_rec_framework.scripts.analysis.recognition_accuracy:main"
+srf-evaluator-performance = "self_rec_framework.scripts.analysis.evaluator_performance:main"
+srf-recognition-disagreement = "self_rec_framework.scripts.analysis.recognition_disagreement:main"
+srf-aggregate-performance-data = "self_rec_framework.scripts.analysis.aggregate_performance_data:main"
+srf-plot-aggregated-performance = "self_rec_framework.scripts.analysis.plot_aggregated_performance:main"
+srf-performance-contrast = "self_rec_framework.scripts.analysis.performance_contrast:main"
+srf-performance-vs-size = "self_rec_framework.scripts.analysis.performance_vs_size:main"
+srf-rank-distance = "self_rec_framework.scripts.analysis.rank_distance:main"
+srf-experiment-contrast = "self_rec_framework.scripts.analysis.experiment_contrast:main"
+srf-cancel-batches = "self_rec_framework.scripts.admin.cancel_all_batches:main"
+srf-list-batches = "self_rec_framework.scripts.admin.list_active_batches:main"
+srf-list-models = "self_rec_framework.scripts.admin.list_models:main"
 
 [project.optional-dependencies]
 dev = [
