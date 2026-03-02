@@ -6,7 +6,7 @@ Takes two experiment directories, loads their pre-computed accuracy pivot tables
 and generates a difference heatmap showing how accuracy changes between experiments.
 
 Usage:
-    uv run experiments/scripts/compare_experiments.py \
+    uv run experiments/_scripts/analysis/_deprecated/compare_experiments.py \
         --experiment1 data/results/pku_saferlhf/mismatch_1-20/11_UT_PW-Q_Rec_NPr \
         --experiment2 data/results/pku_saferlhf/mismatch_1-20/12_UT_PW-Q_Rec_Pr
 
@@ -27,7 +27,7 @@ import numpy as np
 from scipy import stats
 from inspect_ai.log import read_eval_log
 import yaml
-from src.helpers.model_sets import get_model_set
+from self_rec_framework.src.helpers.model_sets import get_model_set
 from utils import parse_models_from_config
 
 

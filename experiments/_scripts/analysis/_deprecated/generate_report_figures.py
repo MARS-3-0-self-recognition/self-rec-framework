@@ -8,7 +8,7 @@ This script:
 3. Documents figure locations for the report
 
 Usage:
-    uv run experiments/scripts/generate_report_figures.py \\
+    uv run experiments/_scripts/analysis/_deprecated/generate_report_figures.py \\
         --recognition_pivot data/analysis/pku_saferlhf/mismatch_1-20/11_UT_PW-Q_Rec_NPr/accuracy_pivot.csv \\
         --preference_pivot data/analysis/pku_saferlhf/mismatch_1-20/14_UT_PW-Q_Pref-Q_NPr/accuracy_pivot.csv \\
         --preference_results data/results/pku_saferlhf/mismatch_1-20/14_UT_PW-Q_Pref-Q_NPr \\

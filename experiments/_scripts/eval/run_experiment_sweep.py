@@ -26,9 +26,9 @@ from run_experiment import (
     parse_dataset_path,
     check_rollout_exists,
 )
-from src.inspect.tasks import get_task_function, _is_always_reasoning_model
-from src.inspect.config import load_experiment_config
-from src.helpers.model_names import is_thinking_model, get_data_model_name
+from self_rec_framework.src.inspect.tasks import get_task_function, _is_always_reasoning_model
+from self_rec_framework.src.inspect.config import load_experiment_config
+from self_rec_framework.src.helpers.model_names import is_thinking_model, get_data_model_name
 from utils import expand_model_names
 
 
@@ -373,7 +373,7 @@ def run_sweep_experiment(
     experiment_name = Path(experiment_config).resolve().parent.name
 
     # Create shared log directory for all tasks
-    from src.helpers.utils import data_dir
+    from self_rec_framework.src.helpers.utils import data_dir
 
     shared_log_dir = (
         data_dir() / "results" / dataset_name / data_subset / experiment_name
@@ -920,21 +920,21 @@ if __name__ == "__main__":
         epilog="""
 Examples:
   # Compare models against each other
-  python experiments/scripts/run_experiment_sweep.py \\
+  python experiments/_scripts/eval/run_experiment_sweep.py \\
     --model_names haiku-3-5 gpt-4.1 ll-3-1-8b \\
     --treatment_type other_models \\
     --dataset_dir_path data/input/pku_saferlhf/mismatch_1-20 \\
     --experiment_config experiments/01_AT_PW-C_Rec_Pr/config.yaml
 
   # Use a model set (e.g., gen_cot models)
-  python experiments/scripts/run_experiment_sweep.py \\
+  python experiments/_scripts/eval/run_experiment_sweep.py \\
     --model_names -set cot \\
     --treatment_type other_models \\
     --dataset_dir_path data/input/pku_saferlhf/mismatch_1-20 \\
     --experiment_config experiments/01_AT_PW-C_Rec_Pr/config.yaml
 
   # Mix individual models and sets
-  python experiments/scripts/run_experiment_sweep.py \\
+  python experiments/_scripts/eval/run_experiment_sweep.py \\
     --model_names haiku-3-5 -set dr gpt-4.1 \\
     --treatment_type other_models \\
     --dataset_dir_path data/input/pku_saferlhf/mismatch_1-20 \\

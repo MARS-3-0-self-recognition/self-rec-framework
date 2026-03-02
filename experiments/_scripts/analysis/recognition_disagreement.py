@@ -66,7 +66,7 @@ from utils import (
     get_model_family_colors,
     expand_model_names,
 )
-from src.helpers.model_sets import get_model_set
+from self_rec_framework.src.helpers.model_sets import get_model_set
 
 
 def parse_eval_filename(filename: str) -> tuple[str, str, str | None] | None:

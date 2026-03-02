@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from inspect_ai.log import read_eval_log, EvalLog
-from src.helpers.utils import data_dir
+from self_rec_framework.src.helpers.utils import data_dir
 
 
 # ==============================================================================

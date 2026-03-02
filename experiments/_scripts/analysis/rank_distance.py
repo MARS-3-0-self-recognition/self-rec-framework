@@ -43,7 +43,7 @@ from utils import (
     save_figure_minimal_version,
     save_figure_no_r_version,
 )
-from src.helpers.model_names import LM_ARENA_RANKINGS
+from self_rec_framework.src.helpers.model_names import LM_ARENA_RANKINGS
 
 def get_family_base_color(model_name: str) -> str:
     """

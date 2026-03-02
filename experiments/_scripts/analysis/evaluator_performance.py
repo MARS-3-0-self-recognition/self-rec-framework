@@ -31,7 +31,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from utils import expand_model_names, get_model_family_colors, add_provider_boundaries
-from src.helpers.model_names import LM_ARENA_RANKINGS
+from self_rec_framework.src.helpers.model_names import LM_ARENA_RANKINGS
 
 
 def get_model_arena_ranking(model_name: str) -> int | None:

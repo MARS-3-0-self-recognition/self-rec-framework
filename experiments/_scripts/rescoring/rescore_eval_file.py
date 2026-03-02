@@ -7,7 +7,7 @@ and updates the scores. The scorer checks that the final character of the
 completion is "1" or "2", marking as failure if not.
 
 Usage:
-    uv run experiments/scripts/rescoring/rescore_eval_file.py \\
+    uv run experiments/_scripts/rescoring/rescore_eval_file.py \\
         --eval_file data/results/.../experiment.eval \\
         [--output_file path/to/output.eval]  # Optional: defaults to overwriting input
 """
@@ -27,7 +27,7 @@ from inspect_ai._eval.score import (
 )
 from inspect_ai._eval.loader import load_module
 
-from src.inspect.scorer import logprob_scorer
+from self_rec_framework.src.inspect.scorer import logprob_scorer
 
 
 class MockOutput:

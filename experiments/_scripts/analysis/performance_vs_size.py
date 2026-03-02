@@ -56,7 +56,7 @@ from utils import (
     save_figure_minimal_version,
     save_figure_no_r_version,
 )
-from src.helpers.model_names import (
+from self_rec_framework.src.helpers.model_names import (
     MODEL_PARAMETER_COUNTS,
     MODEL_PARAMETER_COUNTS_ESTIMATED,
     MODEL_RELEASE_DATES,

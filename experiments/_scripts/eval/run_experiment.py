@@ -7,9 +7,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from inspect_ai import eval
-from src.inspect.tasks import get_task_function
-from src.inspect.config import load_experiment_config
-from src.helpers.utils import data_dir
+from self_rec_framework.src.inspect.tasks import get_task_function
+from self_rec_framework.src.inspect.config import load_experiment_config
+from self_rec_framework.src.helpers.utils import data_dir
 
 
 def parse_dataset_path(dataset_path: str):

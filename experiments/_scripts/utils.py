@@ -17,7 +17,7 @@ import numpy as np
 from scipy import stats
 import statsmodels.api as sm
 from statsmodels.stats.multitest import multipletests
-from src.helpers.model_sets import get_model_set
+from self_rec_framework.src.helpers.model_sets import get_model_set
 
 
 def get_model_provider(model_name: str) -> str:

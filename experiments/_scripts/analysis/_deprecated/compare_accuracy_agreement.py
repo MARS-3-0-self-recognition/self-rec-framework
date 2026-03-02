@@ -6,7 +6,7 @@ Takes paths to an accuracy pivot CSV and an agreement matrix CSV,
 performs comparisons (e.g., adding the matrices), and generates visualizations.
 
 Usage:
-    uv run experiments/scripts/compare_accuracy_agreement.py \
+    uv run experiments/_scripts/analysis/_deprecated/compare_accuracy_agreement.py \
         --accuracy_pivot data/analysis/pku_saferlhf/mismatch_1-20/11_UT_PW-Q_Rec_NPr/accuracy_pivot.csv \
         --agreement_matrix data/analysis/pku_saferlhf/mismatch_1-20/14_UT_PW-Q_Pref-Q_NPr/agreement_matrix.csv
 
@@ -25,7 +25,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy import stats
-from src.helpers.model_sets import get_model_set
+from self_rec_framework.src.helpers.model_sets import get_model_set
 
 
 def get_model_provider(model_name: str) -> str:

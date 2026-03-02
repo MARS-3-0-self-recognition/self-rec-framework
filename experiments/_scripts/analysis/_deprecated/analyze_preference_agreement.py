@@ -15,7 +15,7 @@ where:
 Higher values indicate better agreement between the two models on quality.
 
 Usage:
-    uv run experiments/scripts/analyze_preference_agreement.py \
+    uv run experiments/_scripts/analysis/_deprecated/analyze_preference_agreement.py \
         --results_dir data/results/pku_saferlhf/mismatch_1-20/12_UT_PW-Q_Rec_Pr
 
 Output:
@@ -39,7 +39,7 @@ from utils import (
     get_model_family_colors,
     parse_models_from_config,
 )
-from src.helpers.model_sets import get_model_set
+from self_rec_framework.src.helpers.model_sets import get_model_set
 import yaml
 
 

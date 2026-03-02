@@ -11,7 +11,7 @@ recognition scores. It visualizes the difference (pref - rec) with a custom
 - Orange: negative diff when rec > 0.5 (worsening from good)
 
 Usage:
-    uv run experiments/scripts/compare_recognition_preference.py \
+    uv run experiments/_scripts/analysis/_deprecated/compare_recognition_preference.py \
         --recognition data/analysis/pku_saferlhf/mismatch_1-20/11_UT_PW-Q_Rec_NPr/accuracy_pivot.csv \
         --preference data/analysis/pku_saferlhf/mismatch_1-20/14_UT_PW-Q_Pref-Q_NPr/accuracy_pivot.csv
 """
@@ -25,7 +25,7 @@ import matplotlib.patches as mpatches
 import numpy as np
 from scipy import stats
 from inspect_ai.log import read_eval_log
-from src.helpers.model_sets import get_model_set
+from self_rec_framework.src.helpers.model_sets import get_model_set
 
 
 def get_model_provider(model_name: str) -> str:

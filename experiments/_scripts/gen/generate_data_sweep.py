@@ -17,10 +17,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from inspect_ai import eval
 
-from src.inspect.tasks import generation
-from src.inspect.config import create_generation_config
-from src.helpers.utils import data_dir, save_json
-from src.helpers.model_names import inspect_model_name
+from self_rec_framework.src.inspect.tasks import generation
+from self_rec_framework.src.inspect.config import create_generation_config
+from self_rec_framework.src.helpers.utils import data_dir, save_json
+from self_rec_framework.src.helpers.model_names import inspect_model_name
 from utils import expand_model_names
 from generate_data import (
     apply_treatments,
@@ -168,8 +168,8 @@ def run_sweep_generation(
 
     # Pre-filter models that can't run in instruct mode (always-reasoning models without -thinking)
     # Import the helper here to avoid circular imports
-    from src.inspect.tasks import _is_always_reasoning_model
-    from src.helpers.model_names import is_thinking_model
+    from self_rec_framework.src.inspect.tasks import _is_always_reasoning_model
+    from self_rec_framework.src.helpers.model_names import is_thinking_model
 
     valid_models = []
     invalid_models = []
@@ -599,19 +599,19 @@ if __name__ == "__main__":
         epilog="""
 Examples:
   # Individual model names
-  python experiments/scripts/generate_data_sweep.py \\
+  python experiments/_scripts/gen/generate_data_sweep.py \\
     --model_names haiku-3-5 sonnet-3-7 gpt-4 \\
     --dataset_path=data/wikisum/debug/input/input.json \\
     --dataset_config=experiments/00_data_gen/configs/config.yaml
 
   # Use a model set (e.g., gen_cot models)
-  python experiments/scripts/generate_data_sweep.py \\
+  python experiments/_scripts/gen/generate_data_sweep.py \\
     --model_names -set cot \\
     --dataset_path=data/input/sharegpt/english_26/input.json \\
     --dataset_config=experiments/00_data_gen/configs/config.yaml
 
   # Mix individual models and sets
-  python experiments/scripts/generate_data_sweep.py \\
+  python experiments/_scripts/gen/generate_data_sweep.py \\
     --model_names haiku-3-5 -set dr gpt-4.1 \\
     --dataset_path=data/wikisum/debug/input/input.json \\
     --dataset_config=experiments/00_data_gen/configs/config.yaml

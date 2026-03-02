@@ -6,10 +6,10 @@ from inspect_ai.model import ModelOutput
 from pathlib import Path
 import yaml
 
-from src.inspect.tasks import generation
-from src.inspect.config import create_generation_config, ExperimentConfig
-from src.helpers.utils import data_dir, save_json
-from src.data_generation.procedural_editing.treatment import apply_treatment
+from self_rec_framework.src.inspect.tasks import generation
+from self_rec_framework.src.inspect.config import create_generation_config, ExperimentConfig
+from self_rec_framework.src.helpers.utils import data_dir, save_json
+from self_rec_framework.src.data_generation.procedural_editing.treatment import apply_treatment
 
 
 def _extract_think_tags(text: str) -> str | None:
@@ -428,7 +428,7 @@ if __name__ == "__main__":
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Example:
-  python experiments/scripts/generate_data.py \\
+  python experiments/_scripts/gen/generate_data.py \\
     --model_name=haiku-3-5 \\
     --dataset_path=data/wikisum/debug/input/input.json \\
     --dataset_config=experiments/00_data_gen/configs/config.yaml
