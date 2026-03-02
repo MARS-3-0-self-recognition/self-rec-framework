@@ -26,7 +26,7 @@ import argparse
 import random
 from pathlib import Path
 
-from src.helpers.utils import load_json, save_json
+from self_rec_framework.src.helpers.utils import load_json, save_json
 
 
 def randomly_capitalize_string(input_string, percentage=50):

@@ -62,7 +62,7 @@ uv run experiments/_scripts/eval/run_experiment_sweep.py \
     --model_names "${MODEL_NAMES_ARG[@]}" \
     "${GENERATOR_MODELS_ARG[@]}" \
     --treatment_type "$TREATMENT_TYPE" \
-    --dataset_dir_path data/input/bigcodebench/instruct_1-50 \
+    --dataset_dir_path data/input/bigcodebench/tutorial_set \
     --experiment_config "$SCRIPT_DIR/../../config.yaml" \
     --max-tasks "$MAX_TASKS" \
     "${BATCH_ARG[@]}" \

@@ -29,8 +29,8 @@ import uuid
 
 from datasets import load_dataset
 
-from src.helpers.constants import MY_DATASET_NAMESPACE
-from src.helpers.utils import save_json, data_dir
+from self_rec_framework.src.helpers.constants import MY_DATASET_NAMESPACE
+from self_rec_framework.src.helpers.utils import save_json, data_dir
 
 
 def load_wikisum_data(

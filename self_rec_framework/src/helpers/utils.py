@@ -4,7 +4,12 @@ from typing import Dict, Any
 
 
 def project_root() -> Path:
-    """Returns the path to the project root."""
+    """Returns the path to the project root (current working directory)."""
+    return Path.cwd()
+
+
+def package_root() -> Path:
+    """Returns the path to the self_rec_framework package root."""
     return Path(__file__).parent.parent.parent
 
 

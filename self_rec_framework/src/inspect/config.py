@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import yaml
 from typing import Optional
 from pathlib import Path
-from src.helpers.utils import project_root
+from self_rec_framework.src.helpers.utils import project_root, package_root
 
 
 @dataclass
@@ -160,8 +160,8 @@ def _resolve_reasoning_prompt_key(
 
 
 def load_base_prompts() -> dict:
-    """Load base prompt components from src/core_prompts/prompts.yaml."""
-    prompts_path = project_root() / "src" / "core_prompts" / "prompts.yaml"
+    """Load base prompt components from the framework package's core_prompts/prompts.yaml."""
+    prompts_path = package_root() / "src" / "core_prompts" / "prompts.yaml"
     if not prompts_path.exists():
         raise FileNotFoundError(f"Base prompts file not found: {prompts_path}")
 

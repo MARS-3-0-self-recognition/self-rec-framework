@@ -2,8 +2,8 @@
 
 from typing import List, Dict, Any
 
-from src.helpers.utils import data_dir, load_json
-from src.helpers.model_names import is_thinking_model
+from self_rec_framework.src.helpers.utils import data_dir, load_json
+from self_rec_framework.src.helpers.model_names import is_thinking_model
 
 
 def load_dataset_pairwise(
