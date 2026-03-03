@@ -1262,7 +1262,7 @@ def plot_performance_vs_arena_ranking(
                 try:
                     n = df_counts.loc[model, dataset]
                     if pd.notna(n) and n > 0:
-                        from utils import calculate_binomial_ci
+                        from self_rec_framework.scripts.utils import calculate_binomial_ci
                         _, _, se = calculate_binomial_ci(performance, n)
                         if pd.notna(se) and se > 0:
                             yerr = 1.96 * se  # 95% CI half-width
@@ -1353,7 +1353,7 @@ def plot_performance_vs_arena_ranking(
 
         # Use weighted regression if weights available
         if weights is not None and not np.all(np.isnan(weights)):
-            from utils import weighted_regression_with_ci, weighted_correlation
+            from self_rec_framework.scripts.utils import weighted_regression_with_ci, weighted_correlation
             reg_result = weighted_regression_with_ci(x_vals, y_vals, weights=weights, x_min=x_min, x_max=x_max)
             if reg_result:
                 correlation = weighted_correlation(x_vals, y_vals, weights)

@@ -38,8 +38,8 @@ def get_model_set(model_set_name: str | None = None) -> list[str]:
             "gpt-4o",
             "gpt-4.1",
             # Anthropic (weakest to strongest)
-            "haiku-3.5",
-            "sonnet-3.7",
+            #"haiku-3.5",
+            #"sonnet-3.7",
             "sonnet-4.5",
             "opus-4.1",
             # Google Gemini (weakest to strongest)
@@ -47,11 +47,11 @@ def get_model_set(model_set_name: str | None = None) -> list[str]:
             "gemini-2.0-flash",
             # Together AI - Llama (weakest to strongest)
             "ll-3.1-8b",
-            "ll-3.1-70b",
-            "ll-3.1-405b",
+            #"ll-3.1-70b", # still available but not working
+            #"ll-3.1-405b",
             # Together AI - Qwen (weakest to strongest)
             "qwen-2.5-7b",
-            "qwen-2.5-72b",
+            #"qwen-2.5-72b", # still available but not working
             "qwen-3.0-80b",
             # "qwen-3.0-235b",
             # Together AI - DeepSeek (weakest to strongest)

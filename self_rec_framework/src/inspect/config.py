@@ -409,7 +409,7 @@ def _build_prompts(
     try:
         format_keys = [pair_type, format_type]
         # IND-Q format has task-specific format strings (Rec vs Pref)
-        if pair_type == "IND" and format_type == "Q":
+        if pair_type == "IND":
             format_keys.append(base_task)
 
         format_template = _get_nested_prompt(

@@ -388,8 +388,12 @@ def create_answer_choice_pivot(
     """
     df_success = df[(df["status"] == "success")].copy()
 
-    # Aggregate by evaluator/treatment
-    grouped = df_success.groupby(["evaluator", "treatment"]).agg(
+    # Detect if this is individual format (treatment is None) vs pairwise format
+    is_individual_format = df_success["treatment"].isna().all()
+
+    # Aggregate by evaluator and appropriate column
+    group_col = "control" if is_individual_format else "treatment"
+    grouped = df_success.groupby(["evaluator", group_col]).agg(
         total_1=("count_1", "sum"),
         total_2=("count_2", "sum"),
     )
@@ -1258,26 +1262,29 @@ def main():
 
     # Create answer choice bias analysis
     # Use same model order as above
-    answer_pivot, answer_count_1, answer_count_2 = create_answer_choice_pivot(
-        df, model_order
-    )
+    try:
+        answer_pivot, answer_count_1, answer_count_2 = create_answer_choice_pivot(
+            df, model_order
+        )
 
-    # Save answer choice tables
-    answer_pivot_path = accuracy_dir / "answer_choice_ratio.csv"
-    answer_pivot.to_csv(answer_pivot_path)
-    print(f"  ✓ Saved answer choice ratio to: {answer_pivot_path}")
+        # Save answer choice tables
+        answer_pivot_path = accuracy_dir / "answer_choice_ratio.csv"
+        answer_pivot.to_csv(answer_pivot_path)
+        print(f"  ✓ Saved answer choice ratio to: {answer_pivot_path}")
 
-    answer_counts_path = accuracy_dir / "answer_choice_counts.csv"
-    # Combine counts into a single table for reference
-    combined_counts = answer_count_1.astype(str) + "/" + answer_count_2.astype(str)
-    combined_counts.to_csv(answer_counts_path)
-    print(f"  ✓ Saved answer choice counts to: {answer_counts_path}\n")
+        answer_counts_path = accuracy_dir / "answer_choice_counts.csv"
+        # Combine counts into a single table for reference
+        combined_counts = answer_count_1.astype(str) + "/" + answer_count_2.astype(str)
+        combined_counts.to_csv(answer_counts_path)
+        print(f"  ✓ Saved answer choice counts to: {answer_counts_path}\n")
 
-    # Generate answer choice heatmap
-    answer_heatmap_path = accuracy_dir / "answer_choice_heatmap.png"
-    plot_answer_choice_heatmap(
-        answer_pivot, answer_heatmap_path, experiment_title=experiment_title
-    )
+        # Generate answer choice heatmap
+        answer_heatmap_path = accuracy_dir / "answer_choice_heatmap.png"
+        plot_answer_choice_heatmap(
+            answer_pivot, answer_heatmap_path, experiment_title=experiment_title
+        )
+    except Exception as e:
+        print(f"  ⚠ Answer choice analysis skipped: {e}\n")
     print()
 
     # Display preview

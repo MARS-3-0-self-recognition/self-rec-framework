@@ -2039,7 +2039,7 @@ def plot_rank_distance_grouped_bar_chart(data_points, output_path, experiment_ti
     p_values_dict = {}
     if df_counts_pivot is not None:
         from scipy.stats import binomtest
-        from utils import calculate_binomial_ci, apply_fdr_correction, get_significance_marker
+        from self_rec_framework.scripts.utils import calculate_binomial_ci, apply_fdr_correction, get_significance_marker
         
         for dataset in datasets:
             if dataset in df_counts_pivot.columns:

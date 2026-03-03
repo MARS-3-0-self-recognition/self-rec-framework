@@ -304,6 +304,60 @@ def main():
             print(f"  ⚠ Error loading deviation data: {e}")
 
     # ============================================================================
+    # Process Answer Choice Ratio Data
+    # ============================================================================
+
+    # Build paths to answer choice ratio files
+    # Path: data/analysis/{dataset}/{experiment}/recognition_accuracy/answer_choice_ratio.csv
+    answer_ratio_files = []
+    answer_ratio_names = []
+    for perf_file, dataset_name in zip(performance_files, dataset_names):
+        # Navigate from evaluator_performance/ sibling to recognition_accuracy/
+        ratio_file = perf_file.parent.parent / "recognition_accuracy" / "answer_choice_ratio.csv"
+        if ratio_file.exists():
+            answer_ratio_files.append(ratio_file)
+            answer_ratio_names.append(dataset_name)
+        else:
+            print(f"  ⚠ Warning: Answer choice ratio file not found: {ratio_file}")
+
+    df_answer_ratio = pd.DataFrame()
+    if answer_ratio_files:
+        print("Loading answer choice ratio data...")
+        merged_ratios = {}
+        for ratio_file, dataset_name in zip(answer_ratio_files, answer_ratio_names):
+            try:
+                df_ratio = pd.read_csv(ratio_file, index_col=0)
+                # Compute per-evaluator mean ratio across all treatments (excluding NaN)
+                mean_ratio = df_ratio.mean(axis=1, skipna=True)
+                merged_ratios[dataset_name] = mean_ratio
+            except Exception as e:
+                print(f"  ⚠ Error loading {ratio_file}: {e}")
+
+        if merged_ratios:
+            df_answer_ratio = pd.DataFrame(merged_ratios)
+
+            # Filter and order models
+            if model_order:
+                available_models = [m for m in model_order if m in df_answer_ratio.index]
+                if available_models:
+                    df_answer_ratio = df_answer_ratio.reindex(available_models)
+
+            print(
+                f"  ✓ Loaded data: {df_answer_ratio.shape[0]} models × {df_answer_ratio.shape[1]} datasets\n"
+            )
+
+            if not df_answer_ratio.empty:
+                csv_path = output_dir / "aggregated_answer_choice_ratio.csv"
+                df_answer_ratio.to_csv(csv_path)
+                print(f"  ✓ Saved aggregated answer choice ratio to: {csv_path}\n")
+            else:
+                print("  ⚠ No valid answer choice ratio data to save.\n")
+        else:
+            print("  ⚠ No valid answer choice ratio data loaded.\n")
+    else:
+        print("  ⚠ No answer choice ratio files found.\n")
+
+    # ============================================================================
     # Summary
     # ============================================================================
 
@@ -318,6 +372,8 @@ def main():
             print("  • aggregated_counts.csv")
     if not df_dev.empty:
         print("  • aggregated_deviation.csv")
+    if not df_answer_ratio.empty:
+        print("  • aggregated_answer_choice_ratio.csv")
     print(f"{'='*70}\n")
 
 

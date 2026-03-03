@@ -670,6 +670,108 @@ def plot_dataset_grouped_bar_chart(
     plt.close()
 
 
+def plot_answer_choice_ratio_chart(
+    df: pd.DataFrame,
+    output_path: Path,
+    experiment_title: str = "",
+):
+    """
+    Create a grouped bar chart showing answer choice ratio (ordering bias) across datasets.
+    Values near 0.5 = no bias, deviations indicate preference for answer 1 or 2.
+    """
+    print("Generating answer choice ratio chart...")
+
+    if df.empty:
+        print("  ⚠ No data to plot")
+        return
+
+    df_plot = df.copy()
+
+    # Shorten dataset names for legend
+    short_names = [extract_dataset_name(name) for name in df_plot.columns]
+    short_names = [format_dataset_display_name(name) for name in short_names]
+    df_plot.columns = short_names
+
+    # Sort by average deviation from 0.5 (most biased first)
+    df_plot["_bias"] = (df_plot - 0.5).abs().mean(axis=1)
+    df_plot = df_plot.sort_values("_bias", ascending=False)
+    df_plot = df_plot.drop(columns=["_bias"])
+
+    n_models = len(df_plot)
+    n_datasets = len(df_plot.columns)
+
+    # Define colors
+    if n_datasets <= 4:
+        colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728"][:n_datasets]
+    elif n_datasets <= 8:
+        colors = plt.cm.tab10(np.linspace(0, 1, n_datasets))
+    else:
+        colors = plt.cm.Set3(np.linspace(0, 1, n_datasets))
+
+    fig_width = max(20, n_models * n_datasets * 0.22)
+    fig, ax = plt.subplots(figsize=(fig_width, 8))
+
+    x = np.arange(n_models)
+    width = 0.8 / n_datasets
+
+    for i, (dataset, color) in enumerate(zip(df_plot.columns, colors)):
+        offset = (i - n_datasets / 2 + 0.5) * width
+        values = df_plot[dataset].values
+        ax.bar(
+            x + offset,
+            values,
+            width=width * 0.9,
+            color=color,
+            alpha=0.8,
+            edgecolor="black",
+            linewidth=0.5,
+            label=dataset,
+        )
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(
+        [format_evaluator_model_display_name(m) for m in df_plot.index],
+        rotation=45,
+        ha="right",
+        fontsize=18,
+    )
+
+    # Reference line at 0.5 (no bias)
+    ax.axhline(
+        y=0.5,
+        color="#333333",
+        linestyle="--",
+        linewidth=1.5,
+        alpha=1.0,
+        label="No Bias (0.5)",
+    )
+    ax.set_ylim(0, 1)
+    ax.yaxis.set_major_locator(MultipleLocator(0.1))
+
+    ax.set_xlabel("Evaluator Model", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Proportion Choosing Answer 1", fontsize=12, fontweight="bold")
+
+    title = "Answer Choice Ratio Across Datasets (Ordering Bias)"
+    if experiment_title:
+        title = f"{title}\n{experiment_title}"
+    ax.set_title(title, fontsize=13, fontweight="bold", pad=20)
+
+    ax.grid(axis="y", alpha=0.3, linestyle="--")
+    ax.set_axisbelow(True)
+    ax.tick_params(axis="both", labelsize=18)
+    ax.legend(
+        title="Dataset",
+        loc="center left",
+        bbox_to_anchor=(1.02, 0.5),
+    )
+
+    plt.tight_layout(rect=[0, 0, 0.85, 1])
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    print(f"  ✓ Saved answer choice ratio chart to: {output_path}")
+    save_figure_minimal_version(ax, output_path)
+    plt.close()
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Generate charts from aggregated performance data",
@@ -760,6 +862,18 @@ def main():
         is_deviation=is_deviation
     )
     print()
+
+    # 4. Answer Choice Ratio Chart (if aggregated_answer_choice_ratio.csv exists)
+    answer_ratio_file = output_dir / "aggregated_answer_choice_ratio.csv"
+    if answer_ratio_file.exists():
+        df_answer = pd.read_csv(answer_ratio_file, index_col=0)
+        answer_output = output_dir / "aggregated_answer_choice_ratio.png"
+        plot_answer_choice_ratio_chart(
+            df_answer,
+            answer_output,
+            experiment_title=experiment_title,
+        )
+        print()
 
     print(f"{'='*70}")
     print("CHARTS COMPLETE")
