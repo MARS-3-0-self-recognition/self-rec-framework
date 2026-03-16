@@ -18,7 +18,7 @@ from inspect_ai import eval
 from self_rec_framework.src.inspect.tasks import generation
 from self_rec_framework.src.inspect.config import create_generation_config
 from self_rec_framework.src.helpers.utils import data_dir, save_json
-from self_rec_framework.src.helpers.model_names import inspect_model_name
+from self_rec_framework.src.helpers.model_names import inspect_model_name, INSPECT_MODEL_NAMES
 from self_rec_framework.scripts.utils import expand_model_names
 from self_rec_framework.scripts.gen.generate_data import (
     apply_treatments,
@@ -218,10 +218,9 @@ def run_sweep_generation(
         # GPT-5.1 and o3 models return unsupported_value errors in batch mode
         # GPT-4o-mini takes unreasonably long in batch mode
         # Grok models via XAI have batch API issues
-        # ll-3.3-70b-dsR1-thinking (DeepSeek R1 Distill) has batch rejection issues
-        # DeepSeek R1 full model has batch parsing issues (status_code returned as string)
+        # Together AI batch mode rejects the OpenAI-style batch format
+        #   (custom_id, method, url, body columns not recognized)
         # Note: gpt-5 (without .1) is allowed to try batch mode
-        # Note: Together AI batch mode is supported and works well (except DeepSeek models)
         is_gemini = "gemini" in model_name.lower()
         is_gpt5_1 = model_name.lower() == "gpt-5.1" or model_name.lower().startswith(
             "gpt-5.1"
@@ -229,8 +228,11 @@ def run_sweep_generation(
         is_gpt4o_mini = model_name.lower() in ["gpt-4o-mini", "gpt4o-mini"]
         is_o3 = model_name.lower().startswith("o3")
         is_grok = "grok" in model_name.lower()
-        is_dsr1_distill = "dsr1" in model_name.lower()
-        is_deepseek_r1 = "deepseek-r1" in model_name.lower()
+
+        # Check if model is a Together AI model by looking up inspect name
+        is_together = False
+        if model_name in INSPECT_MODEL_NAMES:
+            is_together = INSPECT_MODEL_NAMES[model_name].startswith("together/")
 
         if (
             is_gemini
@@ -238,8 +240,7 @@ def run_sweep_generation(
             or is_gpt4o_mini
             or is_o3
             or is_grok
-            or is_dsr1_distill
-            or is_deepseek_r1
+            or is_together
         ):
             no_batch_tasks.append(task)
             no_batch_models.append(model_name)
@@ -263,7 +264,7 @@ def run_sweep_generation(
             f"\n\033[91m⚠ WARNING: Batch mode disabled for {len(no_batch_tasks)} models"
         )
         print(
-            "  (Google Gemini batch mode has bugs; GPT-5.1 returns unsupported_value errors)\033[0m"
+            "  (Together AI rejects batch format; Gemini has bugs; GPT-5.1 returns errors)\033[0m"
         )
         print(f"  • Batch-compatible models: {len(batch_tasks)} WITH batch mode")
         print(f"  • Non-batch models: {len(no_batch_tasks)} WITHOUT batch mode\n")

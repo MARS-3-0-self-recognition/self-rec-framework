@@ -30,6 +30,28 @@ from self_rec_framework.scripts.utils import (
     format_evaluator_model_display_name,
     save_figure_minimal_version,
 )
+from self_rec_framework.src.helpers.model_names import LM_ARENA_RANKINGS
+
+
+def _get_arena_rank(model_name: str) -> int:
+    """
+    Get LM Arena ranking for a model, returning a large number for unranked models
+    so they sort to the end (rightmost on charts).
+    """
+    rank = LM_ARENA_RANKINGS.get(model_name)
+    if rank is None:
+        return 9999
+    return rank
+
+
+def _sort_by_arena_ranking(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Sort a DataFrame's index (model names) by LM Arena ranking.
+    Highest rank (smallest number) first, unranked models last.
+    """
+    ranks = [_get_arena_rank(m) for m in df.index]
+    order = np.argsort(ranks)
+    return df.iloc[order]
 
 
 def extract_dataset_name(full_path: str) -> str:
@@ -210,12 +232,19 @@ def plot_grouped_bar_chart(
     output_path: Path,
     experiment_title: str = "",
     is_deviation: bool = False,
+    sort_by: str = "performance",
 ):
     """
     Create a grouped bar chart with models on x-axis and side-by-side dataset bars.
+
+    Args:
+        sort_by: How to sort models on x-axis. "performance" (default) sorts by
+            total performance/deviation. "arena_ranking" sorts by LM Arena ranking
+            (highest rank first, unranked models last).
     """
     chart_type = "deviation" if is_deviation else "performance"
-    print(f"Generating grouped bar chart ({chart_type})...")
+    sort_label = f", sorted by {sort_by.replace('_', ' ')}" if sort_by != "performance" else ""
+    print(f"Generating grouped bar chart ({chart_type}{sort_label})...")
 
     if df.empty:
         print(f"  ⚠ No data to plot")
@@ -228,9 +257,11 @@ def plot_grouped_bar_chart(
     short_names = [extract_dataset_name(name) for name in df_plot.columns]
     short_names = [format_dataset_display_name(name) for name in short_names]
     df_plot.columns = short_names
-    
+
     # Sort models
-    if is_deviation:
+    if sort_by == "arena_ranking":
+        df_plot = _sort_by_arena_ranking(df_plot)
+    elif is_deviation:
         # Sort by total absolute deviation
         df_plot["_total_abs"] = df_plot.abs().sum(axis=1)
         df_plot = df_plot.sort_values("_total_abs", ascending=False)
@@ -348,17 +379,19 @@ def plot_grouped_bar_chart(
             fontsize=18,
         )
 
+    sort_suffix = " (by LM Arena Ranking)" if sort_by == "arena_ranking" else ""
+
     if is_deviation:
         # Add reference line at 0
         ax.axhline(y=0, color="black", linestyle="-", linewidth=1, alpha=0.8)
-        
+
         ylabel = "Deviation from Chance (0.5)"
-        title = "Evaluator Deviation from Chance by Dataset"
+        title = f"Evaluator Deviation from Chance by Dataset{sort_suffix}"
     else:
         # Regular performance
         ylabel = "Performance Score"
-        title = "Evaluator Performance by Dataset"
-        
+        title = f"Evaluator Performance by Dataset{sort_suffix}"
+
         # Add chance line at 0.5 (assuming individual performance is normalized 0-1?)
         # Actually in aggregated file, values are 0-1 accuracy.
         # But wait, stacked chart sums them up.
@@ -674,12 +707,19 @@ def plot_answer_choice_ratio_chart(
     df: pd.DataFrame,
     output_path: Path,
     experiment_title: str = "",
+    sort_by: str = "bias",
 ):
     """
     Create a grouped bar chart showing answer choice ratio (ordering bias) across datasets.
     Values near 0.5 = no bias, deviations indicate preference for answer 1 or 2.
+
+    Args:
+        sort_by: How to sort models on x-axis. "bias" (default) sorts by average
+            deviation from 0.5. "arena_ranking" sorts by LM Arena ranking
+            (highest rank first, unranked models last).
     """
-    print("Generating answer choice ratio chart...")
+    sort_label = f", sorted by {sort_by.replace('_', ' ')}" if sort_by != "bias" else ""
+    print(f"Generating answer choice ratio chart{sort_label}...")
 
     if df.empty:
         print("  ⚠ No data to plot")
@@ -692,10 +732,14 @@ def plot_answer_choice_ratio_chart(
     short_names = [format_dataset_display_name(name) for name in short_names]
     df_plot.columns = short_names
 
-    # Sort by average deviation from 0.5 (most biased first)
-    df_plot["_bias"] = (df_plot - 0.5).abs().mean(axis=1)
-    df_plot = df_plot.sort_values("_bias", ascending=False)
-    df_plot = df_plot.drop(columns=["_bias"])
+    # Sort models
+    if sort_by == "arena_ranking":
+        df_plot = _sort_by_arena_ranking(df_plot)
+    else:
+        # Sort by average deviation from 0.5 (most biased first)
+        df_plot["_bias"] = (df_plot - 0.5).abs().mean(axis=1)
+        df_plot = df_plot.sort_values("_bias", ascending=False)
+        df_plot = df_plot.drop(columns=["_bias"])
 
     n_models = len(df_plot)
     n_datasets = len(df_plot.columns)
@@ -751,7 +795,8 @@ def plot_answer_choice_ratio_chart(
     ax.set_xlabel("Evaluator Model", fontsize=12, fontweight="bold")
     ax.set_ylabel("Proportion Choosing Answer 1", fontsize=12, fontweight="bold")
 
-    title = "Answer Choice Ratio Across Datasets (Ordering Bias)"
+    sort_suffix = " (by LM Arena Ranking)" if sort_by == "arena_ranking" else ""
+    title = f"Answer Choice Ratio Across Datasets (Ordering Bias){sort_suffix}"
     if experiment_title:
         title = f"{title}\n{experiment_title}"
     ax.set_title(title, fontsize=13, fontweight="bold", pad=20)
@@ -768,6 +813,252 @@ def plot_answer_choice_ratio_chart(
     plt.tight_layout(rect=[0, 0, 0.85, 1])
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     print(f"  ✓ Saved answer choice ratio chart to: {output_path}")
+    save_figure_minimal_version(ax, output_path)
+    plt.close()
+
+
+def plot_accept_ratio_chart(
+    df: pd.DataFrame,
+    output_path: Path,
+    experiment_title: str = "",
+    sort_by: str = "bias",
+):
+    """
+    Create a grouped bar chart showing accept/reject ratio (authorship bias) across datasets.
+
+    For IND experiments: accept ratio = (C_j + (1 - mean(T_i))) / 2
+    Values near 0.5 = no bias, >0.5 = tendency to accept, <0.5 = tendency to reject.
+
+    Args:
+        sort_by: How to sort models on x-axis. "bias" (default) sorts by average
+            deviation from 0.5. "arena_ranking" sorts by LM Arena ranking.
+    """
+    sort_label = f", sorted by {sort_by.replace('_', ' ')}" if sort_by != "bias" else ""
+    print(f"Generating accept ratio chart{sort_label}...")
+
+    if df.empty:
+        print("  ⚠ No data to plot")
+        return
+
+    df_plot = df.copy()
+
+    # Shorten dataset names for legend
+    short_names = [extract_dataset_name(name) for name in df_plot.columns]
+    short_names = [format_dataset_display_name(name) for name in short_names]
+    df_plot.columns = short_names
+
+    # Sort models
+    if sort_by == "arena_ranking":
+        df_plot = _sort_by_arena_ranking(df_plot)
+    else:
+        # Sort by average deviation from 0.5 (most biased first)
+        df_plot["_bias"] = (df_plot - 0.5).abs().mean(axis=1)
+        df_plot = df_plot.sort_values("_bias", ascending=False)
+        df_plot = df_plot.drop(columns=["_bias"])
+
+    n_models = len(df_plot)
+    n_datasets = len(df_plot.columns)
+
+    # Define colors
+    if n_datasets <= 4:
+        colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728"][:n_datasets]
+    elif n_datasets <= 8:
+        colors = plt.cm.tab10(np.linspace(0, 1, n_datasets))
+    else:
+        colors = plt.cm.Set3(np.linspace(0, 1, n_datasets))
+
+    fig_width = max(20, n_models * n_datasets * 0.22)
+    fig, ax = plt.subplots(figsize=(fig_width, 8))
+
+    x = np.arange(n_models)
+    width = 0.8 / n_datasets
+
+    for i, (dataset, color) in enumerate(zip(df_plot.columns, colors)):
+        offset = (i - n_datasets / 2 + 0.5) * width
+        values = df_plot[dataset].values
+        ax.bar(
+            x + offset,
+            values,
+            width=width * 0.9,
+            color=color,
+            alpha=0.8,
+            edgecolor="black",
+            linewidth=0.5,
+            label=dataset,
+        )
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(
+        [format_evaluator_model_display_name(m) for m in df_plot.index],
+        rotation=45,
+        ha="right",
+        fontsize=18,
+    )
+
+    # Reference line at 0.5 (no bias)
+    ax.axhline(
+        y=0.5,
+        color="#333333",
+        linestyle="--",
+        linewidth=1.5,
+        alpha=1.0,
+        label="No Bias (0.5)",
+    )
+    ax.set_ylim(0, 1)
+    ax.yaxis.set_major_locator(MultipleLocator(0.1))
+
+    ax.set_xlabel("Evaluator Model", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Accept Rate (Proportion Accepting Authorship)", fontsize=12, fontweight="bold")
+
+    sort_suffix = " (by LM Arena Ranking)" if sort_by == "arena_ranking" else ""
+    title = f"Accept/Reject Ratio Across Datasets (Authorship Bias){sort_suffix}"
+    if experiment_title:
+        title = f"{title}\n{experiment_title}"
+    ax.set_title(title, fontsize=13, fontweight="bold", pad=20)
+
+    ax.grid(axis="y", alpha=0.3, linestyle="--")
+    ax.set_axisbelow(True)
+    ax.tick_params(axis="both", labelsize=18)
+    ax.legend(
+        title="Dataset",
+        loc="center left",
+        bbox_to_anchor=(1.02, 0.5),
+    )
+
+    plt.tight_layout(rect=[0, 0, 0.85, 1])
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    print(f"  ✓ Saved accept ratio chart to: {output_path}")
+    save_figure_minimal_version(ax, output_path)
+    plt.close()
+
+
+def plot_f1_chart(
+    df: pd.DataFrame,
+    output_path: Path,
+    experiment_title: str = "",
+    sort_by: str = "performance",
+):
+    """
+    Create a grouped bar chart showing F1 scores across datasets.
+
+    F1 uses the authorship-acceptance framing:
+        TP = control accuracy (correctly accepts own text)
+        TN = treatment accuracy (correctly rejects others' text)
+        FP = 1 - treatment accuracy (incorrectly accepts others' text)
+        FN = 1 - control accuracy (incorrectly rejects own text)
+
+    Args:
+        sort_by: "performance" (default) sorts by total F1.
+            "arena_ranking" sorts by LM Arena ranking.
+    """
+    sort_label = f", sorted by {sort_by.replace('_', ' ')}" if sort_by != "performance" else ""
+    print(f"Generating F1 score chart{sort_label}...")
+
+    if df.empty:
+        print("  ⚠ No data to plot")
+        return
+
+    df_plot = df.copy()
+
+    # Shorten dataset names for legend
+    short_names = [extract_dataset_name(name) for name in df_plot.columns]
+    short_names = [format_dataset_display_name(name) for name in short_names]
+    df_plot.columns = short_names
+
+    # Sort models
+    if sort_by == "arena_ranking":
+        df_plot = _sort_by_arena_ranking(df_plot)
+    else:
+        df_plot["_total"] = df_plot.sum(axis=1)
+        df_plot = df_plot.sort_values("_total", ascending=False)
+        df_plot = df_plot.drop(columns=["_total"])
+
+    n_models = len(df_plot)
+    n_datasets = len(df_plot.columns)
+
+    # Define colors
+    if n_datasets <= 4:
+        colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728"][:n_datasets]
+    elif n_datasets <= 8:
+        colors = plt.cm.tab10(np.linspace(0, 1, n_datasets))
+    else:
+        colors = plt.cm.Set3(np.linspace(0, 1, n_datasets))
+
+    fig_width = max(20, n_models * n_datasets * 0.22)
+    fig, ax = plt.subplots(figsize=(fig_width, 8))
+
+    x = np.arange(n_models)
+    width = 0.8 / n_datasets
+
+    # Try to load counts for error bars
+    counts_file = output_path.parent / "aggregated_f1_counts.csv"
+    df_counts = None
+    if counts_file.exists():
+        try:
+            df_counts = pd.read_csv(counts_file, index_col=0)
+            counts_short_names = [extract_dataset_name(name) for name in df_counts.columns]
+            counts_short_names = [format_dataset_display_name(name) for name in counts_short_names]
+            df_counts.columns = counts_short_names
+            df_counts = df_counts.reindex(df_plot.index)
+            print(f"  ✓ Loaded sample counts from {counts_file.name}")
+        except Exception as e:
+            print(f"  ⚠ Could not load counts file: {e}")
+
+    for i, (dataset, color) in enumerate(zip(df_plot.columns, colors)):
+        offset = (i - n_datasets / 2 + 0.5) * width
+        values = df_plot[dataset].values
+        ax.bar(
+            x + offset,
+            values,
+            width=width * 0.9,
+            color=color,
+            alpha=0.8,
+            edgecolor="black",
+            linewidth=0.5,
+            label=dataset,
+        )
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(
+        [format_evaluator_model_display_name(m) for m in df_plot.index],
+        rotation=45,
+        ha="right",
+        fontsize=18,
+    )
+
+    # Reference line at 0.5 (random model F1)
+    ax.axhline(
+        y=0.5,
+        color="#333333",
+        linestyle="--",
+        linewidth=1.5,
+        alpha=1.0,
+        label="Random (0.5)",
+    )
+    ax.set_ylim(0, 1)
+    ax.yaxis.set_major_locator(MultipleLocator(0.1))
+
+    ax.set_xlabel("Evaluator Model", fontsize=12, fontweight="bold")
+    ax.set_ylabel("F1 Score", fontsize=12, fontweight="bold")
+
+    sort_suffix = " (by LM Arena Ranking)" if sort_by == "arena_ranking" else ""
+    title = f"Evaluator F1 Score by Dataset{sort_suffix}"
+    if experiment_title:
+        title = f"{title}\n{experiment_title}"
+    ax.set_title(title, fontsize=13, fontweight="bold", pad=20)
+
+    ax.grid(axis="y", alpha=0.3, linestyle="--")
+    ax.set_axisbelow(True)
+    ax.tick_params(axis="both", labelsize=18)
+    ax.legend(
+        title="Dataset",
+        loc="center left",
+        bbox_to_anchor=(1.02, 0.5),
+    )
+
+    plt.tight_layout(rect=[0, 0, 0.85, 1])
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    print(f"  ✓ Saved F1 chart to: {output_path}")
     save_figure_minimal_version(ax, output_path)
     plt.close()
 
@@ -872,6 +1163,73 @@ def main():
             df_answer,
             answer_output,
             experiment_title=experiment_title,
+        )
+        print()
+
+    # 5. Grouped Bar Chart sorted by LM Arena ranking
+    arena_grouped_output = output_dir / file_path.name.replace(".csv", "_grouped_arena.png")
+    plot_grouped_bar_chart(
+        df,
+        arena_grouped_output,
+        experiment_title=experiment_title,
+        is_deviation=is_deviation,
+        sort_by="arena_ranking",
+    )
+    print()
+
+    # 6. Answer Choice Ratio Chart sorted by LM Arena ranking
+    if answer_ratio_file.exists():
+        df_answer = pd.read_csv(answer_ratio_file, index_col=0)
+        arena_answer_output = output_dir / "aggregated_answer_choice_ratio_arena.png"
+        plot_answer_choice_ratio_chart(
+            df_answer,
+            arena_answer_output,
+            experiment_title=experiment_title,
+            sort_by="arena_ranking",
+        )
+        print()
+
+    # 7. Accept Ratio Chart (if aggregated_accept_ratio.csv exists, IND experiments only)
+    accept_ratio_file = output_dir / "aggregated_accept_ratio.csv"
+    if accept_ratio_file.exists():
+        df_accept = pd.read_csv(accept_ratio_file, index_col=0)
+        accept_output = output_dir / "aggregated_accept_ratio.png"
+        plot_accept_ratio_chart(
+            df_accept,
+            accept_output,
+            experiment_title=experiment_title,
+        )
+        print()
+
+        # 8. Accept Ratio Chart sorted by LM Arena ranking
+        arena_accept_output = output_dir / "aggregated_accept_ratio_arena.png"
+        plot_accept_ratio_chart(
+            df_accept,
+            arena_accept_output,
+            experiment_title=experiment_title,
+            sort_by="arena_ranking",
+        )
+        print()
+
+    # 9. F1 Score Chart (if aggregated_f1.csv exists, IND experiments only)
+    f1_file = output_dir / "aggregated_f1.csv"
+    if f1_file.exists():
+        df_f1 = pd.read_csv(f1_file, index_col=0)
+        f1_output = output_dir / "aggregated_f1_grouped.png"
+        plot_f1_chart(
+            df_f1,
+            f1_output,
+            experiment_title=experiment_title,
+        )
+        print()
+
+        # 10. F1 Score Chart sorted by LM Arena ranking
+        arena_f1_output = output_dir / "aggregated_f1_grouped_arena.png"
+        plot_f1_chart(
+            df_f1,
+            arena_f1_output,
+            experiment_title=experiment_title,
+            sort_by="arena_ranking",
         )
         print()
 

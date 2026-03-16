@@ -47,6 +47,7 @@ INSPECT_MODEL_NAMES: dict = {
     "ll-3.1-8b": "together/meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
     "ll-3.1-70b": "together/meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
     "ll-3.3-70b-dsR1-thinking": "together/deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+    "ll-70B-dsr1-thinking": "together/deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
     "ll-3.1-405b": "together/meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
     # Qwen models
     "qwen-2.5-7b": "together/Qwen/Qwen2.5-7B-Instruct-Turbo",
@@ -58,22 +59,19 @@ INSPECT_MODEL_NAMES: dict = {
     # DeepSeek models
     "deepseek-3.0": "together/deepseek-ai/DeepSeek-V3",
     "deepseek-3.1": "together/deepseek-ai/DeepSeek-V3.1",
+    "deepseek-3.1-thinking": "together/deepseek-ai/DeepSeek-V3.1",
     "deepseek-r1-thinking": "together/deepseek-ai/DeepSeek-R1",  # reasoning model
+    "deepseek-r1-0528-thinking": "together/deepseek-ai/DeepSeek-R1-0528",
     # Moonshot
     "kimi-k2": "together/moonshotai/Kimi-K2-Instruct-0905",
     "kimi-k2-thinking": "together/moonshotai/Kimi-K2-Thinking",
-    ## Fireworks
-    # Llama
-    "ll-3.1-8b_fw": "fireworks/accounts/fireworks/models/llama-v3p1-8b-instruct",
-    "ll-3.1-70b_fw": "fireworks/accounts/fireworks/models/llama-v3p1-70b-instruct",
-    "ll-3.1-405b_fw": "fireworks/accounts/fireworks/models/llama-v3p1-405b-instruct",
-    # Qwen
-    "qwen-3.0-30b_fw": "fireworks/accounts/fireworks/models/qwen3-30b-a3b",
-    "qwen-3.0-235b_fw": "fireworks/accounts/fireworks/models/qwen3-vl-235b-a22b-instruct",
-    # DeepSeek
-    # "deepseek-v3": "fireworks/accounts/fireworks/models/deepseek-v3-0324",
-    "deepseek-3.1_fw": "fireworks/accounts/fireworks/models/deepseek-v3p1",
-    "deepseek-r1_fw": "fireworks/accounts/fireworks/models/deepseek-r1-0528",  # reasoning model
+    "kimi-k2.5": "together/moonshotai/Kimi-K2.5",
+    "kimi-k2.5-thinking": "together/moonshotai/Kimi-K2.5",
+    #MiniMax
+    "minimax-m2.5-thinking": "together/MiniMaxAI/MiniMax-M2.5",
+    #GLM
+    "glm-4.5-air-thinking": "together/zai-org/GLM-4.5-Air-FP8",
+    "glm-4.7-thinking": "together/zai-org/GLM-4.7",
 }
 
 # Model parameter counts (in billions, unless specified with 'T' for trillions)
@@ -581,6 +579,38 @@ def needs_reasoning_params(model_name: str) -> bool:
     return True
 
 
+def needs_together_reasoning_activation(model_name: str) -> bool:
+    """
+    Check if a Together AI model needs explicit reasoning activation via extra_body.
+
+    Some Together AI models are "hybrid" — they use the same endpoint for both
+    instruct and thinking modes. To enable thinking, the API request must include
+    `reasoning: {"enabled": true}` in the request body.
+
+    This is distinct from models that have separate thinking endpoints (e.g.,
+    Qwen3-Next-80B-A3B-Thinking) which always produce reasoning output.
+
+    Args:
+        model_name: Model name (must include "-thinking" suffix)
+
+    Returns:
+        True if the model needs `reasoning: {"enabled": true}` in extra_body
+    """
+    if not model_name.endswith("-thinking"):
+        return False
+
+    base_name = get_base_model_name(model_name)
+
+    # Together AI hybrid models that share the same endpoint for instruct/thinking
+    # and need `reasoning: {"enabled": true}` to activate thinking mode
+    together_hybrid_thinking_models = [
+        "deepseek-3.1",  # together/deepseek-ai/DeepSeek-V3.1
+        "kimi-k2.5",  # together/moonshotai/Kimi-K2.5
+    ]
+
+    return base_name in together_hybrid_thinking_models
+
+
 def is_native_reasoning_model(model_name: str) -> bool:
     """
     Check if a model is a native reasoning model (uses a different endpoint for reasoning).
@@ -609,13 +639,25 @@ def is_native_reasoning_model(model_name: str) -> bool:
         "qwen-3.0-80b",
         "qwen-3.0-235b",
         "deepseek-r1",
+        "deepseek-r1-0528",
         "ll-3.3-70b-dsR1",
+        "ll-70B-dsr1",
         "gpt-oss-20b",
         "gpt-oss-120b",
         "kimi-k2",
+        # Together AI hybrid models (same endpoint, reasoning activated via API param)
+        "deepseek-3.1",
+        "kimi-k2.5",
+        # Together AI models that always think (no non-thinking variant)
+        "minimax-m2.5",
+        "glm-4.5-air",
+        "glm-4.7",
         # OpenAI o-series (always reasoning)
         "o3",
         "o3-mini",
+        # OpenAI GPT-5 (dual-mode)
+        "gpt-5",
+        "gpt-5-mini",
         # XAI Grok with separate reasoning endpoint
         "grok-4.1-fast",
         # Dual-mode models: -thinking indicates COT-R (use own reasoning data), not COT-I

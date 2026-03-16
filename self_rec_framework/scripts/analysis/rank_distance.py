@@ -163,7 +163,7 @@ def adjust_data_points(data_points, self_scores):
     return adjusted_points
 
 
-def plot_rank_distance(data_points, output_path, experiment_title="", self_scores=None):
+def plot_rank_distance(data_points, output_path, experiment_title="", self_scores=None, metric_name="Recognition Accuracy"):
     """
     Plot performance vs rank distance.
     
@@ -398,10 +398,10 @@ def plot_rank_distance(data_points, output_path, experiment_title="", self_score
 
     # Labels
     ax.set_xlabel("Rank Distance (Evaluator Rank - Generator Rank)\nPositive = Evaluator is worse ranked", fontsize=12, fontweight="bold")
-    y_label = "Adjusted Recognition Accuracy\n(Averaged with Evaluator Self-Score)" if self_scores else "Recognition Accuracy"
+    y_label = f"Adjusted {metric_name}\n(Averaged with Evaluator Self-Score)" if self_scores else metric_name
     ax.set_ylabel(y_label, fontsize=12, fontweight="bold")
-    
-    full_title = "Recognition Performance vs Rank Distance"
+
+    full_title = f"{metric_name} vs Rank Distance"
     if self_scores:
         full_title += "\n(Adjusted for Self-Recognition Bias)"
     if experiment_title:
@@ -421,7 +421,7 @@ def plot_rank_distance(data_points, output_path, experiment_title="", self_score
     print(f"  ✓ Saved plot to: {output_path}")
     plt.close()
 
-def plot_rank_distance_aggregated(data_points, output_path, experiment_title=""):
+def plot_rank_distance_aggregated(data_points, output_path, experiment_title="", metric_name="Recognition Accuracy"):
     """
     Plot aggregated performance vs rank distance across all datasets.
     Averages performance for each (Evaluator, Generator) pair over all datasets.
@@ -602,9 +602,9 @@ def plot_rank_distance_aggregated(data_points, output_path, experiment_title="")
 
     # Labels
     ax.set_xlabel("Rank Distance (Evaluator Rank - Generator Rank)\nPositive = Evaluator is worse ranked", fontsize=12, fontweight="bold")
-    ax.set_ylabel("Average Recognition Accuracy (across datasets)", fontsize=12, fontweight="bold")
-    
-    full_title = "Aggregated Performance vs Rank Distance"
+    ax.set_ylabel(f"Average {metric_name} (across datasets)", fontsize=12, fontweight="bold")
+
+    full_title = f"Aggregated {metric_name} vs Rank Distance"
     if experiment_title:
         full_title += f"\n{experiment_title}"
     ax.set_title(full_title, fontsize=14, fontweight="bold", pad=20)
@@ -629,7 +629,7 @@ def plot_rank_distance_aggregated(data_points, output_path, experiment_title="")
     save_figure_minimal_version(ax, output_path)
     plt.close()
 
-def plot_rank_distance_adjusted(cross_model_points, self_scores, output_path, experiment_title="", self_score_n_samples=None):
+def plot_rank_distance_adjusted(cross_model_points, self_scores, output_path, experiment_title="", self_score_n_samples=None, metric_name="Recognition Accuracy"):
     """
     Plot adjusted performance vs rank distance.
     Each cross-model comparison is adjusted by averaging with the evaluator's self-score.
@@ -833,9 +833,9 @@ def plot_rank_distance_adjusted(cross_model_points, self_scores, output_path, ex
 
     # Labels
     ax.set_xlabel("Rank Distance (Evaluator Rank - Generator Rank)\nPositive = Evaluator is worse ranked", fontsize=12, fontweight="bold")
-    ax.set_ylabel("Adjusted Recognition Accuracy\n(Averaged with Evaluator Self-Score)", fontsize=12, fontweight="bold")
-    
-    full_title = "Adjusted Performance vs Rank Distance\n(Controlled for Self-Recognition Bias)"
+    ax.set_ylabel(f"Adjusted {metric_name}\n(Averaged with Evaluator Self-Score)", fontsize=12, fontweight="bold")
+
+    full_title = f"Adjusted {metric_name} vs Rank Distance\n(Controlled for Self-Recognition Bias)"
     if experiment_title:
         full_title += f"\n{experiment_title}"
     ax.set_title(full_title, fontsize=14, fontweight="bold", pad=20)
@@ -860,7 +860,7 @@ def plot_rank_distance_adjusted(cross_model_points, self_scores, output_path, ex
     save_figure_minimal_version(ax, output_path)
     plt.close()
 
-def plot_rank_distance_filtered_by_evaluator_rank(data_points, output_path, experiment_title="", self_scores=None):
+def plot_rank_distance_filtered_by_evaluator_rank(data_points, output_path, experiment_title="", self_scores=None, metric_name="Recognition Accuracy"):
     """
     Plot performance vs evaluator rank for model pairs with rank distance between -20 and 20.
     Shows all data points from all datasets for these filtered pairs, with fit lines per dataset.
@@ -1150,16 +1150,16 @@ def plot_rank_distance_filtered_by_evaluator_rank(data_points, output_path, expe
 
     # Labels
     ax.set_xlabel("Evaluator LM Arena Rank\n(Lower rank = Higher capability)", fontsize=12, fontweight="bold")
-    y_label = "Adjusted Recognition Accuracy\n(Averaged with Evaluator Self-Score)" if self_scores else "Recognition Accuracy"
+    y_label = f"Adjusted {metric_name}\n(Averaged with Evaluator Self-Score)" if self_scores else metric_name
     ax.set_ylabel(y_label, fontsize=12, fontweight="bold")
-    
-    full_title = "Performance vs Evaluator Rank\n(Rank Distance: -20 < distance < 20)"
+
+    full_title = f"{metric_name} vs Evaluator Rank\n(Rank Distance: -20 < distance < 20)"
     if self_scores:
         full_title += "\n(Adjusted for Self-Recognition Bias)"
     if experiment_title:
         full_title += f"\n{experiment_title}"
     ax.set_title(full_title, fontsize=14, fontweight="bold", pad=20)
-    
+
     # Place legend below the chart (3-column format)
     ax.legend(
         handles=legend_handles,
@@ -1196,7 +1196,7 @@ def plot_rank_distance_filtered_by_evaluator_rank(data_points, output_path, expe
     save_figure_minimal_version(ax, output_path)
     plt.close()
 
-def plot_rank_distance_vs_evaluator_rank(data_points, output_dir, experiment_title="", self_scores=None):
+def plot_rank_distance_vs_evaluator_rank(data_points, output_dir, experiment_title="", self_scores=None, metric_name="Recognition Accuracy", file_prefix=""):
     """
     Plot evaluator rank vs generator rank with performance as color (red to green heatmap).
     Creates separate plots for each dataset.
@@ -1319,12 +1319,12 @@ def plot_rank_distance_vs_evaluator_rank(data_points, output_dir, experiment_tit
         plt.tight_layout()
         
         # Save with dataset name in filename
-        output_path = Path(output_dir) / f"evaluator_rank_vs_generator_rank_{dataset}.png"
+        output_path = Path(output_dir) / f"{file_prefix}evaluator_rank_vs_generator_rank_{dataset}.png"
         plt.savefig(output_path, dpi=300, bbox_inches="tight")
         print(f"  ✓ Saved {dataset} plot to: {output_path}")
         plt.close()
 
-def plot_rank_distance_filtered_by_evaluator_rank_positive(data_points, output_path, experiment_title="", self_scores=None):
+def plot_rank_distance_filtered_by_evaluator_rank_positive(data_points, output_path, experiment_title="", self_scores=None, metric_name="Recognition Accuracy"):
     """
     Plot performance vs evaluator rank for model pairs with rank distance > -20.
     Shows all data points from all datasets for these filtered pairs, with fit lines per dataset.
@@ -1615,16 +1615,16 @@ def plot_rank_distance_filtered_by_evaluator_rank_positive(data_points, output_p
 
     # Labels
     ax.set_xlabel("Evaluator LM Arena Rank\n(Lower rank = Higher capability)", fontsize=12, fontweight="bold")
-    y_label = "Adjusted Recognition Accuracy\n(Averaged with Evaluator Self-Score)" if self_scores else "Recognition Accuracy"
+    y_label = f"Adjusted {metric_name}\n(Averaged with Evaluator Self-Score)" if self_scores else metric_name
     ax.set_ylabel(y_label, fontsize=12, fontweight="bold")
-    
-    full_title = "Performance vs Evaluator Rank\n(Rank Distance: distance > -20)"
+
+    full_title = f"{metric_name} vs Evaluator Rank\n(Rank Distance: distance > -20)"
     if self_scores:
         full_title += "\n(Adjusted for Self-Recognition Bias)"
     if experiment_title:
         full_title += f"\n{experiment_title}"
     ax.set_title(full_title, fontsize=14, fontweight="bold", pad=20)
-    
+
     # Place legend below the chart (3-column format)
     ax.legend(
         handles=legend_handles,
@@ -1661,7 +1661,7 @@ def plot_rank_distance_filtered_by_evaluator_rank_positive(data_points, output_p
     save_figure_minimal_version(ax, output_path)
     plt.close()
 
-def plot_rank_distance_filtered_by_evaluator_rank_positive_averaged(data_points, output_path, experiment_title="", self_scores=None):
+def plot_rank_distance_filtered_by_evaluator_rank_positive_averaged(data_points, output_path, experiment_title="", self_scores=None, metric_name="Recognition Accuracy"):
     """
     Plot performance vs evaluator rank for model pairs with rank distance > -20.
     Averages performance for each evaluator over all generator models per dataset.
@@ -1880,12 +1880,12 @@ def plot_rank_distance_filtered_by_evaluator_rank_positive_averaged(data_points,
     # Labels
     ax.set_xlabel("Evaluator LM Arena Rank\n(Lower rank = Higher capability)", fontsize=12, fontweight="bold")
     if self_scores:
-        y_label = "Adjusted Recognition Accuracy\n(Averaged over Generators, Adjusted with Self-Score)"
+        y_label = f"Adjusted {metric_name}\n(Averaged over Generators, Adjusted with Self-Score)"
     else:
-        y_label = "Recognition Accuracy (Averaged over Generators)"
+        y_label = f"{metric_name} (Averaged over Generators)"
     ax.set_ylabel(y_label, fontsize=12, fontweight="bold")
-    
-    full_title = "Performance vs Evaluator Rank (Averaged)\n(Rank Distance: distance > -20)"
+
+    full_title = f"{metric_name} vs Evaluator Rank (Averaged)\n(Rank Distance: distance > -20)"
     if self_scores:
         full_title += "\n(Adjusted for Self-Recognition Bias)"
     if experiment_title:
@@ -1921,7 +1921,7 @@ def plot_rank_distance_filtered_by_evaluator_rank_positive_averaged(data_points,
     print(f"  ✓ Saved filtered evaluator rank plot (positive, averaged) to: {output_path}")
     plt.close()
 
-def plot_rank_distance_grouped_bar_chart(data_points, output_path, experiment_title="", self_scores=None):
+def plot_rank_distance_grouped_bar_chart(data_points, output_path, experiment_title="", self_scores=None, metric_name="Recognition Accuracy"):
     """
     Create a grouped bar chart showing performance by evaluator (ordered by arena rank)
     with one bar per dataset for each evaluator.
@@ -2143,9 +2143,9 @@ def plot_rank_distance_grouped_bar_chart(data_points, output_path, experiment_ti
     
     # Labels and title
     ax.set_xlabel("Evaluator Model (ordered by LM Arena Rank)", fontsize=12, fontweight="bold")
-    ax.set_ylabel("Recognition Accuracy", fontsize=12, fontweight="bold")
-    
-    full_title = "Performance by Evaluator and Dataset\n(Rank Distance: -20 < distance < 20)"
+    ax.set_ylabel(metric_name, fontsize=12, fontweight="bold")
+
+    full_title = f"{metric_name} by Evaluator and Dataset\n(Rank Distance: -20 < distance < 20)"
     if self_scores is not None:
         full_title += "\n(Adjusted for Self-Recognition Bias)"
     if experiment_title:
@@ -2210,7 +2210,7 @@ def plot_rank_distance_grouped_bar_chart(data_points, output_path, experiment_ti
     save_figure_minimal_version(ax, output_path)
     plt.close()
 
-def plot_rank_distance_top5_evaluators(data_points, output_path, experiment_title="", is_adjusted=False):
+def plot_rank_distance_top5_evaluators(data_points, output_path, experiment_title="", is_adjusted=False, metric_name="Recognition Accuracy"):
     """
     Plot performance vs rank distance for top 5 highest-ranked evaluator models only.
     Works with aggregated data (PW) or adjusted data (IND).
@@ -2315,11 +2315,11 @@ def plot_rank_distance_top5_evaluators(data_points, output_path, experiment_titl
     ax.axvline(x=0, color="black", linestyle="-", linewidth=1, alpha=0.3, label="Equal Rank")
 
     # Labels
-    y_label = "Adjusted Recognition Accuracy" if is_adjusted else "Average Recognition Accuracy (across datasets)"
+    y_label = f"Adjusted {metric_name}" if is_adjusted else f"Average {metric_name} (across datasets)"
     ax.set_xlabel("Rank Distance (Evaluator Rank - Generator Rank)\nPositive = Evaluator is worse ranked", fontsize=12, fontweight="bold")
     ax.set_ylabel(y_label, fontsize=12, fontweight="bold")
-    
-    full_title = "Top 5 Evaluators: Performance vs Rank Distance"
+
+    full_title = f"Top 5 Evaluators: {metric_name} vs Rank Distance"
     if is_adjusted:
         full_title += "\n(Adjusted for Self-Recognition Bias)"
     if experiment_title:
@@ -2354,7 +2354,20 @@ def main():
     parser.add_argument("--model_names", type=str, nargs="+", help="Filter models")
     parser.add_argument("--output_dir", type=str, required=True, help="Output directory")
     parser.add_argument("--exclude_self", action="store_true", help="Exclude self-comparisons (Evaluator == Generator)")
-    
+    parser.add_argument(
+        "--metric",
+        type=str,
+        choices=["accuracy", "f1"],
+        default="accuracy",
+        help="Metric to use. 'f1' transforms pair-level accuracies to F1 scores using self-scores (IND only).",
+    )
+    parser.add_argument(
+        "--metric_name",
+        type=str,
+        default=None,
+        help="Metric name for axis labels/titles. Auto-detected from --metric if not provided.",
+    )
+
     args = parser.parse_args()
 
     # Pre-process model names if set
@@ -2364,11 +2377,17 @@ def main():
         model_filter = expand_model_names(processed_args)
         print(f"Filtering for {len(model_filter)} models")
 
+    # Metric configuration
+    metric_name = args.metric_name
+    if metric_name is None:
+        metric_name = "F1 Score" if args.metric == "f1" else "Recognition Accuracy"
+    file_prefix = "f1_" if args.metric == "f1" else ""
+
     data_points = []
     self_comparison_points = []  # Collect self-scores separately for adjustment
-    
+
     print(f"{'='*70}")
-    print("RANK DISTANCE ANALYSIS")
+    print(f"RANK DISTANCE ANALYSIS ({metric_name})")
     print(f"{'='*70}")
 
     for file_path in args.accuracy_files:
@@ -2461,7 +2480,7 @@ def main():
     
     # Save raw data for inspection
     if data_points:
-        pd.DataFrame(data_points).to_csv(output_dir / "rank_distance_data.csv", index=False)
+        pd.DataFrame(data_points).to_csv(output_dir / f"{file_prefix}rank_distance_data.csv", index=False)
         
     # Get experiment name from output dir path for title
     exp_name = output_dir.parent.parent.name  # Assuming data/analysis/_aggregated_data/{EXP}/{TIMESTAMP}
@@ -2500,40 +2519,70 @@ def main():
             self_score_n_samples = None
         print(f"Calculated self-scores for {len(self_scores)} evaluators.")
 
-    plot_rank_distance(data_points, output_dir / "rank_distance.png", experiment_title=exp_name, self_scores=self_scores)
+    # Transform performances to F1 scores if requested (IND experiments only)
+    if args.metric == "f1":
+        if not self_scores:
+            print("⚠ F1 metric requires self-scores (IND experiment with --exclude_self). Falling back to accuracy.")
+        else:
+            print("Transforming pair-level accuracies to F1 scores...")
+            for point in data_points:
+                evaluator = point['evaluator']
+                if evaluator in self_scores:
+                    C_j = self_scores[evaluator]  # control accuracy (recall)
+                    T_ij = point['performance']    # treatment accuracy for this pair
+                    tp = C_j
+                    fp = 1 - T_ij
+                    fn = 1 - C_j
+                    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+                    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+                    if (precision + recall) > 0:
+                        point['performance'] = 2 * precision * recall / (precision + recall)
+                    else:
+                        point['performance'] = 0.0
+            # Self-scores in F1 space: F1(self) = C_j (since FP = 1 - C_j = FN)
+            # Precision = C_j / (C_j + 1 - C_j) = C_j, Recall = C_j, F1 = C_j
+            # So self_scores remain unchanged.
+            print(f"  Transformed {len(data_points)} data points to F1 scores.")
+
+    plot_rank_distance(data_points, output_dir / f"{file_prefix}rank_distance.png", experiment_title=exp_name, self_scores=self_scores, metric_name=metric_name)
     
     # Plot filtered by evaluator rank (rank distance between -20 and 20)
     plot_rank_distance_filtered_by_evaluator_rank(
         data_points,
-        output_dir / "rank_distance_filtered_evaluator_rank.png",
+        output_dir / f"{file_prefix}rank_distance_filtered_evaluator_rank.png",
         experiment_title=exp_name,
-        self_scores=self_scores
+        self_scores=self_scores,
+        metric_name=metric_name,
     )
-    
+
     # Plot filtered by evaluator rank (rank distance > -20, includes all positive distances)
     plot_rank_distance_filtered_by_evaluator_rank_positive(
         data_points,
-        output_dir / "rank_distance_filtered_evaluator_rank_positive.png",
+        output_dir / f"{file_prefix}rank_distance_filtered_evaluator_rank_positive.png",
         experiment_title=exp_name,
-        self_scores=self_scores
+        self_scores=self_scores,
+        metric_name=metric_name,
     )
-    
+
     # Plot filtered by evaluator rank (rank distance > -20, averaged over generators per dataset)
     plot_rank_distance_filtered_by_evaluator_rank_positive_averaged(
         data_points,
-        output_dir / "rank_distance_filtered_evaluator_rank_positive_averaged.png",
+        output_dir / f"{file_prefix}rank_distance_filtered_evaluator_rank_positive_averaged.png",
         experiment_title=exp_name,
-        self_scores=self_scores
+        self_scores=self_scores,
+        metric_name=metric_name,
     )
-    
+
     # Plot evaluator rank vs generator rank (colored by performance, separate plots per dataset)
     plot_rank_distance_vs_evaluator_rank(
         data_points,
         output_dir,
         experiment_title=exp_name,
-        self_scores=self_scores
+        self_scores=self_scores,
+        metric_name=metric_name,
+        file_prefix=file_prefix,
     )
-    
+
     # Calculate aggregated cross-model points (for both PW and IND)
     cross_model_df = pd.DataFrame(data_points)
     # Aggregate performance (weighted average if n_samples available) and sum n_samples
@@ -2549,29 +2598,31 @@ def main():
         aggregated_cross = cross_model_df.groupby(['evaluator', 'generator', 'distance'])['performance'].mean().reset_index()
         aggregated_cross['n_samples'] = None
     aggregated_cross_list = aggregated_cross.to_dict('records')
-    
+
     # Plot grouped bar chart by evaluator and dataset (rank distance between -20 and 20)
     plot_rank_distance_grouped_bar_chart(
         data_points,
-        output_dir / "rank_distance_grouped_bar_chart.png",
+        output_dir / f"{file_prefix}rank_distance_grouped_bar_chart.png",
         experiment_title=exp_name,
-        self_scores=self_scores
+        self_scores=self_scores,
+        metric_name=metric_name,
     )
-    
+
     # Plot aggregated (for PW) or adjusted (for IND)
     if use_ind:
-        
+
         # Still plot aggregated for reference
-        plot_rank_distance_aggregated(data_points, output_dir / "rank_distance_aggregated.png", experiment_title=exp_name)
-        
+        plot_rank_distance_aggregated(data_points, output_dir / f"{file_prefix}rank_distance_aggregated.png", experiment_title=exp_name, metric_name=metric_name)
+
         plot_rank_distance_adjusted(
             aggregated_cross_list,
             self_scores,
-            output_dir / "rank_distance_adjusted.png",
+            output_dir / f"{file_prefix}rank_distance_adjusted.png",
             experiment_title=exp_name,
-            self_score_n_samples=self_score_n_samples
+            self_score_n_samples=self_score_n_samples,
+            metric_name=metric_name,
         )
-        
+
         # Create adjusted data for top 5 plot
         adjusted_points = []
         for point in aggregated_cross_list:
@@ -2586,22 +2637,24 @@ def main():
                     'distance': point['distance'],
                     'performance': adjusted_performance
                 })
-        
+
         plot_rank_distance_top5_evaluators(
             adjusted_points,
-            output_dir / "rank_distance_top5_evaluators.png",
+            output_dir / f"{file_prefix}rank_distance_top5_evaluators.png",
             experiment_title=exp_name,
-            is_adjusted=True
+            is_adjusted=True,
+            metric_name=metric_name,
         )
     else:
         # PW experiment: use aggregated data
-        plot_rank_distance_aggregated(data_points, output_dir / "rank_distance_aggregated.png", experiment_title=exp_name)
-        
+        plot_rank_distance_aggregated(data_points, output_dir / f"{file_prefix}rank_distance_aggregated.png", experiment_title=exp_name, metric_name=metric_name)
+
         plot_rank_distance_top5_evaluators(
             aggregated_cross_list,
-            output_dir / "rank_distance_top5_evaluators.png",
+            output_dir / f"{file_prefix}rank_distance_top5_evaluators.png",
             experiment_title=exp_name,
-            is_adjusted=False
+            is_adjusted=False,
+            metric_name=metric_name,
         )
     
     print(f"{'='*70}\n")

@@ -22,13 +22,24 @@ def get_model_set(model_set_name: str | None = None) -> list[str]:
         return [
             "gpt-oss-20b-thinking",
             "gpt-oss-120b-thinking",
-            "sonnet-3.7-thinking",
-            "grok-3-mini-thinking",
-            "ll-3.3-70b-dsR1-thinking",
-            "qwen-3.0-80b-thinking",
+            #"sonnet-3.7-thinking",
+            #"grok-3-mini-thinking",
+            #"ll-3.3-70b-dsR1-thinking",
+            #"ll-70B-dsr1-thinking",
+            "glm-4.5-air-thinking",
+            "glm-4.7-thinking",
+            "minimax-m2.5-thinking",
+            #"qwen-3.0-80b-thinking",
             "qwen-3.0-235b-thinking",
-            "deepseek-r1-thinking",
-            "kimi-k2-thinking",
+            "deepseek-3.1-thinking",
+            "deepseek-r1-0528-thinking",
+            #"kimi-k2-thinking",
+            "kimi-k2.5-thinking",
+        ]
+    if model_set_name.lower() == "gen_cot_test":
+        return [
+            "gpt-oss-20b-thinking",
+            "gpt-oss-120b-thinking",
         ]
     elif model_set_name.lower() == "dr":
         return [

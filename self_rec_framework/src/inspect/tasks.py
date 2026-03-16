@@ -17,6 +17,7 @@ from self_rec_framework.src.helpers.model_names import (
     inspect_model_name,
     get_base_model_name,
     needs_reasoning_params,
+    needs_together_reasoning_activation,
     INSPECT_MODEL_NAMES,
     is_thinking_model,
 )
@@ -280,6 +281,14 @@ def _configure_thinking_model_params(
             )
         # Always set total = thinking + answer for Together AI models
         config_params["max_tokens"] = max_thinking + max_answer
+
+        # For Together AI hybrid models (e.g., DeepSeek V3.1, Kimi K2.5),
+        # the same endpoint serves both instruct and thinking modes.
+        # Must pass `reasoning: {"enabled": true}` via extra_body to activate thinking.
+        if needs_together_reasoning_activation(model_name):
+            extra_body = config_params.get("extra_body", {})
+            extra_body["reasoning"] = {"enabled": True}
+            config_params["extra_body"] = extra_body
 
 
 def get_task_function(

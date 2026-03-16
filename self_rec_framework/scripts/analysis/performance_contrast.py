@@ -436,6 +436,13 @@ def main():
         help="List of model names to include (filters results). "
         "Supports -set notation (e.g., --model_names -set dr) or explicit names",
     )
+    parser.add_argument(
+        "--metric_name",
+        type=str,
+        default=None,
+        help="Metric name for axis labels/titles (e.g., 'Recognition Accuracy', 'F1 Score'). "
+        "Auto-detected from filename if not provided.",
+    )
 
     args = parser.parse_args()
 
@@ -450,13 +457,23 @@ def main():
 
     aggregated_file = Path(args.aggregated_file)
 
+    # Auto-detect metric name from filename if not provided
+    metric_name = args.metric_name
+    if metric_name is None:
+        if "f1" in aggregated_file.name.lower():
+            metric_name = "F1 Score"
+        else:
+            metric_name = "Recognition Accuracy"
+    # Output file prefix for non-default metrics
+    file_prefix = "f1_" if "f1" in metric_name.lower() else ""
+
     # Validate file exists
     if not aggregated_file.exists():
         print(f"Error: File not found: {aggregated_file}")
         return
 
     print(f"{'='*70}")
-    print("DATASET-LEVEL STATISTICS")
+    print(f"DATASET-LEVEL STATISTICS ({metric_name})")
     print(f"{'='*70}")
     print(f"Input file: {aggregated_file}\n")
 
@@ -510,43 +527,43 @@ def main():
             "pct_above_chance": above_chance_pct,
         }
     )
-    averages_path = output_dir / "dataset_averages.csv"
+    averages_path = output_dir / f"{file_prefix}dataset_averages.csv"
     stats_df.to_csv(averages_path)
     print(f"  ✓ Saved dataset statistics to: {averages_path}")
 
     # Save model variance CSV
     variance_df = pd.DataFrame({"variance": model_variances})
-    variance_path = output_dir / "model_variance.csv"
+    variance_path = output_dir / f"{file_prefix}model_variance.csv"
     variance_df.to_csv(variance_path)
     print(f"  ✓ Saved model variance to: {variance_path}\n")
 
     # Generate plots
-    averages_plot_path = output_dir / "dataset_averages.png"
+    averages_plot_path = output_dir / f"{file_prefix}dataset_averages.png"
     plot_dataset_bar_chart(
         averages,
         std_devs,
         averages_plot_path,
-        title="Average Recognition Accuracy per Dataset",
-        ylabel="Average Accuracy (Across All Models)",
+        title=f"Average {metric_name} per Dataset",
+        ylabel=f"Average {metric_name} (Across All Models)",
         experiment_title=experiment_title,
     )
     print()
 
-    above_chance_plot_path = output_dir / "dataset_above_chance.png"
+    above_chance_plot_path = output_dir / f"{file_prefix}dataset_above_chance.png"
     plot_above_chance_bar_chart(
         above_chance_pct,
         above_chance_plot_path,
-        title="Percentage of Models Above Chance (0.5) per Dataset",
+        title=f"Percentage of Models Above Chance (0.5) per Dataset ({metric_name})",
         experiment_title=experiment_title,
     )
     print()
 
     # Generate model variance chart
-    variance_plot_path = output_dir / "model_variance.png"
+    variance_plot_path = output_dir / f"{file_prefix}model_variance.png"
     plot_model_variance_chart(
         model_variances,
         variance_plot_path,
-        title="Variance of Model Performance Across Datasets",
+        title=f"Variance of Model {metric_name} Across Datasets",
         experiment_title=experiment_title,
     )
     print()

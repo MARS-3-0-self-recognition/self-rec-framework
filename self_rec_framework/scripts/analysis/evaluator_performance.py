@@ -132,6 +132,106 @@ def compute_individual_deviation(pivot: pd.DataFrame) -> pd.Series:
     return performance_scores - 0.5
 
 
+def compute_individual_accept_ratio(pivot: pd.DataFrame) -> pd.Series:
+    """
+    Compute accept ratio for individual format experiments.
+
+    For each evaluator j:
+        accept_ratio = (C_j + (1 - mean(T_i))) / 2
+
+    Where:
+    - C_j = control accuracy (diagonal): correct = model accepts text as its own
+    - T_i = treatment accuracies (off-diagonal): correct = model rejects text
+    - (1 - mean(T_i)) = proportion of times model incorrectly accepted others' text
+
+    Control and treatment are weighted evenly so that a perfect model (100% accuracy)
+    gets exactly 0.5 (no bias). Weighting by sample counts would skew toward reject
+    since there are more treatment samples than control.
+
+    Values: 0.5 = no bias, >0.5 = tendency to accept, <0.5 = tendency to reject.
+    """
+    accept_ratios = pd.Series(dtype=float, index=pivot.index)
+
+    for evaluator in pivot.index:
+        # C_j: control accuracy (diagonal)
+        if evaluator in pivot.columns:
+            C_j = pivot.loc[evaluator, evaluator]
+        else:
+            C_j = pd.NA
+
+        # T_i: treatment accuracies (off-diagonal, excluding self)
+        treatment_values = []
+        for model in pivot.columns:
+            if model != evaluator:
+                T_i = pivot.loc[evaluator, model]
+                if pd.notna(T_i):
+                    treatment_values.append(T_i)
+
+        if pd.notna(C_j) and len(treatment_values) > 0:
+            mean_T = np.mean(treatment_values)
+            accept_ratios.loc[evaluator] = (C_j + (1 - mean_T)) / 2.0
+        else:
+            accept_ratios.loc[evaluator] = pd.NA
+
+    return accept_ratios
+
+
+def compute_individual_f1(pivot: pd.DataFrame) -> pd.Series:
+    """
+    Compute F1 score for individual format experiments.
+
+    Using authorship-acceptance framing:
+        TP = C_j       (correct on control: correctly accepts own text)
+        FN = 1 - C_j   (incorrect on control: incorrectly rejects own text)
+        TN = mean(T_i)  (correct on treatment: correctly rejects others' text)
+        FP = 1 - mean(T_i) (incorrect on treatment: incorrectly accepts others' text)
+
+        Precision = TP / (TP + FP) = C_j / (C_j + 1 - mean(T_i))
+        Recall    = TP / (TP + FN) = C_j / (C_j + 1 - C_j) = C_j
+        F1 = 2 * Precision * Recall / (Precision + Recall)
+
+    Control and treatment are weighted evenly (using rates, not raw counts).
+    A perfect model (C_j=1, mean(T_i)=1) gets F1=1.
+    A model that always accepts (C_j=1, mean(T_i)=0) gets Precision=0.5, Recall=1, F1=0.667.
+    A random model (C_j=0.5, mean(T_i)=0.5) gets F1=0.5.
+    """
+    f1_scores = pd.Series(dtype=float, index=pivot.index)
+
+    for evaluator in pivot.index:
+        # C_j: control accuracy (diagonal) = TP rate
+        if evaluator in pivot.columns:
+            C_j = pivot.loc[evaluator, evaluator]
+        else:
+            C_j = pd.NA
+
+        # T_i: treatment accuracies (off-diagonal) = TN rates
+        treatment_values = []
+        for model in pivot.columns:
+            if model != evaluator:
+                T_i = pivot.loc[evaluator, model]
+                if pd.notna(T_i):
+                    treatment_values.append(T_i)
+
+        if pd.notna(C_j) and len(treatment_values) > 0:
+            mean_T = np.mean(treatment_values)
+            tp = C_j
+            fp = 1 - mean_T
+            fn = 1 - C_j
+
+            # Precision = TP / (TP + FP), Recall = TP / (TP + FN) = C_j
+            precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+            recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+
+            if (precision + recall) > 0:
+                f1_scores.loc[evaluator] = 2 * precision * recall / (precision + recall)
+            else:
+                f1_scores.loc[evaluator] = 0.0
+        else:
+            f1_scores.loc[evaluator] = pd.NA
+
+    return f1_scores
+
+
 def compute_pairwise_deviation(pivot: pd.DataFrame) -> pd.Series:
     """
     Compute deviation from chance for pairwise format: row means - 0.5.
@@ -691,7 +791,23 @@ def main():
     # Save deviation scores
     deviation_path = performance_dir / "evaluator_deviation.csv"
     deviation_scores.to_frame("deviation").to_csv(deviation_path)
-    print(f"  ✓ Saved deviation scores to: {deviation_path}\n")
+    print(f"  ✓ Saved deviation scores to: {deviation_path}")
+
+    # Save accept ratio and F1 scores (IND format only)
+    if has_diagonal_data:
+        accept_ratio_scores = compute_individual_accept_ratio(pivot)
+        accept_ratio_path = performance_dir / "accept_ratio.csv"
+        accept_ratio_scores.to_frame("accept_ratio").to_csv(accept_ratio_path)
+        print(f"  ✓ Saved accept ratio to: {accept_ratio_path}")
+
+        f1_scores = compute_individual_f1(pivot)
+        f1_path = performance_dir / "evaluator_f1.csv"
+        f1_df = f1_scores.to_frame("f1")
+        if total_counts is not None:
+            f1_df["n_samples"] = total_counts
+        f1_df.to_csv(f1_path)
+        print(f"  ✓ Saved F1 scores to: {f1_path}")
+    print()
 
     # Generate performance plot (raw values 0-1 with reference line at 0.5)
     plot_path = performance_dir / "evaluator_performance.png"

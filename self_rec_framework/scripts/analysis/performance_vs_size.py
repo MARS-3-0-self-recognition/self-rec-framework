@@ -282,6 +282,7 @@ def plot_performance_vs_size(
     title: str,
     experiment_title: str = "",
     use_estimated: bool = False,
+    ylabel: str = "Recognition Accuracy",
 ):
     """
     Create a scatter plot of performance vs model size.
@@ -530,7 +531,7 @@ def plot_performance_vs_size(
 
     # Labels and title
     ax.set_xlabel("Model Size (Parameters in Billions)", fontsize=12, fontweight="bold")
-    ax.set_ylabel("Recognition Accuracy", fontsize=12, fontweight="bold")
+    ax.set_ylabel(ylabel, fontsize=12, fontweight="bold")
 
     # Use log scale for x-axis (model sizes vary widely)
     ax.set_xscale("log")
@@ -560,6 +561,7 @@ def plot_performance_vs_date(
     title: str,
     experiment_title: str = "",
     use_estimated: bool = False,
+    ylabel: str = "Recognition Accuracy",
 ):
     """
     Create a scatter plot of performance vs release date.
@@ -808,7 +810,7 @@ def plot_performance_vs_date(
 
     # Labels and title
     ax.set_xlabel("Release Date", fontsize=12, fontweight="bold")
-    ax.set_ylabel("Recognition Accuracy", fontsize=12, fontweight="bold")
+    ax.set_ylabel(ylabel, fontsize=12, fontweight="bold")
 
     # Format x-axis as dates
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
@@ -839,6 +841,7 @@ def plot_performance_vs_tier(
     output_path: Path,
     title: str,
     experiment_title: str = "",
+    ylabel: str = "Recognition Accuracy",
 ):
     """
     Create a scatter plot of performance vs capability tier.
@@ -1084,7 +1087,7 @@ def plot_performance_vs_tier(
     ax.set_xlabel(
         "Capability Tier (1 = Lowest, 5 = Highest)", fontsize=12, fontweight="bold"
     )
-    ax.set_ylabel("Recognition Accuracy", fontsize=12, fontweight="bold")
+    ax.set_ylabel(ylabel, fontsize=12, fontweight="bold")
 
     # Set x-axis to integer ticks (1-5)
     ax.set_xlim(0.5, 5.5)
@@ -1116,6 +1119,7 @@ def plot_performance_vs_arena_ranking(
     title: str,
     experiment_title: str = "",
     df_counts: pd.DataFrame | None = None,
+    ylabel: str = "Recognition Accuracy",
 ):
     """
     Create a scatter plot of performance vs LM Arena ranking.
@@ -1547,7 +1551,7 @@ def plot_performance_vs_arena_ranking(
     ax.set_xlabel(
         "LM Arena Ranking (Lower = Better)", fontsize=12, fontweight="bold"
     )
-    ax.set_ylabel("Recognition Accuracy", fontsize=12, fontweight="bold")
+    ax.set_ylabel(ylabel, fontsize=12, fontweight="bold")
 
     # Set x-axis limits (already calculated above for regression lines)
     ax.set_xlim(x_min, x_max)
@@ -1610,6 +1614,13 @@ def main():
         help="List of model names to include (filters results). "
         "Supports -set notation (e.g., --model_names -set dr) or explicit names",
     )
+    parser.add_argument(
+        "--metric_name",
+        type=str,
+        default=None,
+        help="Metric name for axis labels/titles (e.g., 'Recognition Accuracy', 'F1 Score'). "
+        "Auto-detected from filename if not provided.",
+    )
 
     args = parser.parse_args()
 
@@ -1624,13 +1635,23 @@ def main():
 
     aggregated_file = Path(args.aggregated_file)
 
+    # Auto-detect metric name from filename if not provided
+    metric_name = args.metric_name
+    if metric_name is None:
+        if "f1" in aggregated_file.name.lower():
+            metric_name = "F1 Score"
+        else:
+            metric_name = "Recognition Accuracy"
+    # Output file prefix for non-default metrics
+    file_prefix = "f1_" if "f1" in metric_name.lower() else ""
+
     # Validate file exists
     if not aggregated_file.exists():
         print(f"Error: File not found: {aggregated_file}")
         return
 
     print(f"{'='*70}")
-    print("PERFORMANCE VS MODEL SIZE, RELEASE DATE & CAPABILITY TIER")
+    print(f"{metric_name.upper()} VS MODEL SIZE, RELEASE DATE & CAPABILITY TIER")
     print(f"{'='*70}")
     print(f"Input file: {aggregated_file}\n")
 
@@ -1639,7 +1660,11 @@ def main():
     df = pd.read_csv(aggregated_file, index_col=0)
     
     # Try to load counts data for error bars
-    counts_file = aggregated_file.parent / "aggregated_counts.csv"
+    # For F1 files, look for aggregated_f1_counts.csv; otherwise aggregated_counts.csv
+    if file_prefix:
+        counts_file = aggregated_file.parent / f"aggregated_{file_prefix.rstrip('_')}_counts.csv"
+    else:
+        counts_file = aggregated_file.parent / "aggregated_counts.csv"
     df_counts = None
     if counts_file.exists():
         try:
@@ -1687,65 +1712,71 @@ def main():
             experiment_title = exp_name
 
     # Generate plots
-    known_plot_path = output_dir / "performance_vs_size_known.png"
+    known_plot_path = output_dir / f"{file_prefix}performance_vs_size_known.png"
     plot_performance_vs_size(
         df,
         known_plot_path,
-        title="Performance vs Model Size (Known Sizes Only)",
+        title=f"{metric_name} vs Model Size (Known Sizes Only)",
         experiment_title=experiment_title,
         use_estimated=False,
+        ylabel=metric_name,
     )
     print()
 
-    all_plot_path = output_dir / "performance_vs_size_all.png"
+    all_plot_path = output_dir / f"{file_prefix}performance_vs_size_all.png"
     plot_performance_vs_size(
         df,
         all_plot_path,
-        title="Performance vs Model Size (Known + Estimated)",
+        title=f"{metric_name} vs Model Size (Known + Estimated)",
         experiment_title=experiment_title,
         use_estimated=True,
+        ylabel=metric_name,
     )
     print()
 
     # Generate date plots
-    known_date_plot_path = output_dir / "performance_vs_date_known.png"
+    known_date_plot_path = output_dir / f"{file_prefix}performance_vs_date_known.png"
     plot_performance_vs_date(
         df,
         known_date_plot_path,
-        title="Performance vs Release Date (Known Dates Only)",
+        title=f"{metric_name} vs Release Date (Known Dates Only)",
         experiment_title=experiment_title,
         use_estimated=False,
+        ylabel=metric_name,
     )
     print()
 
-    all_date_plot_path = output_dir / "performance_vs_date_all.png"
+    all_date_plot_path = output_dir / f"{file_prefix}performance_vs_date_all.png"
     plot_performance_vs_date(
         df,
         all_date_plot_path,
-        title="Performance vs Release Date (Known + Estimated)",
+        title=f"{metric_name} vs Release Date (Known + Estimated)",
         experiment_title=experiment_title,
         use_estimated=True,
+        ylabel=metric_name,
     )
     print()
 
     # Generate tier plot
-    tier_plot_path = output_dir / "performance_vs_tier.png"
+    tier_plot_path = output_dir / f"{file_prefix}performance_vs_tier.png"
     plot_performance_vs_tier(
         df,
         tier_plot_path,
-        title="Performance vs Capability Tier",
+        title=f"{metric_name} vs Capability Tier",
         experiment_title=experiment_title,
+        ylabel=metric_name,
     )
     print()
 
     # Generate arena ranking plot
-    arena_plot_path = output_dir / "performance_vs_arena_ranking.png"
+    arena_plot_path = output_dir / f"{file_prefix}performance_vs_arena_ranking.png"
     plot_performance_vs_arena_ranking(
         df,
         arena_plot_path,
-        title="Performance vs LM Arena Ranking",
+        title=f"{metric_name} vs LM Arena Ranking",
         experiment_title=experiment_title,
         df_counts=df_counts,
+        ylabel=metric_name,
     )
     print()
 

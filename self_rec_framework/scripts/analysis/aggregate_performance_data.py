@@ -358,6 +358,103 @@ def main():
         print("  ⚠ No answer choice ratio files found.\n")
 
     # ============================================================================
+    # Process Accept Ratio Data (IND experiments only)
+    # ============================================================================
+
+    # Build paths to accept_ratio.csv files (sibling to evaluator_performance.csv)
+    accept_ratio_files = []
+    accept_ratio_names = []
+    for perf_file, dataset_name in zip(performance_files, dataset_names):
+        ar_file = perf_file.parent / "accept_ratio.csv"
+        if ar_file.exists():
+            accept_ratio_files.append(ar_file)
+            accept_ratio_names.append(dataset_name)
+
+    df_accept_ratio = pd.DataFrame()
+    if accept_ratio_files:
+        print("Loading accept ratio data...")
+        merged_accept = {}
+        for ar_file, dataset_name in zip(accept_ratio_files, accept_ratio_names):
+            try:
+                df_ar = pd.read_csv(ar_file, index_col=0)
+                if "accept_ratio" in df_ar.columns:
+                    merged_accept[dataset_name] = df_ar["accept_ratio"]
+            except Exception as e:
+                print(f"  ⚠ Error loading {ar_file}: {e}")
+
+        if merged_accept:
+            df_accept_ratio = pd.DataFrame(merged_accept)
+
+            # Filter and order models
+            if model_order:
+                available_models = [m for m in model_order if m in df_accept_ratio.index]
+                if available_models:
+                    df_accept_ratio = df_accept_ratio.reindex(available_models)
+
+            print(
+                f"  ✓ Loaded data: {df_accept_ratio.shape[0]} models × {df_accept_ratio.shape[1]} datasets\n"
+            )
+
+            if not df_accept_ratio.empty:
+                csv_path = output_dir / "aggregated_accept_ratio.csv"
+                df_accept_ratio.to_csv(csv_path)
+                print(f"  ✓ Saved aggregated accept ratio to: {csv_path}\n")
+            else:
+                print("  ⚠ No valid accept ratio data to save.\n")
+        else:
+            print("  ⚠ No valid accept ratio data loaded.\n")
+
+    # ============================================================================
+    # Process F1 Score Data (IND experiments only)
+    # ============================================================================
+
+    # Build paths to evaluator_f1.csv files (sibling to evaluator_performance.csv)
+    f1_files = []
+    f1_names = []
+    for perf_file, dataset_name in zip(performance_files, dataset_names):
+        f1_file = perf_file.parent / "evaluator_f1.csv"
+        if f1_file.exists():
+            f1_files.append(f1_file)
+            f1_names.append(dataset_name)
+
+    df_f1 = pd.DataFrame()
+    df_f1_counts = None
+    if f1_files:
+        print("Loading F1 score data...")
+        try:
+            df_f1, df_f1_counts = load_performance_data(
+                f1_files, f1_names, column_name="f1"
+            )
+            print(
+                f"  ✓ Loaded data: {df_f1.shape[0]} models × {df_f1.shape[1]} datasets\n"
+            )
+
+            # Filter and order models
+            if model_order:
+                available_models = [m for m in model_order if m in df_f1.index]
+                if available_models:
+                    df_f1 = df_f1.reindex(available_models)
+                    if df_f1_counts is not None:
+                        df_f1_counts = df_f1_counts.reindex(available_models)
+
+            # Remove models with all zeros
+            df_f1 = df_f1.loc[(df_f1 != 0).any(axis=1)]
+
+            if not df_f1.empty:
+                csv_path = output_dir / "aggregated_f1.csv"
+                df_f1.to_csv(csv_path)
+                print(f"  ✓ Saved aggregated F1 scores to: {csv_path}")
+                if df_f1_counts is not None:
+                    counts_path = output_dir / "aggregated_f1_counts.csv"
+                    df_f1_counts.to_csv(counts_path)
+                    print(f"  ✓ Saved aggregated F1 counts to: {counts_path}")
+                print()
+            else:
+                print("  ⚠ No valid F1 data to save.\n")
+        except ValueError as e:
+            print(f"  ⚠ Error loading F1 data: {e}")
+
+    # ============================================================================
     # Summary
     # ============================================================================
 
@@ -374,6 +471,10 @@ def main():
         print("  • aggregated_deviation.csv")
     if not df_answer_ratio.empty:
         print("  • aggregated_answer_choice_ratio.csv")
+    if not df_accept_ratio.empty:
+        print("  • aggregated_accept_ratio.csv")
+    if not df_f1.empty:
+        print("  • aggregated_f1.csv")
     print(f"{'='*70}\n")
 
 
