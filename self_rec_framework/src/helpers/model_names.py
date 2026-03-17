@@ -357,80 +357,173 @@ MODEL_CAPABILITY_TIERS: dict[str, int] = {
     "deepseek-3.1_fw": 5,  # Very large MoE model (671B total)
     "deepseek-r1_fw": 5,  # Very large reasoning model (671B total)
 }
-# LM Arena rankings from https://lmarena.ai/leaderboard/text
-# Rankings are based on Elo scores from the leaderboard (as of Jan 16, 2026).
+# LM Arena rankings from https://arena.ai/leaderboard (text)
+# Rankings are based on Elo scores from the leaderboard (as of Mar 17, 2026).
 # Lower rank number = higher position on leaderboard (rank 1 is best).
 # Models not found on leaderboard are marked as None.
 LM_ARENA_RANKINGS: dict[str, int | None] = {
     # OpenAI
-    "gpt-4o-mini": 152,  # gpt-4o-mini-2024-07-18, score: 1318
-    "gpt-4o": 18,  # chatgpt-4o-latest-20250326, score: 1442 (using latest version)
-    "gpt-4.1-mini": 80,  # gpt-4.1-mini-2025-04-14, score: 1382
-    "gpt-4.1": 47,  # gpt-4.1-2025-04-14, score: 1413
-    "gpt-5-mini": None,  # Not found on leaderboard
-    "gpt-5-mini-thinking": None,  # Not found on leaderboard
-    "gpt-5": 21,  # gpt-5.1, score: 1435 (using closest match)
-    "gpt-5-thinking": 21,  # gpt-5.1, score: 1435 (using closest match)
-    "gpt-oss-20b-thinking": 151,  # gpt-oss-20b, score: 1318
-    "gpt-oss-120b-thinking": 101,  # gpt-oss-120b, score: 1354
-    "o3": 24,  # o3-2025-04-16, score: 1433
-    "o3-thinking": 24,  # o3-2025-04-16, score: 1433
-    "o3-mini": 107,  # o3-mini, score: 1348
-    "o3-mini-thinking": 107,  # o3-mini, score: 1348
+    "gpt-4o-mini": 181,  # gpt-4o-mini-2024-07-18, score: 1320
+    "gpt-4o": 31,  # chatgpt-4o-latest-20250326, score: 1445
+    "gpt-4.1-mini": 106,  # gpt-4.1-mini-2025-04-14, score: 1395
+    "gpt-4.1": 66,  # gpt-4.1-2025-04-14, score: 1410
+    "gpt-5-mini": 94,  # gpt-5-mini-high, score: 1382
+    "gpt-5-mini-thinking": 94,  # gpt-5-mini-high, score: 1382
+    "gpt-5": 36,  # gpt-5.1, score: 1440
+    "gpt-5-thinking": 36,  # gpt-5.1, score: 1440
+    "gpt-oss-20b-thinking": 182,  # gpt-oss-20b, score: 1319
+    "gpt-oss-120b-thinking": 129,  # gpt-oss-120b, score: 1372
+    "o3": 40,  # o3-2025-04-16, score: 1436
+    "o3-thinking": 40,  # o3-2025-04-16, score: 1436
+    "o3-mini": 136,  # o3-mini, score: 1365
+    "o3-mini-thinking": 136,  # o3-mini, score: 1365
     # Anthropic
-    "sonnet-4.5": 13,  # claude-sonnet-4-5-20250929, score: 1450
-    "sonnet-4.5-thinking": 11,  # claude-sonnet-4-5-20250929-thinking-32k, score: 1451
-    "sonnet-3.7": None,  # claude-3-7-sonnet-20250219 not found (thinking version at rank 73)
-    "sonnet-3.7-thinking": 73,  # claude-3-7-sonnet-20250219-thinking-32k, score: 1389
-    "haiku-3.5": 138,  # claude-3-5-haiku-20241022, score: 1324
-    "haiku-3.5-thinking": 138,  # claude-3-5-haiku-20241022, score: 1324
-    "haiku-4.5": 56,  # claude-haiku-4-5-20251001, score: 1403
-    "haiku-4.5-thinking": 56,  # claude-haiku-4-5-20251001, score: 1403
-    "opus-4.1": 15,  # claude-opus-4-1-20250805, score: 1445
-    "opus-4.1-thinking": 14,  # claude-opus-4-1-20250805-thinking-16k, score: 1449
+    "sonnet-4.5": 22,  # claude-sonnet-4-5-20250929, score: 1454
+    "sonnet-4.5-thinking": 24,  # claude-sonnet-4-5-20250929-thinking-32k, score: 1452
+    "sonnet-3.7": 115,  # claude-3-7-sonnet-20250219, score: 1386
+    "sonnet-3.7-thinking": 97,  # claude-3-7-sonnet-20250219-thinking-32k, score: 1379
+    "haiku-3.5": 169,  # claude-3-5-haiku-20241022, score: 1336
+    "haiku-3.5-thinking": 169,  # claude-3-5-haiku-20241022, score: 1336
+    "haiku-4.5": 74,  # claude-haiku-4-5-20251001, score: 1402
+    "haiku-4.5-thinking": 74,  # claude-haiku-4-5-20251001, score: 1402
+    "opus-4.1": 29,  # claude-opus-4-1-20250805, score: 1447
+    "opus-4.1-thinking": 27,  # claude-opus-4-1-20250805-thinking-16k, score: 1449
     # Google
-    "gemini-2.0-flash": 96,  # gemini-2.0-flash-001, score: 1361
-    "gemini-2.0-flash-thinking": 96,  # gemini-2.0-flash-001, score: 1361
-    "gemini-2.0-flash-lite": 102,  # gemini-2.0-flash-lite-preview-02-05, score: 1353
-    "gemini-2.0-flash-lite-thinking": 102,  # gemini-2.0-flash-lite-preview-02-05, score: 1353
-    "gemini-2.5-flash": 53,  # gemini-2.5-flash, score: 1409
-    "gemini-2.5-flash-thinking": 53,  # gemini-2.5-flash, score: 1409
-    "gemini-2.5-pro": 10,  # gemini-2.5-pro, score: 1451
-    "gemini-2.5-pro-thinking": 10,  # gemini-2.5-pro, score: 1451
+    "gemini-2.0-flash": 124,  # gemini-2.0-flash-001, score: 1377
+    "gemini-2.0-flash-thinking": 124,  # gemini-2.0-flash-001, score: 1377
+    "gemini-2.0-flash-lite": 131,  # gemini-2.0-flash-lite-preview-02-05, score: 1370
+    "gemini-2.0-flash-lite-thinking": 131,  # gemini-2.0-flash-lite-preview-02-05, score: 1370
+    "gemini-2.5-flash": 70,  # gemini-2.5-flash, score: 1406
+    "gemini-2.5-flash-thinking": 70,  # gemini-2.5-flash, score: 1406
+    "gemini-2.5-pro": 28,  # gemini-2.5-pro, score: 1448
+    "gemini-2.5-pro-thinking": 28,  # gemini-2.5-pro, score: 1448
     # XAI
-    "grok-3-mini": 98,  # grok-3-mini-beta, score: 1356 (using closest match)
-    "grok-3-mini-thinking": 98,  # grok-3-mini-beta, score: 1356 (using closest match)
-    "grok-4.1-fast": 25,  # grok-4-1-fast-reasoning, score: 1430
-    "grok-4.1-fast-thinking": 25,  # grok-4-1-fast-reasoning, score: 1430
+    "grok-3-mini": 123,  # grok-3-mini-high, score: 1378
+    "grok-3-mini-thinking": 123,  # grok-3-mini-high, score: 1378
+    "grok-4.1-fast": 41,  # grok-4-1-fast-reasoning, score: 1435
+    "grok-4.1-fast-thinking": 41,  # grok-4-1-fast-reasoning, score: 1435
     # Together - Llama
-    "ll-3.1-8b": 225,  # llama-3.1-8b-instruct, score: 1212
-    "ll-3.1-70b": 173,  # llama-3.1-70b-instruct, score: 1294
+    "ll-3.1-8b": 254,  # llama-3.1-8b-instruct, score: 1212
+    "ll-3.1-70b": 202,  # llama-3.1-70b-instruct, score: 1294
     "ll-3.3-70b-dsR1-thinking": None,  # Not found on leaderboard
-    "ll-3.1-405b": 125,  # llama-3.1-405b-instruct-bf16, score: 1336 (using bf16 version)
+    "ll-3.1-405b": 155,  # llama-3.1-405b-instruct-bf16, score: 1346
     # Together - Qwen
-    "qwen-2.5-7b": None,  # qwen2.5-7b not found (qwen1.5-7b-chat at rank 262)
-    "qwen-2.5-72b": 170,  # qwen2.5-72b-instruct, score: 1303
-    "qwen-3.0-80b": 59,  # qwen3-next-80b-a3b-instruct, score: 1401
-    "qwen-3.0-80b-thinking": 90,  # qwen3-next-80b-a3b-thinking, score: 1369
-    "qwen-3.0-235b": 33,  # qwen3-235b-a22b-instruct-2507, score: 1422
-    "qwen-3.0-235b-thinking": 62,  # qwen3-235b-a22b-thinking-2507, score: 1398
+    "qwen-2.5-7b": None,  # Not found on leaderboard
+    "qwen-2.5-72b": 199,  # qwen2.5-72b-instruct, score: 1303
+    "qwen-3.0-80b": 79,  # qwen3-next-80b-a3b-instruct, score: 1397
+    "qwen-3.0-80b-thinking": 116,  # qwen3-next-80b-a3b-thinking, score: 1385
+    "qwen-3.0-235b": 50,  # qwen3-235b-a22b-instruct-2507, score: 1426
+    "qwen-3.0-235b-thinking": 84,  # qwen3-235b-a22b-thinking-2507, score: 1392
     # Together - DeepSeek
-    "deepseek-3.0": 97,  # deepseek-v3, score: 1358
-    "deepseek-3.1": 42,  # deepseek-v3.1, score: 1417
-    "deepseek-r1-thinking": 37,  # deepseek-r1-0528, score: 1418
+    "deepseek-3.0": 90,  # deepseek-v3-0324, score: 1386
+    "deepseek-3.1": 56,  # deepseek-v3.1, score: 1420
+    "deepseek-3.1-thinking": 60,  # deepseek-v3.1-thinking, score: 1416
+    "deepseek-r1-thinking": 54,  # deepseek-r1-0528, score: 1422
+    "deepseek-r1-0528-thinking": 54,  # deepseek-r1-0528, score: 1422
     # Moonshot
-    "kimi-k2": 38,  # kimi-k2-0905-preview, score: 1418
-    "kimi-k2-thinking": 26,  # kimi-k2-thinking-turbo, score: 1429
+    "kimi-k2": 57,  # kimi-k2-0905-preview, score: 1419
+    "kimi-k2-thinking": 42,  # kimi-k2-thinking-turbo, score: 1434
+    "kimi-k2.5": 35,  # kimi-k2.5-instant, score: 1441
+    "kimi-k2.5-thinking": 21,  # kimi-k2.5-thinking, score: 1455
+    # Together - MiniMax
+    "minimax-m2.5-thinking": 75,  # minimax-m2.5, score: 1401
+    # Together - GLM (Zhipu)
+    "glm-4.5-air-thinking": 113,  # glm-4.5-air, score: 1388
+    "glm-4.7-thinking": 33,  # glm-4.7, score: 1443
     # Fireworks - Llama
-    "ll-3.1-8b_fw": 225,  # Same as Together version
-    "ll-3.1-70b_fw": 173,  # Same as Together version
-    "ll-3.1-405b_fw": 125,  # Same as Together version
+    "ll-3.1-8b_fw": 254,  # Same as Together version
+    "ll-3.1-70b_fw": 202,  # Same as Together version
+    "ll-3.1-405b_fw": 155,  # Same as Together version
     # Fireworks - Qwen
-    "qwen-3.0-30b_fw": 78,  # qwen3-30b-a3b-instruct-2507, score: 1383
-    "qwen-3.0-235b_fw": 45,  # qwen3-vl-235b-a22b-instruct, score: 1415
+    "qwen-3.0-30b_fw": 82,  # qwen3.5-flash, score: 1394
+    "qwen-3.0-235b_fw": 50,  # Same as Together version
     # Fireworks - DeepSeek
-    "deepseek-3.1_fw": 42,  # Same as Together version
-    "deepseek-r1_fw": 37,  # Same as Together version (deepseek-r1-0528)
+    "deepseek-3.1_fw": 56,  # Same as Together version
+    "deepseek-r1_fw": 54,  # Same as Together version (deepseek-r1-0528)
+}
+
+# LM Arena Elo scores from https://arena.ai/leaderboard (text)
+# Scores as of Mar 17, 2026. Higher score = better model.
+# Models not found on leaderboard are marked as None.
+LM_ARENA_SCORES: dict[str, int | None] = {
+    # OpenAI
+    "gpt-4o-mini": 1320,  # rank 181
+    "gpt-4o": 1445,  # rank 31
+    "gpt-4.1-mini": 1395,  # rank 106
+    "gpt-4.1": 1410,  # rank 66
+    "gpt-5-mini": 1382,  # rank 94
+    "gpt-5-mini-thinking": 1382,  # rank 94
+    "gpt-5": 1440,  # rank 36
+    "gpt-5-thinking": 1440,  # rank 36
+    "gpt-oss-20b-thinking": 1319,  # rank 182
+    "gpt-oss-120b-thinking": 1372,  # rank 129
+    "o3": 1436,  # rank 40
+    "o3-thinking": 1436,  # rank 40
+    "o3-mini": 1365,  # rank 136
+    "o3-mini-thinking": 1365,  # rank 136
+    # Anthropic
+    "sonnet-4.5": 1454,  # rank 22
+    "sonnet-4.5-thinking": 1452,  # rank 24
+    "sonnet-3.7": 1386,  # rank 115
+    "sonnet-3.7-thinking": 1379,  # rank 97
+    "haiku-3.5": 1336,  # rank 169
+    "haiku-3.5-thinking": 1336,  # rank 169
+    "haiku-4.5": 1402,  # rank 74
+    "haiku-4.5-thinking": 1402,  # rank 74
+    "opus-4.1": 1447,  # rank 29
+    "opus-4.1-thinking": 1449,  # rank 27
+    # Google
+    "gemini-2.0-flash": 1377,  # rank 124
+    "gemini-2.0-flash-thinking": 1377,  # rank 124
+    "gemini-2.0-flash-lite": 1370,  # rank 131
+    "gemini-2.0-flash-lite-thinking": 1370,  # rank 131
+    "gemini-2.5-flash": 1406,  # rank 70
+    "gemini-2.5-flash-thinking": 1406,  # rank 70
+    "gemini-2.5-pro": 1448,  # rank 28
+    "gemini-2.5-pro-thinking": 1448,  # rank 28
+    # XAI
+    "grok-3-mini": 1378,  # rank 123
+    "grok-3-mini-thinking": 1378,  # rank 123
+    "grok-4.1-fast": 1435,  # rank 41
+    "grok-4.1-fast-thinking": 1435,  # rank 41
+    # Together - Llama
+    "ll-3.1-8b": 1212,  # rank 254
+    "ll-3.1-70b": 1294,  # rank 202
+    "ll-3.3-70b-dsR1-thinking": None,  # Not found on leaderboard
+    "ll-3.1-405b": 1346,  # rank 155
+    # Together - Qwen
+    "qwen-2.5-7b": None,  # Not found on leaderboard
+    "qwen-2.5-72b": 1303,  # rank 199
+    "qwen-3.0-80b": 1397,  # rank 79
+    "qwen-3.0-80b-thinking": 1385,  # rank 116
+    "qwen-3.0-235b": 1426,  # rank 50
+    "qwen-3.0-235b-thinking": 1392,  # rank 84
+    # Together - DeepSeek
+    "deepseek-3.0": 1386,  # rank 90
+    "deepseek-3.1": 1420,  # rank 56
+    "deepseek-3.1-thinking": 1416,  # rank 60
+    "deepseek-r1-thinking": 1422,  # rank 54
+    "deepseek-r1-0528-thinking": 1422,  # rank 54
+    # Moonshot
+    "kimi-k2": 1419,  # rank 57
+    "kimi-k2-thinking": 1434,  # rank 42
+    "kimi-k2.5": 1441,  # rank 35
+    "kimi-k2.5-thinking": 1455,  # rank 21
+    # Together - MiniMax
+    "minimax-m2.5-thinking": 1401,  # rank 75
+    # Together - GLM (Zhipu)
+    "glm-4.5-air-thinking": 1388,  # rank 113
+    "glm-4.7-thinking": 1443,  # rank 33
+    # Fireworks - Llama
+    "ll-3.1-8b_fw": 1212,  # Same as Together version
+    "ll-3.1-70b_fw": 1294,  # Same as Together version
+    "ll-3.1-405b_fw": 1346,  # Same as Together version
+    # Fireworks - Qwen
+    "qwen-3.0-30b_fw": 1394,  # rank 82
+    "qwen-3.0-235b_fw": 1426,  # Same as Together version
+    # Fireworks - DeepSeek
+    "deepseek-3.1_fw": 1420,  # Same as Together version
+    "deepseek-r1_fw": 1422,  # Same as Together version
 }
 # Build a reverse mapping that preserves ALL short names per inspect name.
 # Multiple short names (e.g., "sonnet-4.5" and "sonnet-4.5-thinking") can

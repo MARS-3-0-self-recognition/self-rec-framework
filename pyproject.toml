@@ -7,7 +7,7 @@ name = "self-rec-framework"
 version = "0.1.0"
 description = "Self-recognition framework for LLMs"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "anthropic>=0.75.0",
     "datasets>=4.2.0",
@@ -48,6 +48,7 @@ srf-plot-aggregated-performance = "self_rec_framework.scripts.analysis.plot_aggr
 srf-performance-contrast = "self_rec_framework.scripts.analysis.performance_contrast:main"
 srf-performance-vs-size = "self_rec_framework.scripts.analysis.performance_vs_size:main"
 srf-rank-distance = "self_rec_framework.scripts.analysis.rank_distance:main"
+srf-rank-distance-contrast = "self_rec_framework.scripts.analysis.rank_distance_contrast:main"
 srf-experiment-contrast = "self_rec_framework.scripts.analysis.experiment_contrast:main"
 srf-cancel-batches = "self_rec_framework.scripts.admin.cancel_all_batches:main"
 srf-list-batches = "self_rec_framework.scripts.admin.list_active_batches:main"

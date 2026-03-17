@@ -41,7 +41,7 @@ from self_rec_framework.scripts.utils import (
     save_figure_minimal_version,
     save_figure_no_r_version,
 )
-from self_rec_framework.src.helpers.model_names import LM_ARENA_RANKINGS
+from self_rec_framework.src.helpers.model_names import LM_ARENA_RANKINGS, LM_ARENA_SCORES
 
 def get_family_base_color(model_name: str) -> str:
     """
@@ -107,6 +107,23 @@ def get_model_arena_ranking(model_name: str) -> int | None:
         name_without_fw = base_name[:-3]
         if name_without_fw in LM_ARENA_RANKINGS:
             return LM_ARENA_RANKINGS[name_without_fw]
+
+    return None
+
+
+def get_model_arena_score(model_name: str) -> int | None:
+    """Get model LM Arena Elo score (higher is better)."""
+    if model_name in LM_ARENA_SCORES:
+        return LM_ARENA_SCORES[model_name]
+
+    base_name = model_name.replace("-thinking", "")
+    if base_name in LM_ARENA_SCORES:
+        return LM_ARENA_SCORES[base_name]
+
+    if base_name.endswith("_fw"):
+        name_without_fw = base_name[:-3]
+        if name_without_fw in LM_ARENA_SCORES:
+            return LM_ARENA_SCORES[name_without_fw]
 
     return None
 
@@ -421,7 +438,7 @@ def plot_rank_distance(data_points, output_path, experiment_title="", self_score
     print(f"  ✓ Saved plot to: {output_path}")
     plt.close()
 
-def plot_rank_distance_aggregated(data_points, output_path, experiment_title="", metric_name="Recognition Accuracy"):
+def plot_rank_distance_aggregated(data_points, output_path, experiment_title="", metric_name="Recognition Accuracy", x_label=None, title_prefix=None):
     """
     Plot aggregated performance vs rank distance across all datasets.
     Averages performance for each (Evaluator, Generator) pair over all datasets.
@@ -601,10 +618,12 @@ def plot_rank_distance_aggregated(data_points, output_path, experiment_title="",
     )
 
     # Labels
-    ax.set_xlabel("Rank Distance (Evaluator Rank - Generator Rank)\nPositive = Evaluator is worse ranked", fontsize=12, fontweight="bold")
+    default_x_label = "Rank Distance (Evaluator Rank - Generator Rank)\nPositive = Evaluator is worse ranked"
+    ax.set_xlabel(x_label or default_x_label, fontsize=12, fontweight="bold")
     ax.set_ylabel(f"Average {metric_name} (across datasets)", fontsize=12, fontweight="bold")
 
-    full_title = f"Aggregated {metric_name} vs Rank Distance"
+    default_title_prefix = "Aggregated"
+    full_title = f"{title_prefix or default_title_prefix} {metric_name} vs Rank Distance"
     if experiment_title:
         full_title += f"\n{experiment_title}"
     ax.set_title(full_title, fontsize=14, fontweight="bold", pad=20)
@@ -2384,6 +2403,7 @@ def main():
     file_prefix = "f1_" if args.metric == "f1" else ""
 
     data_points = []
+    score_data_points = []  # Same as data_points but using Elo score distance
     self_comparison_points = []  # Collect self-scores separately for adjustment
 
     print(f"{'='*70}")
@@ -2453,20 +2473,31 @@ def main():
 
                 eval_rank = get_model_arena_ranking(evaluator)
                 gen_rank = get_model_arena_ranking(generator)
-                
-                if eval_rank is None or gen_rank is None:
-                    continue
-                    
-                distance = eval_rank - gen_rank
-                
-                data_points.append({
-                    'evaluator': evaluator,
-                    'generator': generator,
-                    'dataset': dataset_name,
-                    'distance': distance,
-                    'performance': performance,
-                    'n_samples': n_samples
-                })
+
+                if eval_rank is not None and gen_rank is not None:
+                    distance = eval_rank - gen_rank
+                    data_points.append({
+                        'evaluator': evaluator,
+                        'generator': generator,
+                        'dataset': dataset_name,
+                        'distance': distance,
+                        'performance': performance,
+                        'n_samples': n_samples
+                    })
+
+                # Also collect score-distance data points
+                eval_score = get_model_arena_score(evaluator)
+                gen_score = get_model_arena_score(generator)
+                if eval_score is not None and gen_score is not None:
+                    score_distance = eval_score - gen_score
+                    score_data_points.append({
+                        'evaluator': evaluator,
+                        'generator': generator,
+                        'dataset': dataset_name,
+                        'distance': score_distance,
+                        'performance': performance,
+                        'n_samples': n_samples
+                    })
                 
         except Exception as e:
             print(f"Error processing {path}: {e}")
@@ -2657,6 +2688,50 @@ def main():
             metric_name=metric_name,
         )
     
+    # ======================================================================
+    # Score-distance analysis (Elo score difference instead of rank)
+    # ======================================================================
+    print(f"\n{'='*70}")
+    print(f"SCORE DISTANCE ANALYSIS ({metric_name})")
+    print(f"{'='*70}")
+    print(f"Collected {len(score_data_points)} score-distance data points.")
+
+    if score_data_points:
+        # Apply same F1 transformation if requested
+        if args.metric == "f1" and self_scores:
+            for point in score_data_points:
+                evaluator = point['evaluator']
+                if evaluator in self_scores:
+                    C_j = self_scores[evaluator]
+                    T_ij = point['performance']
+                    tp = C_j
+                    fp = 1 - T_ij
+                    fn = 1 - C_j
+                    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+                    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+                    if (precision + recall) > 0:
+                        point['performance'] = 2 * precision * recall / (precision + recall)
+                    else:
+                        point['performance'] = 0.0
+
+        pd.DataFrame(score_data_points).to_csv(
+            output_dir / f"{file_prefix}score_distance_data.csv", index=False
+        )
+
+        score_x_label = "Score Distance (Evaluator Score - Generator Score)\nPositive = Evaluator has higher score"
+
+        # Aggregated score-distance plot
+        plot_rank_distance_aggregated(
+            score_data_points,
+            output_dir / f"{file_prefix}score_distance_aggregated.png",
+            experiment_title=exp_name,
+            metric_name=metric_name,
+            x_label=score_x_label,
+            title_prefix="Aggregated",
+        )
+
+        print(f"  ✓ Saved score-distance data and plots to: {output_dir}")
+
     print(f"{'='*70}\n")
 
 if __name__ == "__main__":
