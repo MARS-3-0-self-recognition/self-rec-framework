@@ -63,6 +63,7 @@ def get_model_set(model_set_name: str | None = None) -> list[str]:
             # Together AI - Qwen (weakest to strongest)
             "qwen-2.5-7b",
             #"qwen-2.5-72b", # still available but not working
+            "qwen-3.5-27b",
             "qwen-3.0-80b",
             # "qwen-3.0-235b",
             # Together AI - DeepSeek (weakest to strongest)

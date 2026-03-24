@@ -193,8 +193,102 @@ def run_sweep_generation(
         print("\n⊘ No valid models to generate (all require -thinking suffix)")
         return
 
+    # Split hf/ models (need GPU dispatch) from API models (run inline)
+    api_models = []
+    hf_models = []
+    hf_dispatch_count = 0  # track how many pods were actually launched
+    for model_name in models_to_generate:
+        inspect_name = INSPECT_MODEL_NAMES.get(model_name, "")
+        if inspect_name.startswith("hf/"):
+            hf_models.append(model_name)
+        else:
+            api_models.append(model_name)
+
+    # Dispatch hf/ models to RunPod if gpu_dispatch is configured
+    if hf_models:
+        gpu_dispatch = gen_config.get("gpu_dispatch")
+        if gpu_dispatch:
+            try:
+                from scripts.alpaca_eval.runpod_dispatch import launch_runpod_job, get_runtime_for_model
+            except ImportError:
+                print("⚠ RunPod dispatch not available (scripts.alpaca_eval.runpod_dispatch not found)")
+                print("  Run hf/ models on a GPU machine directly.")
+                hf_models = []
+            else:
+                from self_rec_framework.src.helpers.model_names import get_gpu_tier
+
+                print(f"\n{'=' * 70}")
+                print(f"GPU dispatch ({gpu_dispatch}): {', '.join(hf_models)}")
+                print(f"{'=' * 70}\n")
+
+                hf_pod_ids = {}
+                for model_name in hf_models:
+                    runtime_path = get_runtime_for_model(model_name, gpu_dispatch)
+                    if not runtime_path:
+                        print(f"  ⚠ No GPU config found for {model_name}. Skipping.")
+                        continue
+
+                    tier = get_gpu_tier(model_name) or "unknown"
+                    cmd = (
+                        f"srf-generate-sweep "
+                        f"--model_names {model_name} "
+                        f"--dataset_path={dataset_path} "
+                        f"--dataset_config={dataset_config} "
+                        f"{'--overwrite ' if overwrite else ''}"
+                        f"{'--batch ' + str(batch) + ' ' if batch else ''}"
+                    ).strip()
+
+                    print(f"  Dispatching {model_name} (tier: {tier}, config: {Path(runtime_path).name})")
+                    try:
+                        pod_id = launch_runpod_job(
+                            command=cmd,
+                            runtime_yaml=runtime_path,
+                            pod_name_prefix=f"srf-gen-{model_name}",
+                            no_wait=True,
+                        )
+                        if pod_id:
+                            hf_pod_ids[model_name] = (pod_id, runtime_path)
+                            hf_dispatch_count += 1
+                    except Exception as e:
+                        print(f"  ⚠ Failed to launch pod for {model_name}: {e}")
+
+                # Wait for pods after API models are done (handled below)
+                if hf_pod_ids:
+                    import atexit
+                    def _wait_for_hf_pods():
+                        print(f"\n{'=' * 70}")
+                        print(f"Waiting for {len(hf_pod_ids)} GPU pod(s)...")
+                        print(f"{'=' * 70}")
+                        from sgtr_rl.scripts.runpod_utils import RunPodClient
+                        from sgtr_rl.runtime_config import load_runtime_config
+                        client = RunPodClient(os.environ["RUNPOD_API_KEY"])
+                        for model, (pid, rt_path) in hf_pod_ids.items():
+                            rt = load_runtime_config(str(rt_path))
+                            print(f"  Waiting for {model} (pod {pid})...")
+                            final = client.wait_for_exit(pid, poll_interval_seconds=rt.runpod.poll_interval_seconds)
+                            status = final.get("desiredStatus", "unknown")
+                            print(f"  ✓ {model}: {status}")
+                            if rt.runpod.terminate_on_exit:
+                                client.delete_pod(pid)
+                                print(f"    Deleted pod {pid}")
+                    atexit.register(_wait_for_hf_pods)
+        else:
+            print(f"⚠ hf/ models found but no gpu_dispatch in config. Skipping: {', '.join(hf_models)}")
+            hf_models = []
+
+    # Continue with API models only
+    models_to_generate = api_models
+
+    if not models_to_generate and hf_dispatch_count == 0:
+        print("\n⊘ No models to generate (GPU dispatch failed or no valid models)")
+        sys.exit(1)
+
+    if not models_to_generate:
+        print("\n⊘ All models dispatched to GPU. Waiting for completion...")
+        return
+
     print(f"\n{'=' * 70}")
-    print(f"Generating data for {len(models_to_generate)} models in parallel...")
+    print(f"Generating data for {len(models_to_generate)} API models in parallel...")
     print(f"{'=' * 70}\n")
 
     # Create a separate task for each model

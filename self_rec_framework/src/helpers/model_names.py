@@ -44,7 +44,6 @@ INSPECT_MODEL_NAMES: dict = {
     "grok-4.1-fast-thinking": "openai/grok-4-1-fast-reasoning",
     ## Together-specific models
     # Llama models
-    "ll-3.1-8b": "together/meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
     "ll-3.1-70b": "together/meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
     "ll-3.3-70b-dsR1-thinking": "together/deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
     "ll-70B-dsr1-thinking": "together/deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
@@ -72,6 +71,9 @@ INSPECT_MODEL_NAMES: dict = {
     #GLM
     "glm-4.5-air-thinking": "together/zai-org/GLM-4.5-Air-FP8",
     "glm-4.7-thinking": "together/zai-org/GLM-4.7",
+    ## Local HF models (require GPU — dispatched to RunPod when run locally)
+    "ll-3.1-8b": "hf/meta-llama/Llama-3.1-8B-Instruct",
+    "qwen-3.5-27b": "hf/Qwen/Qwen3.5-27B-Instruct",
 }
 
 # Model parameter counts (in billions, unless specified with 'T' for trillions)
@@ -525,6 +527,28 @@ LM_ARENA_SCORES: dict[str, int | None] = {
     "deepseek-3.1_fw": 1420,  # Same as Together version
     "deepseek-r1_fw": 1422,  # Same as Together version
 }
+
+# GPU tier for hf/ models that need local GPU inference.
+# Tier determines which RunPod GPU config to use:
+#   "small"  — 8B models, ~16GB VRAM (RTX 3090, RTX 4090, A40, etc.)
+#   "medium" — 27B-35B models, ~60GB VRAM (A100 80GB, L40S)
+#   "large"  — 70B+ models, ~80GB+ VRAM (A100 80GB, H100)
+MODEL_GPU_TIER: dict[str, str] = {
+    "ll-3.1-8b": "small",
+    "qwen-3.5-27b": "medium",
+    "ll-3.1-70b": "large",
+    "ll-3.1-405b": "large",
+}
+
+
+def get_gpu_tier(model_name: str) -> str | None:
+    """Get GPU tier for a model, or None if it's not an hf/ model."""
+    inspect_name = INSPECT_MODEL_NAMES.get(model_name, "")
+    if not inspect_name.startswith("hf/"):
+        return None
+    return MODEL_GPU_TIER.get(model_name, "medium")  # default to medium if unlisted
+
+
 # Build a reverse mapping that preserves ALL short names per inspect name.
 # Multiple short names (e.g., "sonnet-4.5" and "sonnet-4.5-thinking") can
 # legitimately map to the same inspect model, so we store a list rather than
