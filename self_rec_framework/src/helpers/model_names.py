@@ -11,7 +11,7 @@ INSPECT_MODEL_NAMES: dict = {
     "gpt-5-mini-thinking": "openai/gpt-5-mini",
     "gpt-5": "openai/gpt-5",
     "gpt-5-thinking": "openai/gpt-5",
-    "gpt-oss-20b-thinking": "together/openai/gpt-oss-20b",
+    #"gpt-oss-20b-thinking": "together/openai/gpt-oss-20b",
     "gpt-oss-120b-thinking": "together/openai/gpt-oss-120b",
     "o3": "openai/o3-2025-04-16",
     "o3-thinking": "openai/o3-2025-04-16",
@@ -44,7 +44,6 @@ INSPECT_MODEL_NAMES: dict = {
     "grok-4.1-fast-thinking": "openai/grok-4-1-fast-reasoning",
     ## Together-specific models
     # Llama models
-    "ll-3.1-70b": "together/meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
     "ll-3.3-70b-dsR1-thinking": "together/deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
     "ll-70B-dsr1-thinking": "together/deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
     "ll-3.1-405b": "together/meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
@@ -73,7 +72,11 @@ INSPECT_MODEL_NAMES: dict = {
     "glm-4.7-thinking": "together/zai-org/GLM-4.7",
     ## Local HF models (require GPU — dispatched to RunPod when run locally)
     "ll-3.1-8b": "hf/meta-llama/Llama-3.1-8B-Instruct",
-    "qwen-3.5-27b": "hf/Qwen/Qwen3.5-27B-Instruct",
+    "ll-3.3-70b": "hf/meta-llama/Llama-3.3-70B-Instruct",
+    #"qwen-2.5-7b": "hf/Qwen/Qwen2.5-7B-Instruct-Turbo",
+    "qwen-3.0-30b": "hf/Qwen/Qwen3-30B-A3B-Instruct-2507",
+    "qwen-3.5-27b": "hf/Qwen/Qwen3.5-27B",
+    "gpt-oss-20b": "hf/openai/gpt-oss-20b",
 }
 
 # Model parameter counts (in billions, unless specified with 'T' for trillions)
