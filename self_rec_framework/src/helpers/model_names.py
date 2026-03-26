@@ -413,7 +413,7 @@ LM_ARENA_RANKINGS: dict[str, int | None] = {
     "ll-3.3-70b-dsR1-thinking": None,  # Not found on leaderboard
     "ll-3.1-405b": 155,  # llama-3.1-405b-instruct-bf16, score: 1346
     # Together - Qwen
-    "qwen-2.5-7b": None,  # Not found on leaderboard
+    "qwen-2.5-7b": 230,  # qwen-2.5-7b-instruct, estimated rank
     "qwen-2.5-72b": 199,  # qwen2.5-72b-instruct, score: 1303
     "qwen-3.0-80b": 79,  # qwen3-next-80b-a3b-instruct, score: 1397
     "qwen-3.0-80b-thinking": 116,  # qwen3-next-80b-a3b-thinking, score: 1385
@@ -497,7 +497,7 @@ LM_ARENA_SCORES: dict[str, int | None] = {
     "ll-3.3-70b-dsR1-thinking": None,  # Not found on leaderboard
     "ll-3.1-405b": 1346,  # rank 155
     # Together - Qwen
-    "qwen-2.5-7b": None,  # Not found on leaderboard
+    "qwen-2.5-7b": 1244,  # qwen-2.5-7b-instruct, rank ~230
     "qwen-2.5-72b": 1303,  # rank 199
     "qwen-3.0-80b": 1397,  # rank 79
     "qwen-3.0-80b-thinking": 1385,  # rank 116
@@ -529,6 +529,11 @@ LM_ARENA_SCORES: dict[str, int | None] = {
     # Fireworks - DeepSeek
     "deepseek-3.1_fw": 1420,  # Same as Together version
     "deepseek-r1_fw": 1422,  # Same as Together version
+    # Local HF models (not on Arena directly — scores from closest match)
+    "ll-3.3-70b": 1380,  # Llama-3.3-70B-Instruct, estimated from ll-3.1-70b + generation improvement
+    "qwen-3.0-30b": 1394,  # Same as qwen-3.0-30b_fw (Qwen3-30B-A3B)
+    "qwen-3.5-27b": 1410,  # Qwen3.5-27B, estimated from arena (hybrid thinking model)
+    "gpt-oss-20b": 1319,  # Same as gpt-oss-20b-thinking (base model)
 }
 
 # GPU tier for hf/ models that need local GPU inference.
