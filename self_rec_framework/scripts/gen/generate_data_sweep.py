@@ -18,7 +18,7 @@ from inspect_ai import eval
 from self_rec_framework.src.inspect.tasks import generation
 from self_rec_framework.src.inspect.config import create_generation_config
 from self_rec_framework.src.helpers.utils import data_dir, save_json
-from self_rec_framework.src.helpers.model_names import inspect_model_name, INSPECT_MODEL_NAMES
+from self_rec_framework.src.helpers.model_names import inspect_model_name, INSPECT_MODEL_NAMES, temp_suffix
 from self_rec_framework.scripts.utils import expand_model_names
 from self_rec_framework.scripts.gen.generate_data import (
     apply_treatments,
@@ -28,6 +28,8 @@ from self_rec_framework.scripts.gen.generate_data import (
 
 from inspect_ai.log import read_eval_log
 import shutil
+
+
 
 
 def _collect_partial_results(log_dir: Path, eval_logs: list, model_names: list[str]):
@@ -82,6 +84,7 @@ def run_sweep_generation(
     dataset_config: str,
     overwrite: bool = False,
     batch: bool | int | str = False,
+    max_tasks_override: int | None = None,
 ):
     """
     Generate data for multiple models using Inspect AI's multi-model parallelism.
@@ -142,13 +145,39 @@ def run_sweep_generation(
         seed=gen_config.get("seed"),
     )
 
+    # Temperature suffix for directory names (empty for default temp=1.0)
+    temperature = gen_config.get("temperature")
+    temp_sfx = temp_suffix(temperature)
+
+    # Filter out trained models — they evaluate base model data, not generate their own.
+    # Trained names contain '_sft-as_'.
+    base_only = []
+    for m in model_names:
+        clean = m.removesuffix("-thinking") if m.endswith("-thinking") else m
+        if "_sft-as_" in clean:
+            print(f"  ⊘ {m}: trained model, skipping generation (uses base model data)")
+        else:
+            base_only.append(m)
+    model_names = base_only
+
+    # Filter out trained models — they use base model data, not their own generations
+    filtered = []
+    for m in model_names:
+        clean = m.removesuffix("-thinking") if m.endswith("-thinking") else m
+        if "_sft-as_" in clean:
+            print(f"  ⊘ {m}: trained model, uses base model data")
+        else:
+            filtered.append(m)
+    model_names = filtered
+
     # Check which models need generation (skip if exists and not overwrite)
     models_to_generate = []
     skipped_models = []
 
     for model_name in model_names:
+        model_dir_name = model_name + temp_sfx
         output_path = (
-            data_dir() / "input" / dataset_name / data_subset / model_name / "data.json"
+            data_dir() / "input" / dataset_name / data_subset / model_dir_name / "data.json"
         )
         if output_path.exists() and not overwrite:
             print(f"  ⊘ {model_name}: data already exists, skipping")
@@ -197,10 +226,42 @@ def run_sweep_generation(
     api_models = []
     hf_models = []
     hf_dispatch_count = 0  # track how many pods were actually launched
+    gpu_dispatch = gen_config.get("gpu_dispatch")
+
     for model_name in models_to_generate:
         inspect_name = INSPECT_MODEL_NAMES.get(model_name, "")
+        # For -thinking variants not in INSPECT_MODEL_NAMES, check the base name
+        if not inspect_name and model_name.endswith("-thinking"):
+            base_name = model_name.removesuffix("-thinking")
+            inspect_name = INSPECT_MODEL_NAMES.get(base_name, "")
         if inspect_name.startswith("hf/"):
-            hf_models.append(model_name)
+            if gpu_dispatch == "tinker":
+                # Route through Tinker's OpenAI-compatible endpoint instead of
+                # local HF inference. Set env vars so inspect_ai uses Tinker.
+                tinker_base_url = "https://tinker.thinkingmachines.dev/services/tinker-prod/oai/api/v1"
+                # Force OPENAI_API_KEY to Tinker key (override any existing OpenAI key)
+                tinker_key = os.environ.get("TINKER_API_KEY", "")
+                if tinker_key:
+                    os.environ["OPENAI_API_KEY"] = tinker_key
+                os.environ["OPENAI_BASE_URL"] = tinker_base_url
+                # Strip hf/ prefix to get HF model ID, then strip any provider
+                # prefix (e.g., "openai/gpt-oss-20b" -> "gpt-oss-20b") to avoid
+                # double-prefixing when we add "openai/"
+                hf_model_id = inspect_name.removeprefix("hf/")
+                for provider_prefix in ("openai/", "anthropic/", "google/", "together/"):
+                    if hf_model_id.startswith(provider_prefix):
+                        hf_model_id = hf_model_id.removeprefix(provider_prefix)
+                        break
+                INSPECT_MODEL_NAMES[model_name] = f"openai/{hf_model_id}"
+                # Also override the base model name so that thinking model
+                # resolution (which looks up base_name) uses Tinker too
+                if model_name.endswith("-thinking"):
+                    base_name = model_name.removesuffix("-thinking")
+                    INSPECT_MODEL_NAMES[base_name] = f"openai/{hf_model_id}"
+                api_models.append(model_name)
+                print(f"  Tinker dispatch: {model_name} -> openai/{hf_model_id} (via Tinker API)")
+            else:
+                hf_models.append(model_name)
         else:
             api_models.append(model_name)
 
@@ -349,9 +410,13 @@ def run_sweep_generation(
     log_dir.mkdir(parents=True, exist_ok=True)
 
     # Run generation with multiple tasks in parallel
-    # Use max_tasks to limit parallelism (default to number of models, max 16)
     total_tasks = len(no_batch_tasks) + len(batch_tasks)
-    max_tasks = min(total_tasks, 16)
+    if max_tasks_override is not None:
+        max_tasks = max_tasks_override
+    elif gen_config.get("max_tasks"):
+        max_tasks = gen_config["max_tasks"]
+    else:
+        max_tasks = min(total_tasks, 16)
 
     if batch and no_batch_tasks:
         print(
@@ -555,13 +620,14 @@ def run_sweep_generation(
             # Extract outputs (completion + CoT + signatures, if present)
             data_dict, cot_dict, signature_dict = construct_data_dicts(eval_log)
 
-            # Save to model-specific directory
+            # Save to model-specific directory (with temperature suffix if non-default)
+            model_dir_name = model_name + temp_sfx
             output_path = (
                 data_dir()
                 / "input"
                 / dataset_name
                 / data_subset
-                / model_name
+                / model_dir_name
                 / "data.json"
             )
             output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -627,8 +693,9 @@ def run_sweep_generation(
     print(f"{'=' * 70}\n")
 
     for model_name in successful:
+        model_dir_name = model_name + temp_sfx
         base_data_path = (
-            data_dir() / "input" / dataset_name / data_subset / model_name / "data.json"
+            data_dir() / "input" / dataset_name / data_subset / model_dir_name / "data.json"
         )
 
         try:
@@ -636,7 +703,7 @@ def run_sweep_generation(
                 base_data_path=base_data_path,
                 dataset_name=dataset_name,
                 data_subset=data_subset,
-                model_name=model_name,
+                model_name=model_dir_name,
                 gen_config=gen_config,
                 overwrite=overwrite,
             )
@@ -742,6 +809,12 @@ Examples:
         help="Enable batch mode for supported providers (OpenAI, Anthropic, Google, Together AI). "
         "Usage: --batch (default config), --batch 1000 (batch size), --batch config.yaml (config file)",
     )
+    parser.add_argument(
+        "--max-tasks",
+        type=int,
+        default=None,
+        help="Maximum number of models to generate in parallel (default: min(num_models, 16))",
+    )
 
     args = parser.parse_args()
 
@@ -770,6 +843,7 @@ Examples:
         dataset_config=args.dataset_config,
         overwrite=args.overwrite,
         batch=batch_value,
+        max_tasks_override=args.max_tasks,
     )
 
 

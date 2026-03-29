@@ -12,7 +12,7 @@ INSPECT_MODEL_NAMES: dict = {
     "gpt-5": "openai/gpt-5",
     "gpt-5-thinking": "openai/gpt-5",
     #"gpt-oss-20b-thinking": "together/openai/gpt-oss-20b",
-    "gpt-oss-120b-thinking": "together/openai/gpt-oss-120b",
+    #"gpt-oss-120b-thinking": "together/openai/gpt-oss-120b",
     "o3": "openai/o3-2025-04-16",
     "o3-thinking": "openai/o3-2025-04-16",
     "o3-mini": "openai/o3-mini-2025-01-31",
@@ -75,8 +75,13 @@ INSPECT_MODEL_NAMES: dict = {
     "ll-3.3-70b": "hf/meta-llama/Llama-3.3-70B-Instruct",
     #"qwen-2.5-7b": "hf/Qwen/Qwen2.5-7B-Instruct-Turbo",
     "qwen-3.0-30b": "hf/Qwen/Qwen3-30B-A3B-Instruct-2507",
+    "qwen-3.0-30b-thinking": "hf/Qwen/Qwen3-30B-A3B-Instruct-2507",  # Same model, native reasoning
     "qwen-3.5-27b": "hf/Qwen/Qwen3.5-27B",
+    "qwen-3.5-27b-thinking": "hf/Qwen/Qwen3.5-27B",  # Same model, native reasoning
     "gpt-oss-20b": "hf/openai/gpt-oss-20b",
+    "gpt-oss-20b-thinking": "hf/openai/gpt-oss-20b",  # Same model, native reasoning
+    "gpt-oss-120b": "hf/openai/gpt-oss-120b",
+    "gpt-oss-120b-thinking": "hf/openai/gpt-oss-120b",  # Same model, native reasoning
 }
 
 # Model parameter counts (in billions, unless specified with 'T' for trillions)
@@ -367,39 +372,42 @@ MODEL_CAPABILITY_TIERS: dict[str, int] = {
 # Lower rank number = higher position on leaderboard (rank 1 is best).
 # Models not found on leaderboard are marked as None.
 LM_ARENA_RANKINGS: dict[str, int | None] = {
+    # Updated from https://arena.ai/leaderboard/text on 2026-03-27.
     # OpenAI
-    "gpt-4o-mini": 181,  # gpt-4o-mini-2024-07-18, score: 1320
-    "gpt-4o": 31,  # chatgpt-4o-latest-20250326, score: 1445
-    "gpt-4.1-mini": 106,  # gpt-4.1-mini-2025-04-14, score: 1395
-    "gpt-4.1": 66,  # gpt-4.1-2025-04-14, score: 1410
+    "gpt-4o-mini": 188,  # gpt-4o-mini-2024-07-18, score: 1317
+    "gpt-4o": 150,  # gpt-4o-2024-05-13, score: 1345
+    "gpt-4.1-mini": 111,  # gpt-4.1-mini-2025-04-14, score: 1382
+    "gpt-4.1": 69,  # gpt-4.1-2025-04-14, score: 1413
     "gpt-5-mini": 94,  # gpt-5-mini-high, score: 1382
     "gpt-5-mini-thinking": 94,  # gpt-5-mini-high, score: 1382
-    "gpt-5": 36,  # gpt-5.1, score: 1440
-    "gpt-5-thinking": 36,  # gpt-5.1, score: 1440
-    "gpt-oss-20b-thinking": 182,  # gpt-oss-20b, score: 1319
-    "gpt-oss-120b-thinking": 129,  # gpt-oss-120b, score: 1372
-    "o3": 40,  # o3-2025-04-16, score: 1436
-    "o3-thinking": 40,  # o3-2025-04-16, score: 1436
-    "o3-mini": 136,  # o3-mini, score: 1365
-    "o3-mini-thinking": 136,  # o3-mini, score: 1365
+    "gpt-5": 38,  # gpt-5.1, score: 1439
+    "gpt-5-thinking": 38,  # gpt-5.1, score: 1439
+    "gpt-oss-20b": 184,  # gpt-oss-20b, score: 1318
+    "gpt-oss-20b-thinking": 184,  # Same model in thinking mode
+    "gpt-oss-120b": 134,  # gpt-oss-120b, score: 1354
+    "gpt-oss-120b-thinking": 134,  # Same model in thinking mode
+    "o3": 43,  # o3-2025-04-16, score: 1431
+    "o3-thinking": 43,  # o3-2025-04-16, score: 1431
+    "o3-mini": 142,  # o3-mini, score: 1348
+    "o3-mini-thinking": 142,  # o3-mini, score: 1348
     # Anthropic
-    "sonnet-4.5": 22,  # claude-sonnet-4-5-20250929, score: 1454
-    "sonnet-4.5-thinking": 24,  # claude-sonnet-4-5-20250929-thinking-32k, score: 1452
+    "sonnet-4.5": 25,  # claude-sonnet-4-5-20250929, score: 1453
+    "sonnet-4.5-thinking": 25,  # claude-sonnet-4-5-20250929, score: 1453
     "sonnet-3.7": 115,  # claude-3-7-sonnet-20250219, score: 1386
     "sonnet-3.7-thinking": 97,  # claude-3-7-sonnet-20250219-thinking-32k, score: 1379
     "haiku-3.5": 169,  # claude-3-5-haiku-20241022, score: 1336
     "haiku-3.5-thinking": 169,  # claude-3-5-haiku-20241022, score: 1336
-    "haiku-4.5": 74,  # claude-haiku-4-5-20251001, score: 1402
-    "haiku-4.5-thinking": 74,  # claude-haiku-4-5-20251001, score: 1402
-    "opus-4.1": 29,  # claude-opus-4-1-20250805, score: 1447
-    "opus-4.1-thinking": 27,  # claude-opus-4-1-20250805-thinking-16k, score: 1449
+    "haiku-4.5": 76,  # claude-haiku-4-5-20251001, score: 1407
+    "haiku-4.5-thinking": 76,  # claude-haiku-4-5-20251001, score: 1407
+    "opus-4.1": 70,  # claude-opus-4-20250514, score: 1412
+    "opus-4.1-thinking": 70,  # claude-opus-4-20250514, score: 1412
     # Google
-    "gemini-2.0-flash": 124,  # gemini-2.0-flash-001, score: 1377
-    "gemini-2.0-flash-thinking": 124,  # gemini-2.0-flash-001, score: 1377
-    "gemini-2.0-flash-lite": 131,  # gemini-2.0-flash-lite-preview-02-05, score: 1370
-    "gemini-2.0-flash-lite-thinking": 131,  # gemini-2.0-flash-lite-preview-02-05, score: 1370
-    "gemini-2.5-flash": 70,  # gemini-2.5-flash, score: 1406
-    "gemini-2.5-flash-thinking": 70,  # gemini-2.5-flash, score: 1406
+    "gemini-2.0-flash": 129,  # gemini-2.0-flash-001, score: 1360
+    "gemini-2.0-flash-thinking": 129,  # gemini-2.0-flash-001, score: 1360
+    "gemini-2.0-flash-lite": 112,  # gemini-2.5-flash-lite-preview-09-2025-no-thinking, score: 1380
+    "gemini-2.0-flash-lite-thinking": 112,  # gemini-2.5-flash-lite, score: 1380
+    "gemini-2.5-flash": 73,  # gemini-2.5-flash, score: 1411
+    "gemini-2.5-flash-thinking": 73,  # gemini-2.5-flash, score: 1411
     "gemini-2.5-pro": 28,  # gemini-2.5-pro, score: 1448
     "gemini-2.5-pro-thinking": 28,  # gemini-2.5-pro, score: 1448
     # XAI
@@ -408,82 +416,88 @@ LM_ARENA_RANKINGS: dict[str, int | None] = {
     "grok-4.1-fast": 41,  # grok-4-1-fast-reasoning, score: 1435
     "grok-4.1-fast-thinking": 41,  # grok-4-1-fast-reasoning, score: 1435
     # Together - Llama
-    "ll-3.1-8b": 254,  # llama-3.1-8b-instruct, score: 1212
-    "ll-3.1-70b": 202,  # llama-3.1-70b-instruct, score: 1294
+    "ll-3.1-8b": 260,  # llama-3.1-8b-instruct, score: 1211
+    "ll-3.1-70b": 208,  # llama-3.1-70b-instruct, score: 1293
+    "ll-3.3-70b": 183,  # llama-3.3-70b-instruct, score: 1318
     "ll-3.3-70b-dsR1-thinking": None,  # Not found on leaderboard
     "ll-3.1-405b": 155,  # llama-3.1-405b-instruct-bf16, score: 1346
     # Together - Qwen
-    "qwen-2.5-7b": 230,  # qwen-2.5-7b-instruct, estimated rank
-    "qwen-2.5-72b": 199,  # qwen2.5-72b-instruct, score: 1303
-    "qwen-3.0-80b": 79,  # qwen3-next-80b-a3b-instruct, score: 1397
-    "qwen-3.0-80b-thinking": 116,  # qwen3-next-80b-a3b-thinking, score: 1385
-    "qwen-3.0-235b": 50,  # qwen3-235b-a22b-instruct-2507, score: 1426
-    "qwen-3.0-235b-thinking": 84,  # qwen3-235b-a22b-thinking-2507, score: 1392
+    "qwen-2.5-7b": None,  # Not on leaderboard
+    "qwen-2.5-72b": 205,  # qwen2.5-72b-instruct, score: 1302
+    "qwen-3.0-30b": 109,  # qwen3-30b-a3b-instruct-2507, score: 1383
+    "qwen-3.0-80b": 85,  # qwen3-next-80b-a3b-instruct, score: 1402
+    "qwen-3.0-80b-thinking": 85,  # qwen3-next-80b-a3b-instruct, score: 1402
+    "qwen-3.0-235b": 54,  # qwen3-235b-a22b-instruct-2507, score: 1422
+    "qwen-3.0-235b-thinking": 89,  # qwen3-235b-a22b-thinking-2507, score: 1400
+    "qwen-3.5-27b": 79,  # qwen3.5-27b, score: 1405
     # Together - DeepSeek
-    "deepseek-3.0": 90,  # deepseek-v3-0324, score: 1386
-    "deepseek-3.1": 56,  # deepseek-v3.1, score: 1420
-    "deepseek-3.1-thinking": 60,  # deepseek-v3.1-thinking, score: 1416
-    "deepseek-r1-thinking": 54,  # deepseek-r1-0528, score: 1422
-    "deepseek-r1-0528-thinking": 54,  # deepseek-r1-0528, score: 1422
+    "deepseek-3.0": 95,  # deepseek-v3-0324, score: 1395
+    "deepseek-3.1": 59,  # deepseek-v3.1, score: 1418
+    "deepseek-3.1-thinking": 59,  # deepseek-v3.1, score: 1418
+    "deepseek-r1-thinking": 56,  # deepseek-r1-0528, score: 1422
+    "deepseek-r1-0528-thinking": 56,  # deepseek-r1-0528, score: 1422
     # Moonshot
     "kimi-k2": 57,  # kimi-k2-0905-preview, score: 1419
     "kimi-k2-thinking": 42,  # kimi-k2-thinking-turbo, score: 1434
-    "kimi-k2.5": 35,  # kimi-k2.5-instant, score: 1441
-    "kimi-k2.5-thinking": 21,  # kimi-k2.5-thinking, score: 1455
+    "kimi-k2.5": 42,  # kimi-k2.5-instant, score: 1433
+    "kimi-k2.5-thinking": 23,  # kimi-k2.5-thinking, score: 1454
     # Together - MiniMax
-    "minimax-m2.5-thinking": 75,  # minimax-m2.5, score: 1401
+    "minimax-m2.5-thinking": 78,  # minimax-m2.5, score: 1406
     # Together - GLM (Zhipu)
-    "glm-4.5-air-thinking": 113,  # glm-4.5-air, score: 1388
-    "glm-4.7-thinking": 33,  # glm-4.7, score: 1443
+    "glm-4.5-air-thinking": 118,  # glm-4.5-air, score: 1373
+    "glm-4.7-thinking": 35,  # glm-4.7, score: 1443
     # Fireworks - Llama
-    "ll-3.1-8b_fw": 254,  # Same as Together version
-    "ll-3.1-70b_fw": 202,  # Same as Together version
+    "ll-3.1-8b_fw": 260,  # Same as Together version
+    "ll-3.1-70b_fw": 208,  # Same as Together version
     "ll-3.1-405b_fw": 155,  # Same as Together version
     # Fireworks - Qwen
-    "qwen-3.0-30b_fw": 82,  # qwen3.5-flash, score: 1394
-    "qwen-3.0-235b_fw": 50,  # Same as Together version
+    "qwen-3.0-30b_fw": 109,  # Same as Together version
+    "qwen-3.0-235b_fw": 54,  # Same as Together version
     # Fireworks - DeepSeek
-    "deepseek-3.1_fw": 56,  # Same as Together version
-    "deepseek-r1_fw": 54,  # Same as Together version (deepseek-r1-0528)
+    "deepseek-3.1_fw": 59,  # Same as Together version
+    "deepseek-r1_fw": 56,  # Same as Together version (deepseek-r1-0528)
 }
 
 # LM Arena Elo scores from https://arena.ai/leaderboard (text)
 # Scores as of Mar 17, 2026. Higher score = better model.
 # Models not found on leaderboard are marked as None.
 LM_ARENA_SCORES: dict[str, int | None] = {
+    # Updated from https://arena.ai/leaderboard/text on 2026-03-27.
     # OpenAI
-    "gpt-4o-mini": 1320,  # rank 181
-    "gpt-4o": 1445,  # rank 31
-    "gpt-4.1-mini": 1395,  # rank 106
-    "gpt-4.1": 1410,  # rank 66
+    "gpt-4o-mini": 1317,  # rank 188
+    "gpt-4o": 1345,  # rank 150 (gpt-4o-2024-05-13)
+    "gpt-4.1-mini": 1382,  # rank 111
+    "gpt-4.1": 1413,  # rank 69
     "gpt-5-mini": 1382,  # rank 94
     "gpt-5-mini-thinking": 1382,  # rank 94
-    "gpt-5": 1440,  # rank 36
-    "gpt-5-thinking": 1440,  # rank 36
-    "gpt-oss-20b-thinking": 1319,  # rank 182
-    "gpt-oss-120b-thinking": 1372,  # rank 129
-    "o3": 1436,  # rank 40
-    "o3-thinking": 1436,  # rank 40
-    "o3-mini": 1365,  # rank 136
-    "o3-mini-thinking": 1365,  # rank 136
+    "gpt-5": 1439,  # rank 38
+    "gpt-5-thinking": 1439,  # rank 38
+    "gpt-oss-20b": 1318,  # rank 184
+    "gpt-oss-20b-thinking": 1318,  # rank 184
+    "gpt-oss-120b": 1354,  # rank 134
+    "gpt-oss-120b-thinking": 1354,  # rank 134
+    "o3": 1431,  # rank 43
+    "o3-thinking": 1431,  # rank 43
+    "o3-mini": 1348,  # rank 142
+    "o3-mini-thinking": 1348,  # rank 142
     # Anthropic
-    "sonnet-4.5": 1454,  # rank 22
-    "sonnet-4.5-thinking": 1452,  # rank 24
+    "sonnet-4.5": 1453,  # rank 25
+    "sonnet-4.5-thinking": 1453,  # rank 25
     "sonnet-3.7": 1386,  # rank 115
     "sonnet-3.7-thinking": 1379,  # rank 97
     "haiku-3.5": 1336,  # rank 169
     "haiku-3.5-thinking": 1336,  # rank 169
-    "haiku-4.5": 1402,  # rank 74
-    "haiku-4.5-thinking": 1402,  # rank 74
-    "opus-4.1": 1447,  # rank 29
-    "opus-4.1-thinking": 1449,  # rank 27
+    "haiku-4.5": 1407,  # rank 76
+    "haiku-4.5-thinking": 1407,  # rank 76
+    "opus-4.1": 1412,  # rank 70 (claude-opus-4-20250514)
+    "opus-4.1-thinking": 1412,  # rank 70
     # Google
-    "gemini-2.0-flash": 1377,  # rank 124
-    "gemini-2.0-flash-thinking": 1377,  # rank 124
-    "gemini-2.0-flash-lite": 1370,  # rank 131
-    "gemini-2.0-flash-lite-thinking": 1370,  # rank 131
-    "gemini-2.5-flash": 1406,  # rank 70
-    "gemini-2.5-flash-thinking": 1406,  # rank 70
+    "gemini-2.0-flash": 1360,  # rank 129 (gemini-2.0-flash-001)
+    "gemini-2.0-flash-thinking": 1360,  # rank 129
+    "gemini-2.0-flash-lite": 1380,  # rank 112 (gemini-2.5-flash-lite-no-thinking)
+    "gemini-2.0-flash-lite-thinking": 1380,  # rank 112
+    "gemini-2.5-flash": 1411,  # rank 73
+    "gemini-2.5-flash-thinking": 1411,  # rank 73
     "gemini-2.5-pro": 1448,  # rank 28
     "gemini-2.5-pro-thinking": 1448,  # rank 28
     # XAI
@@ -492,48 +506,46 @@ LM_ARENA_SCORES: dict[str, int | None] = {
     "grok-4.1-fast": 1435,  # rank 41
     "grok-4.1-fast-thinking": 1435,  # rank 41
     # Together - Llama
-    "ll-3.1-8b": 1212,  # rank 254
-    "ll-3.1-70b": 1294,  # rank 202
+    "ll-3.1-8b": 1211,  # rank 260
+    "ll-3.1-70b": 1293,  # rank 208
+    "ll-3.3-70b": 1318,  # rank 183 (llama-3.3-70b-instruct)
     "ll-3.3-70b-dsR1-thinking": None,  # Not found on leaderboard
     "ll-3.1-405b": 1346,  # rank 155
     # Together - Qwen
-    "qwen-2.5-7b": 1244,  # qwen-2.5-7b-instruct, rank ~230
-    "qwen-2.5-72b": 1303,  # rank 199
-    "qwen-3.0-80b": 1397,  # rank 79
-    "qwen-3.0-80b-thinking": 1385,  # rank 116
-    "qwen-3.0-235b": 1426,  # rank 50
-    "qwen-3.0-235b-thinking": 1392,  # rank 84
+    "qwen-2.5-7b": None,  # Not on leaderboard
+    "qwen-2.5-72b": 1302,  # rank 205
+    "qwen-3.0-30b": 1383,  # rank 109 (qwen3-30b-a3b-instruct-2507)
+    "qwen-3.0-80b": 1402,  # rank 85
+    "qwen-3.0-80b-thinking": 1402,  # rank 85
+    "qwen-3.0-235b": 1422,  # rank 54 (qwen3-235b-a22b-instruct-2507)
+    "qwen-3.0-235b-thinking": 1400,  # rank 89 (qwen3-235b-a22b-thinking-2507)
+    "qwen-3.5-27b": 1405,  # rank 79 (qwen3.5-27b)
     # Together - DeepSeek
-    "deepseek-3.0": 1386,  # rank 90
-    "deepseek-3.1": 1420,  # rank 56
-    "deepseek-3.1-thinking": 1416,  # rank 60
-    "deepseek-r1-thinking": 1422,  # rank 54
-    "deepseek-r1-0528-thinking": 1422,  # rank 54
+    "deepseek-3.0": 1395,  # rank 95 (deepseek-v3-0324)
+    "deepseek-3.1": 1418,  # rank 59 (deepseek-v3.1)
+    "deepseek-3.1-thinking": 1418,  # rank 59
+    "deepseek-r1-thinking": 1422,  # rank 56 (deepseek-r1-0528)
+    "deepseek-r1-0528-thinking": 1422,  # rank 56
     # Moonshot
     "kimi-k2": 1419,  # rank 57
     "kimi-k2-thinking": 1434,  # rank 42
-    "kimi-k2.5": 1441,  # rank 35
-    "kimi-k2.5-thinking": 1455,  # rank 21
+    "kimi-k2.5": 1433,  # rank 42 (kimi-k2.5-instant)
+    "kimi-k2.5-thinking": 1454,  # rank 23
     # Together - MiniMax
-    "minimax-m2.5-thinking": 1401,  # rank 75
+    "minimax-m2.5-thinking": 1406,  # rank 78
     # Together - GLM (Zhipu)
-    "glm-4.5-air-thinking": 1388,  # rank 113
-    "glm-4.7-thinking": 1443,  # rank 33
+    "glm-4.5-air-thinking": 1373,  # rank 118
+    "glm-4.7-thinking": 1443,  # rank 35
     # Fireworks - Llama
-    "ll-3.1-8b_fw": 1212,  # Same as Together version
-    "ll-3.1-70b_fw": 1294,  # Same as Together version
+    "ll-3.1-8b_fw": 1211,  # Same as Together version
+    "ll-3.1-70b_fw": 1293,  # Same as Together version
     "ll-3.1-405b_fw": 1346,  # Same as Together version
     # Fireworks - Qwen
-    "qwen-3.0-30b_fw": 1394,  # rank 82
-    "qwen-3.0-235b_fw": 1426,  # Same as Together version
+    "qwen-3.0-30b_fw": 1383,  # Same as Together version
+    "qwen-3.0-235b_fw": 1422,  # Same as Together version
     # Fireworks - DeepSeek
-    "deepseek-3.1_fw": 1420,  # Same as Together version
+    "deepseek-3.1_fw": 1418,  # Same as Together version
     "deepseek-r1_fw": 1422,  # Same as Together version
-    # Local HF models (not on Arena directly — scores from closest match)
-    "ll-3.3-70b": 1380,  # Llama-3.3-70B-Instruct, estimated from ll-3.1-70b + generation improvement
-    "qwen-3.0-30b": 1394,  # Same as qwen-3.0-30b_fw (Qwen3-30B-A3B)
-    "qwen-3.5-27b": 1410,  # Qwen3.5-27B, estimated from arena (hybrid thinking model)
-    "gpt-oss-20b": 1319,  # Same as gpt-oss-20b-thinking (base model)
 }
 
 # GPU tier for hf/ models that need local GPU inference.
@@ -547,6 +559,20 @@ MODEL_GPU_TIER: dict[str, str] = {
     "ll-3.1-70b": "large",
     "ll-3.1-405b": "large",
 }
+
+
+def temp_suffix(temperature) -> str:
+    """Return temperature suffix for model/directory names.
+
+    Returns empty string for the default temperature (1.0) or None.
+    Returns '_temp_{value}' for non-default temperatures.
+    """
+    if temperature is None or temperature == 1.0 or temperature == 1:
+        return ""
+    temp_str = f"{float(temperature):.1f}".rstrip("0").rstrip(".")
+    if "." not in temp_str:
+        temp_str += ".0"
+    return f"_temp_{temp_str}"
 
 
 def get_gpu_tier(model_name: str) -> str | None:
@@ -571,9 +597,33 @@ SHORT_MODEL_NAMES: dict[str, list[str]] = dict(_INSPECT_TO_SHORT)
 
 def inspect_model_name(short_model_name: str) -> str:
     """
-    Read from hard-coded INSPECT_MODEL_NAMES dict.
+    Look up the inspect model name for a given short model name.
+
+    For trained models (containing '_sft-as_'), resolves via the base model.
+    For -thinking variants not in the dict, falls back to the base name.
     """
-    return INSPECT_MODEL_NAMES[short_model_name]
+    if short_model_name in INSPECT_MODEL_NAMES:
+        return INSPECT_MODEL_NAMES[short_model_name]
+
+    # Strip -thinking and try again
+    clean = short_model_name
+    if clean.endswith("-thinking"):
+        base = clean.removesuffix("-thinking")
+        if base in INSPECT_MODEL_NAMES:
+            return INSPECT_MODEL_NAMES[base]
+
+    # Trained models: resolve via base model
+    if "_sft-as_" in clean:
+        base_part = clean.split("_sft-as_")[0]
+        try:
+            from scripts.alpaca_eval.training_runs import REORG_MODEL_MAP
+            base_short = REORG_MODEL_MAP.get(base_part, base_part)
+        except ImportError:
+            base_short = base_part
+        if base_short in INSPECT_MODEL_NAMES:
+            return INSPECT_MODEL_NAMES[base_short]
+
+    raise KeyError(f"No inspect model name found for '{short_model_name}'")
 
 
 def short_model_name(model: str) -> str:
@@ -761,8 +811,10 @@ def is_native_reasoning_model(model_name: str) -> bool:
     # use base model data and are NOT in this list.
     native_reasoning_bases = [
         # Together AI models with separate thinking endpoints
+        "qwen-3.0-30b",
         "qwen-3.0-80b",
         "qwen-3.0-235b",
+        "qwen-3.5-27b",
         "deepseek-r1",
         "deepseek-r1-0528",
         "ll-3.3-70b-dsR1",
@@ -804,6 +856,9 @@ def get_data_model_name(model_name: str) -> str:
     """
     Get the model name to use for data loading.
 
+    For trained models (containing '_sft-as_'), resolves to the base model
+    since trained models evaluate on the base model's generated data.
+
     For COT-I models (instruction-tuned models prompted to think step-by-step),
     returns the base model name without "-thinking" suffix since these models
     use data generated without reasoning instructions.
@@ -812,11 +867,33 @@ def get_data_model_name(model_name: str) -> str:
     since they have their own separately generated data.
 
     Args:
-        model_name: Model name (may include "-thinking" suffix)
+        model_name: Model name (may include "-thinking" suffix or trained name)
 
     Returns:
         Model name to use for data directory lookup
     """
+    # Strip -thinking suffix first for trained model resolution
+    clean_name = model_name.removesuffix("-thinking") if model_name.endswith("-thinking") else model_name
+
+    # Trained models: resolve to base model for data lookup
+    # Names like "gpt-oss-20b_sft-as_gpt-oss-20b_vs_..." → "gpt-oss-20b"
+    if "_sft-as_" in clean_name:
+        # Extract the base model (part before _sft-as_)
+        base_part = clean_name.split("_sft-as_")[0]
+        # Map the directory-style name back to shorthand
+        try:
+            from scripts.alpaca_eval.training_runs import REORG_MODEL_MAP
+            base_short = REORG_MODEL_MAP.get(base_part, base_part)
+        except ImportError:
+            base_short = base_part
+        # If the original name had -thinking and the base model's thinking
+        # variant is a native reasoning model, keep -thinking for data lookup
+        if model_name.endswith("-thinking"):
+            thinking_name = base_short + "-thinking"
+            if is_native_reasoning_model(thinking_name):
+                return thinking_name
+        return base_short
+
     if not model_name.endswith("-thinking"):
         return model_name
 

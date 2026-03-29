@@ -26,7 +26,8 @@ class ExperimentConfig:
     )
 
     # Generation parameters
-    temperature: Optional[float] = None
+    temperature: Optional[float] = None  # Evaluator inference temperature
+    generator_temperature: Optional[float] = None  # Data generation temperature (for dir lookup)
     max_final_answer_tokens: Optional[int] = None
     max_thinking_tokens: Optional[int] = (
         None  # Max tokens for thinking models (default: 8192)
@@ -93,6 +94,7 @@ def load_experiment_config(
         priming=config_dict.get("priming", False),
         dataset_name=dataset_name,
         temperature=config_dict.get("temperature"),
+        generator_temperature=config_dict.get("generator_temperature"),
         max_final_answer_tokens=config_dict.get("max_final_answer_tokens")
         or config_dict.get("max_tokens"),  # Backward compat
         max_thinking_tokens=config_dict.get("max_thinking_tokens"),

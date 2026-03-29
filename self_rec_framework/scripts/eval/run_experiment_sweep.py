@@ -26,7 +26,7 @@ from self_rec_framework.scripts.eval.run_experiment import (
 )
 from self_rec_framework.src.inspect.tasks import get_task_function, _is_always_reasoning_model
 from self_rec_framework.src.inspect.config import load_experiment_config
-from self_rec_framework.src.helpers.model_names import is_thinking_model, get_data_model_name, INSPECT_MODEL_NAMES
+from self_rec_framework.src.helpers.model_names import is_thinking_model, get_data_model_name, INSPECT_MODEL_NAMES, temp_suffix
 from self_rec_framework.scripts.utils import expand_model_names
 
 
@@ -359,6 +359,43 @@ def run_sweep_experiment(
     exp_config = load_experiment_config(experiment_config, dataset_name=dataset_name)
     is_pairwise = exp_config.is_pairwise()
 
+    # Check for Tinker GPU dispatch: remap hf/ models to Tinker's OpenAI endpoint
+    # so inspect_ai uses the API instead of downloading weights locally
+    import yaml as _yaml
+    with open(experiment_config) as _f:
+        _raw_config = _yaml.safe_load(_f)
+    gpu_dispatch = _raw_config.get("gpu_dispatch")
+    if gpu_dispatch == "tinker":
+        tinker_base_url = "https://tinker.thinkingmachines.dev/services/tinker-prod/oai/api/v1"
+        tinker_key = os.environ.get("TINKER_API_KEY", "")
+        if tinker_key:
+            os.environ["OPENAI_API_KEY"] = tinker_key
+        os.environ["OPENAI_BASE_URL"] = tinker_base_url
+
+        for model_name in list(model_names) + (generator_models or []):
+            inspect_name = INSPECT_MODEL_NAMES.get(model_name, "")
+            if not inspect_name and model_name.endswith("-thinking"):
+                base = model_name.removesuffix("-thinking")
+                inspect_name = INSPECT_MODEL_NAMES.get(base, "")
+            if inspect_name.startswith("hf/"):
+                hf_model_id = inspect_name.removeprefix("hf/")
+                for prefix in ("openai/", "anthropic/", "google/", "together/"):
+                    if hf_model_id.startswith(prefix):
+                        hf_model_id = hf_model_id.removeprefix(prefix)
+                        break
+                INSPECT_MODEL_NAMES[model_name] = f"openai/{hf_model_id}"
+                if model_name.endswith("-thinking"):
+                    base = model_name.removesuffix("-thinking")
+                    INSPECT_MODEL_NAMES[base] = f"openai/{hf_model_id}"
+                print(f"  Tinker: {model_name} -> openai/{hf_model_id}")
+
+        # Also remap trained model names (contain _sft-as_)
+        for model_name in list(model_names):
+            if "_sft-as_" in model_name:
+                # Trained models aren't in INSPECT_MODEL_NAMES — they use Tinker
+                # checkpoints via the eval task's model resolution
+                pass
+
     # Discover available datasets
     datasets = discover_datasets(dataset_path)
 
@@ -442,9 +479,14 @@ def run_sweep_experiment(
         if is_cot_i:
             print(f"  ℹ {model_name} is COT-I, using data from {data_model_name}")
 
-        # Construct control path using data model name
+        # Apply generator temperature suffix for data directory lookup.
+        # generator_temperature determines which data dirs to use (e.g., _temp_0.0).
+        # The eval config's 'temperature' field controls evaluator inference only.
+        gen_temp = exp_config.generator_temperature if hasattr(exp_config, 'generator_temperature') else None
+        gen_temp_sfx = temp_suffix(gen_temp)
+        control_dir_name = data_model_name + gen_temp_sfx
         control_path = (
-            f"data/input/{dataset_name}/{data_subset}/{data_model_name}/data.json"
+            f"data/input/{dataset_name}/{data_subset}/{control_dir_name}/data.json"
         )
 
         if treatment_type == "other_models":
@@ -463,11 +505,15 @@ def run_sweep_experiment(
             for other_model in other_models:
                 # Get data model name for other model too
                 other_data_model = get_data_model_name(other_model)
-                if other_data_model not in datasets["base_models"]:
-                    continue
+                other_dir_name = other_data_model + gen_temp_sfx
+                if other_dir_name not in datasets["base_models"]:
+                    # Fall back to name without suffix (backward compat)
+                    if other_data_model not in datasets["base_models"]:
+                        continue
+                    other_dir_name = other_data_model
 
                 _, _, treatment_name_treat = parse_dataset_path(
-                    f"data/input/{dataset_name}/{data_subset}/{other_data_model}/data.json"
+                    f"data/input/{dataset_name}/{data_subset}/{other_dir_name}/data.json"
                 )
 
                 _, _, treatment_name_ctrl = parse_dataset_path(control_path)

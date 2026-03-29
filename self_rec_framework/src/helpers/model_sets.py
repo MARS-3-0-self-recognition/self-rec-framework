@@ -18,6 +18,21 @@ def get_model_set(model_set_name: str | None = None) -> list[str]:
             "ll-3.1-8b",
             "qwen-2.5-7b",
         ]
+    if model_set_name.lower() == "sgtr-training-judges":
+        return [
+            "gpt-oss-20b-thinking",
+            "ll-3.1-8b",
+            "qwen-3.0-30b-thinking",
+        ]
+    if model_set_name.lower() == "sgtr-training-generators":
+        return [
+            "qwen-2.5-7b",
+            "qwen-3.0-30b-thinking",
+            "opus-4.1-thinking",
+            "ll-3.1-8b",
+            "gpt-oss-20b-thinking",
+            "gpt-oss-120b-thinking",
+        ]
     if model_set_name.lower() == "gen_cot":
         return [
             "gpt-oss-20b-thinking",

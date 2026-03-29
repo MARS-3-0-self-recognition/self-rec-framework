@@ -289,7 +289,11 @@ def reorder_pivot(pivot: pd.DataFrame, strict: bool = True) -> pd.DataFrame:
     return pivot.reindex(index=row_order, columns=col_order)
 
 
-def expand_model_names(model_names: list[str]) -> list[str]:
+def expand_model_names(
+    model_names: list[str],
+    training_dir: str | None = None,
+    data_subsets: list[str] | None = None,
+) -> list[str]:
     """
     Expand model set references (e.g., '-set gen_cot') to actual model names.
 
@@ -297,11 +301,20 @@ def expand_model_names(model_names: list[str]) -> list[str]:
     - Individual model names: 'haiku-3.5', 'gpt-4.1'
     - Set references: '-set gen_cot', '-set dr', '-set eval_cot'
 
+    When training_dir is provided, also discovers trained model variants
+    (e.g., 'll-3.1-8b-llama-3-1-8b_sft-as_llama-3-1-8b_vs_qwen-2-5-7b_UT_PW_ShareGPT')
+    by scanning the training directory for runs matching the base models.
+
     Args:
         model_names: List of model names and/or set references
+        training_dir: Path to training data root (e.g., 'data/training_reorganized').
+                      If provided, trained variants are appended after set expansion.
+        data_subsets: Filter to specific training subdirectories
+                      (e.g., ['01_final']). Only used when training_dir is set.
 
     Returns:
-        Expanded list of model names (sets replaced with actual model names)
+        Expanded list of model names (sets replaced with actual model names,
+        trained variants appended if training_dir is set)
     """
     expanded = []
     i = 0
@@ -328,6 +341,36 @@ def expand_model_names(model_names: list[str]) -> list[str]:
             # Regular model name
             expanded.append(model_names[i])
             i += 1
+
+    # Auto-discover trained model variants from training_dir
+    if training_dir:
+        try:
+            from scripts.alpaca_eval.training_runs import discover_training_runs
+            runs = discover_training_runs(training_dir, subsets=data_subsets)
+            base_set = set(expanded)
+            # Build mapping: base_model -> suffix to append (e.g., "-thinking")
+            # so that "qwen-3.0-30b-thinking" in the set matches runs with
+            # base_model "qwen-3.0-30b" and the trained name gets "-thinking"
+            base_to_suffix = {}
+            for model in expanded:
+                if model.endswith("-thinking"):
+                    base = model.removesuffix("-thinking")
+                    base_to_suffix[base] = "-thinking"
+                else:
+                    base_to_suffix.setdefault(model, "")
+
+            trained = []
+            for run in runs:
+                suffix = base_to_suffix.get(run.base_model)
+                if suffix is not None:
+                    trained_name = run.trained_name + suffix
+                    if trained_name not in base_set:
+                        trained.append(trained_name)
+            if trained:
+                print(f"  Auto-discovered {len(trained)} trained models from {training_dir}/")
+                expanded.extend(trained)
+        except ImportError:
+            pass  # training_runs module not available (e.g., standalone framework use)
 
     return expanded
 
