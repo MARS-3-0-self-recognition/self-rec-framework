@@ -24,6 +24,11 @@ def get_model_set(model_set_name: str | None = None) -> list[str]:
             "ll-3.1-8b",
             "qwen-3.0-30b-thinking",
         ]
+    if model_set_name.lower() == "sgtr-training-judges-adversarial":
+        return [
+            "gpt-oss-20b-thinking",
+            "qwen-3.0-30b-thinking",
+        ]
     if model_set_name.lower() == "sgtr-training-generators":
         return [
             "qwen-2.5-7b",
@@ -55,6 +60,23 @@ def get_model_set(model_set_name: str | None = None) -> list[str]:
         return [
             "gpt-oss-20b-thinking",
             "gpt-oss-120b-thinking",
+        ]
+    elif model_set_name.lower() == "dr_colm":
+        # 13 instruct models common to ICML_01/02 and COLM_01/02 experiments
+        return [
+            "gpt-4o-mini",
+            "gpt-4.1-mini",
+            "gpt-4o",
+            "gpt-4.1",
+            "sonnet-4.5",
+            "opus-4.1",
+            "gemini-2.0-flash-lite",
+            "gemini-2.0-flash",
+            "ll-3.1-8b",
+            "qwen-2.5-7b",
+            "qwen-3.0-80b",
+            "deepseek-3.1",
+            "kimi-k2",
         ]
     elif model_set_name.lower() == "dr":
         return [
