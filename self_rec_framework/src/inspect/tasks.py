@@ -13,18 +13,19 @@ from inspect_ai.model import (
 )
 from inspect_ai._util.content import ContentReasoning, ContentText
 
-from src.helpers.model_names import (
+from self_rec_framework.src.helpers.model_names import (
     inspect_model_name,
     get_base_model_name,
     needs_reasoning_params,
+    needs_together_reasoning_activation,
     INSPECT_MODEL_NAMES,
     is_thinking_model,
 )
-from src.inspect.config import ExperimentConfig, load_experiment_config
-from src.inspect.scorer import logprob_scorer, answer_length_scorer
-from src.inspect.data import load_dataset_pairwise, load_dataset_individual
+from self_rec_framework.src.inspect.config import ExperimentConfig, load_experiment_config
+from self_rec_framework.src.inspect.scorer import logprob_scorer, answer_length_scorer
+from self_rec_framework.src.inspect.data import load_dataset_pairwise, load_dataset_individual
 
-from src.helpers.utils import (
+from self_rec_framework.src.helpers.utils import (
     data_dir,
     load_json,
 )
@@ -281,6 +282,14 @@ def _configure_thinking_model_params(
         # Always set total = thinking + answer for Together AI models
         config_params["max_tokens"] = max_thinking + max_answer
 
+        # For Together AI hybrid models (e.g., DeepSeek V3.1, Kimi K2.5),
+        # the same endpoint serves both instruct and thinking modes.
+        # Must pass `reasoning: {"enabled": true}` via extra_body to activate thinking.
+        if needs_together_reasoning_activation(model_name):
+            extra_body = config_params.get("extra_body", {})
+            extra_body["reasoning"] = {"enabled": True}
+            config_params["extra_body"] = extra_body
+
 
 def get_task_function(
     exp_config: ExperimentConfig,
@@ -417,7 +426,7 @@ def pairwise_query(
         Task object configured with logprobs enabled
     """
     config = exp_config
-    from src.inspect.config import ensure_evaluator_reasoning
+    from self_rec_framework.src.inspect.config import ensure_evaluator_reasoning
 
     ensure_evaluator_reasoning(config, model_name)
 
@@ -521,7 +530,7 @@ def pairwise_conversation_assistant_tags(
         Task object configured with logprobs enabled
     """
     config = exp_config
-    from src.inspect.config import ensure_evaluator_reasoning
+    from self_rec_framework.src.inspect.config import ensure_evaluator_reasoning
 
     ensure_evaluator_reasoning(config, model_name)
 
@@ -535,7 +544,7 @@ def pairwise_conversation_assistant_tags(
 
     # Check if treatment models are Anthropic (to determine if we can use their reasoning format)
     # Get base model names (remove -thinking suffix and treatment suffixes)
-    from src.helpers.model_names import get_base_model_name
+    from self_rec_framework.src.helpers.model_names import get_base_model_name
 
     base_control = get_base_model_name(treatment_name_control)
     base_treatment = get_base_model_name(treatment_name_treatment)
@@ -747,7 +756,7 @@ def pairwise_conversation_user_tags(
         Task object configured with logprobs enabled
     """
     config = exp_config
-    from src.inspect.config import ensure_evaluator_reasoning
+    from self_rec_framework.src.inspect.config import ensure_evaluator_reasoning
 
     ensure_evaluator_reasoning(config, model_name)
 
@@ -834,7 +843,7 @@ def individual_conversation_assistant_tags(
         Task object configured with logprobs enabled
     """
     config = exp_config
-    from src.inspect.config import ensure_evaluator_reasoning
+    from self_rec_framework.src.inspect.config import ensure_evaluator_reasoning
 
     ensure_evaluator_reasoning(config, model_name)
 

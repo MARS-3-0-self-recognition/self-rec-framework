@@ -27,7 +27,7 @@ import random
 import string
 from pathlib import Path
 
-from src.helpers.utils import load_json, save_json
+from self_rec_framework.src.helpers.utils import load_json, save_json
 
 
 def get_keyboard_substitution(char):

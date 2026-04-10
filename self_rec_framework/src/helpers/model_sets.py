@@ -18,17 +18,65 @@ def get_model_set(model_set_name: str | None = None) -> list[str]:
             "ll-3.1-8b",
             "qwen-2.5-7b",
         ]
+    if model_set_name.lower() == "sgtr-training-judges":
+        return [
+            "gpt-oss-20b-thinking",
+            "ll-3.1-8b",
+            "qwen-3.0-30b-thinking",
+        ]
+    if model_set_name.lower() == "sgtr-training-judges-adversarial":
+        return [
+            "gpt-oss-20b-thinking",
+            "qwen-3.0-30b-thinking",
+        ]
+    if model_set_name.lower() == "sgtr-training-generators":
+        return [
+            "qwen-2.5-7b",
+            "qwen-3.0-30b-thinking",
+            "opus-4.1-thinking",
+            "ll-3.1-8b",
+            "gpt-oss-20b-thinking",
+            "gpt-oss-120b-thinking",
+        ]
     if model_set_name.lower() == "gen_cot":
         return [
             "gpt-oss-20b-thinking",
             "gpt-oss-120b-thinking",
-            "sonnet-3.7-thinking",
-            "grok-3-mini-thinking",
-            "ll-3.3-70b-dsR1-thinking",
-            "qwen-3.0-80b-thinking",
+            #"sonnet-3.7-thinking",
+            #"grok-3-mini-thinking",
+            #"ll-3.3-70b-dsR1-thinking",
+            #"ll-70B-dsr1-thinking",
+            "glm-4.5-air-thinking",
+            "glm-4.7-thinking",
+            "minimax-m2.5-thinking",
+            #"qwen-3.0-80b-thinking",
             "qwen-3.0-235b-thinking",
-            "deepseek-r1-thinking",
-            "kimi-k2-thinking",
+            "deepseek-3.1-thinking",
+            "deepseek-r1-0528-thinking",
+            #"kimi-k2-thinking",
+            "kimi-k2.5-thinking",
+        ]
+    if model_set_name.lower() == "gen_cot_test":
+        return [
+            "gpt-oss-20b-thinking",
+            "gpt-oss-120b-thinking",
+        ]
+    elif model_set_name.lower() == "dr_colm":
+        # 13 instruct models common to ICML_01/02 and COLM_01/02 experiments
+        return [
+            "gpt-4o-mini",
+            "gpt-4.1-mini",
+            "gpt-4o",
+            "gpt-4.1",
+            "sonnet-4.5",
+            "opus-4.1",
+            "gemini-2.0-flash-lite",
+            "gemini-2.0-flash",
+            "ll-3.1-8b",
+            "qwen-2.5-7b",
+            "qwen-3.0-80b",
+            "deepseek-3.1",
+            "kimi-k2",
         ]
     elif model_set_name.lower() == "dr":
         return [
@@ -38,8 +86,8 @@ def get_model_set(model_set_name: str | None = None) -> list[str]:
             "gpt-4o",
             "gpt-4.1",
             # Anthropic (weakest to strongest)
-            "haiku-3.5",
-            "sonnet-3.7",
+            #"haiku-3.5",
+            #"sonnet-3.7",
             "sonnet-4.5",
             "opus-4.1",
             # Google Gemini (weakest to strongest)
@@ -47,11 +95,12 @@ def get_model_set(model_set_name: str | None = None) -> list[str]:
             "gemini-2.0-flash",
             # Together AI - Llama (weakest to strongest)
             "ll-3.1-8b",
-            "ll-3.1-70b",
-            "ll-3.1-405b",
+            #"ll-3.1-70b", # still available but not working
+            #"ll-3.1-405b",
             # Together AI - Qwen (weakest to strongest)
             "qwen-2.5-7b",
-            "qwen-2.5-72b",
+            #"qwen-2.5-72b", # still available but not working
+            "qwen-3.5-27b",
             "qwen-3.0-80b",
             # "qwen-3.0-235b",
             # Together AI - DeepSeek (weakest to strongest)
