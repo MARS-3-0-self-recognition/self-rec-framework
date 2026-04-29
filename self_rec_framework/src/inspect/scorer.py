@@ -29,38 +29,6 @@ def logprob_scorer():
         if correct not in {"1", "2"}:
             raise ValueError(f"correct_answer must be '1' or '2', got {correct}")
 
-        # logprobs = state.output.logprobs
-
-        # # Case 1: logprobs available
-        # if logprobs and len(logprobs) > 0:
-        #     first_token_logprobs = logprobs[0]
-        #     token_lp = {lp["token"]: lp["logprob"] for lp in first_token_logprobs}
-
-        #     lp1 = token_lp.get("1", float("-inf"))
-        #     lp2 = token_lp.get("2", float("-inf"))
-
-        #     incorrect = "2" if correct == "1" else "1"
-
-        #     correct_log_odds = token_lp.get(correct, float("-inf")) - token_lp.get(incorrect, float("-inf"))
-        #     ordered_log_odds = lp1 - lp2
-
-        #     # Determine accuracy
-        #     pred = "1" if lp1 > lp2 else "2"
-        #     acc = "C" if pred == correct else "I"
-
-        #     return Score(
-        #         value={
-        #             "correct_log_odds": correct_log_odds,
-        #             "ordered_log_odds": ordered_log_odds,
-        #             "acc": acc,
-        #         },
-        #         answer=state.output.completion,
-        #         explanation=f"[logprobs] 1={lp1}, 2={lp2}, correct={correct}, pred={pred}"
-        #     )
-
-        # sys.stderr.write("[fallback] No logprobs available, using completion tokens.\n")
-
-        # Case 2: fallback to generated text
         completion = state.output.completion.strip()
 
         # Check that the final character is "1" or "2"
@@ -121,15 +89,15 @@ def answer_length_scorer():
         """
         try:
             message = state.output.message
-        except Exception:
+        except (AttributeError, IndexError):
             # Fallback: try accessing via choices (for OpenAI models)
             try:
                 choices = getattr(state.output, "choices", None)
-                if choices and len(choices) > 0:
+                if choices:
                     message = getattr(choices[0], "message", None)
                 else:
                     return None, None
-            except Exception:
+            except (AttributeError, TypeError, IndexError):
                 return None, None
 
         if message is None:
