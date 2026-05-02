@@ -21,7 +21,11 @@ from self_rec_framework.src.helpers.model_names import (
     INSPECT_MODEL_NAMES,
     is_thinking_model,
 )
-from self_rec_framework.src.inspect.config import ExperimentConfig, load_experiment_config
+from self_rec_framework.src.inspect.config import (
+    ExperimentConfig,
+    ensure_evaluator_reasoning,
+    load_experiment_config,
+)
 from self_rec_framework.src.inspect.scorer import logprob_scorer, answer_length_scorer
 from self_rec_framework.src.inspect.data import load_dataset_pairwise, load_dataset_individual
 
@@ -31,7 +35,7 @@ from self_rec_framework.src.helpers.utils import (
 )
 
 
-def _get_model_with_custom_base_url(model_name: str, inspect_model_str: str):
+def _get_model_with_custom_base_url(model_name: str, inspect_model_str: str) -> str:
     """
     Get a Model object, handling custom base URLs for providers like XAI.
 
@@ -200,7 +204,7 @@ def _configure_thinking_model_params(
         model: Optional inspect model string (for provider detection)
     """
     # Determine provider if model string provided
-    inspect_model_str = str(model) if model else None
+    inspect_model_str = model or None
 
     # For dual-mode models WITHOUT -thinking suffix, explicitly disable reasoning
     if not is_thinking_model(model_name):
@@ -355,11 +359,7 @@ def get_task_function(
         ("UT", "PW-Q", "Pref"): pairwise_query,
         ("AT", "IND-Q", "Rec"): individual_query,
         ("UT", "IND-Q", "Rec"): individual_query,
-        (
-            "UT",
-            "IND-Q",
-            "Pref",
-        ): individual_query,  # Pref tasks use same function as Rec
+        ("UT", "IND-Q", "Pref"): individual_query,  # Pref tasks use same function as Rec
     }
 
     key = (tags, format_type, base_task)
@@ -426,11 +426,9 @@ def pairwise_query(
         Task object configured with logprobs enabled
     """
     config = exp_config
-    from self_rec_framework.src.inspect.config import ensure_evaluator_reasoning
-
     ensure_evaluator_reasoning(config, model_name)
 
-    inspect_model_str: str = inspect_model_name(model_name)
+    inspect_model_str = inspect_model_name(model_name)
     # Get model object (handles custom base URLs for XAI/Grok, etc.)
     inspect_model = _get_model_with_custom_base_url(model_name, inspect_model_str)
 
@@ -530,17 +528,12 @@ def pairwise_conversation_assistant_tags(
         Task object configured with logprobs enabled
     """
     config = exp_config
-    from self_rec_framework.src.inspect.config import ensure_evaluator_reasoning
-
     ensure_evaluator_reasoning(config, model_name)
 
-    inspect_model_str: str = inspect_model_name(model_name)
+    inspect_model_str = inspect_model_name(model_name)
 
     # Get model object (handles custom base URLs for XAI, etc.)
     inspect_model = _get_model_with_custom_base_url(model_name, inspect_model_str)
-
-    # Check if evaluator is Anthropic (they have strict requirements for reasoning content)
-    is_anthropic_evaluator = "anthropic" in inspect_model_str.lower()
 
     # Check if treatment models are Anthropic (to determine if we can use their reasoning format)
     # Get base model names (remove -thinking suffix and treatment suffixes)
@@ -559,6 +552,8 @@ def pairwise_conversation_assistant_tags(
         else ""
     )
 
+    # Check if evaluator is Anthropic (they have strict requirements for reasoning content)
+    is_anthropic_evaluator = "anthropic" in inspect_model_str.lower()
     is_control_anthropic = "anthropic" in control_inspect.lower()
     is_treatment_anthropic = "anthropic" in treatment_inspect.lower()
 
@@ -578,121 +573,78 @@ def pairwise_conversation_assistant_tags(
             content=sample_data["content"]
         )
 
-        # Build conversation history
-        messages = []
+        def assistant_message_with_optional_cot(
+            output_key: str,
+            cot_key: str,
+            signature_key: str,
+            cot_source_is_anthropic: bool,
+        ) -> ChatMessageAssistant:
+            cot = sample_data.get(cot_key)
+            signature = sample_data.get(signature_key)
+            output_text = sample_data[output_key]
 
-        # First interaction with output1
-        messages.append(ChatMessageUser(content=generation_prompt))
+            if cot:
+                # Use ContentReasoning with signature if available (for Anthropic models)
+                # Note: Signatures are tied to specific reasoning content. We allow cross-Anthropic
+                # model usage (e.g., sonnet 3.7 signature with opus 4.1 evaluator) - if the API
+                # rejects this, we'll get an error and can adjust.
+                # Otherwise use redacted=True for other providers
+                if signature and is_anthropic_evaluator and cot_source_is_anthropic:
+                    # Anthropic evaluator with Anthropic CoT - use signature
+                    # (May work across different Anthropic models, e.g., sonnet -> opus)
+                    return ChatMessageAssistant(
+                        content=[
+                            ContentReasoning(reasoning=cot, signature=signature),
+                            ContentText(text=output_text),
+                        ]
+                    )
+                elif not is_anthropic_evaluator:
+                    # Non-Anthropic evaluator - include plaintext reasoning so it appears in logs
+                    return ChatMessageAssistant(
+                        content=[
+                            ContentReasoning(reasoning=cot),
+                            ContentText(text=output_text),
+                        ]
+                    )
+                elif cot_source_is_anthropic:
+                    # Anthropic evaluator with Anthropic CoT but no signature - fall back to redacted
+                    return ChatMessageAssistant(
+                        content=[
+                            ContentReasoning(reasoning=cot, redacted=True),
+                            ContentText(text=output_text),
+                        ]
+                    )
 
-        # Add output1 with CoT if available
-        cot1 = sample_data.get("cot1")
-        signature1 = sample_data.get("signature1")
-        if cot1:
-            # Determine which treatment model generated output1
-            # In sample 1: output1 is from treatment_name_1 (control)
-            # In sample 2: output1 is from treatment_name_2 (treatment, swapped)
-            # Check metadata to see which sample this is
-            is_first_sample = sample_data["metadata"].get("correct_answer") == "1"
-            cot1_source_is_anthropic = (
-                is_control_anthropic if is_first_sample else is_treatment_anthropic
+            # No CoT, or skip CoT for Anthropic evaluator with non-Anthropic CoT (no signature)
+            return ChatMessageAssistant(content=output_text)
+
+        # Which generator (control vs treatment) owns each output slot depends on presentation order
+        # (position-swap bias control). Use metadata["correct_answer"] to determine the order
+        # canonical order ("1"): output1 is control, output2 is treatment.
+        # swapped presentation ("2"): output1 is treatment, output2 is control.
+        is_canonical_order = sample_data["metadata"].get("correct_answer") == "1"
+
+        # Build conversation history starting with user prompt for output1
+        messages = [ChatMessageUser(content=generation_prompt)]
+
+        cot1_source_is_anthropic = is_control_anthropic if is_canonical_order else is_treatment_anthropic
+        # Add output1 with CoT if available.
+        messages.append(
+            assistant_message_with_optional_cot(
+                "output1", "cot1", "signature1", cot1_source_is_anthropic
             )
-
-            # Use ContentReasoning with signature if available (for Anthropic models)
-            # Note: Signatures are tied to specific reasoning content. We allow cross-Anthropic
-            # model usage (e.g., sonnet 3.7 signature with opus 4.1 evaluator) - if the API
-            # rejects this, we'll get an error and can adjust.
-            # Otherwise use redacted=True for other providers
-            if signature1 and is_anthropic_evaluator and cot1_source_is_anthropic:
-                # Anthropic evaluator with Anthropic CoT - use signature
-                # (May work across different Anthropic models, e.g., sonnet -> opus)
-                messages.append(
-                    ChatMessageAssistant(
-                        content=[
-                            ContentReasoning(reasoning=cot1, signature=signature1),
-                            ContentText(text=sample_data["output1"]),
-                        ]
-                    )
-                )
-            elif not is_anthropic_evaluator:
-                # Non-Anthropic evaluator - include plaintext reasoning so it appears in logs
-                messages.append(
-                    ChatMessageAssistant(
-                        content=[
-                            ContentReasoning(reasoning=cot1),
-                            ContentText(text=sample_data["output1"]),
-                        ]
-                    )
-                )
-            elif cot1_source_is_anthropic:
-                # Anthropic evaluator with Anthropic CoT but no signature - fall back to redacted
-                messages.append(
-                    ChatMessageAssistant(
-                        content=[
-                            ContentReasoning(reasoning=cot1, redacted=True),
-                            ContentText(text=sample_data["output1"]),
-                        ]
-                    )
-                )
-            else:
-                # Skip CoT for Anthropic evaluator with non-Anthropic CoT (no signature)
-                messages.append(ChatMessageAssistant(content=sample_data["output1"]))
-        else:
-            messages.append(ChatMessageAssistant(content=sample_data["output1"]))
+        )
 
         # Second interaction with output2 (same article/question)
         messages.append(ChatMessageUser(content=generation_prompt))
 
-        # Add output2 with CoT if available
-        cot2 = sample_data.get("cot2")
-        signature2 = sample_data.get("signature2")
-        if cot2:
-            # Determine which treatment model generated output2
-            is_first_sample = sample_data["metadata"].get("correct_answer") == "1"
-            cot2_source_is_anthropic = (
-                is_treatment_anthropic if is_first_sample else is_control_anthropic
+        cot2_source_is_anthropic = is_treatment_anthropic if is_canonical_order else is_control_anthropic
+        # Add output2 with CoT if available.
+        messages.append(
+            assistant_message_with_optional_cot(
+                "output2", "cot2", "signature2", cot2_source_is_anthropic
             )
-
-            # Use ContentReasoning with signature if available (for Anthropic models)
-            # Note: Signatures are tied to specific reasoning content. We allow cross-Anthropic
-            # model usage (e.g., sonnet 3.7 signature with opus 4.1 evaluator) - if the API
-            # rejects this, we'll get an error and can adjust.
-            # Otherwise use redacted=True for other providers
-            if signature2 and is_anthropic_evaluator and cot2_source_is_anthropic:
-                # Anthropic evaluator with Anthropic CoT - use signature
-                # (May work across different Anthropic models, e.g., sonnet -> opus)
-                messages.append(
-                    ChatMessageAssistant(
-                        content=[
-                            ContentReasoning(reasoning=cot2, signature=signature2),
-                            ContentText(text=sample_data["output2"]),
-                        ]
-                    )
-                )
-            elif not is_anthropic_evaluator:
-                # Non-Anthropic evaluator - include plaintext reasoning so it appears in logs
-                messages.append(
-                    ChatMessageAssistant(
-                        content=[
-                            ContentReasoning(reasoning=cot2),
-                            ContentText(text=sample_data["output2"]),
-                        ]
-                    )
-                )
-            elif cot2_source_is_anthropic:
-                # Anthropic evaluator with Anthropic CoT but no signature - fall back to redacted
-                messages.append(
-                    ChatMessageAssistant(
-                        content=[
-                            ContentReasoning(reasoning=cot2, redacted=True),
-                            ContentText(text=sample_data["output2"]),
-                        ]
-                    )
-                )
-            else:
-                # Skip CoT for Anthropic evaluator with non-Anthropic CoT (no signature)
-                messages.append(ChatMessageAssistant(content=sample_data["output2"]))
-        else:
-            messages.append(ChatMessageAssistant(content=sample_data["output2"]))
+        )
 
         # Final verification question
         messages.append(ChatMessageUser(content=config.SR_task_prompt))
@@ -756,11 +708,9 @@ def pairwise_conversation_user_tags(
         Task object configured with logprobs enabled
     """
     config = exp_config
-    from self_rec_framework.src.inspect.config import ensure_evaluator_reasoning
-
     ensure_evaluator_reasoning(config, model_name)
 
-    inspect_model_str: str = inspect_model_name(model_name)
+    inspect_model_str = inspect_model_name(model_name)
     # Get model object (handles custom base URLs for XAI/Grok, etc.)
     inspect_model = _get_model_with_custom_base_url(model_name, inspect_model_str)
 
@@ -843,11 +793,9 @@ def individual_conversation_assistant_tags(
         Task object configured with logprobs enabled
     """
     config = exp_config
-    from self_rec_framework.src.inspect.config import ensure_evaluator_reasoning
-
     ensure_evaluator_reasoning(config, model_name)
 
-    inspect_model_str: str = inspect_model_name(model_name)
+    inspect_model_str = inspect_model_name(model_name)
     # Get model object (handles custom base URLs for XAI/Grok, etc.)
     inspect_model = _get_model_with_custom_base_url(model_name, inspect_model_str)
 
@@ -942,7 +890,7 @@ def individual_conversation_user_tags(
     """
     config = exp_config
 
-    inspect_model_str: str = inspect_model_name(model_name)
+    inspect_model_str = inspect_model_name(model_name)
     # Get model object (handles custom base URLs for XAI/Grok, etc.)
     inspect_model = _get_model_with_custom_base_url(model_name, inspect_model_str)
 
@@ -1026,7 +974,7 @@ def individual_query(
     """
     config = exp_config
 
-    inspect_model_str: str = inspect_model_name(model_name)
+    inspect_model_str = inspect_model_name(model_name)
     # Get model object (handles custom base URLs for XAI/Grok, etc.)
     inspect_model = _get_model_with_custom_base_url(model_name, inspect_model_str)
 
