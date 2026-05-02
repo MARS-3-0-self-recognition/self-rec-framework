@@ -573,118 +573,78 @@ def pairwise_conversation_assistant_tags(
             content=sample_data["content"]
         )
 
+        def assistant_message_with_optional_cot(
+            output_key: str,
+            cot_key: str,
+            signature_key: str,
+            cot_source_is_anthropic: bool,
+        ) -> ChatMessageAssistant:
+            cot = sample_data.get(cot_key)
+            signature = sample_data.get(signature_key)
+            output_text = sample_data[output_key]
+
+            if cot:
+                # Use ContentReasoning with signature if available (for Anthropic models)
+                # Note: Signatures are tied to specific reasoning content. We allow cross-Anthropic
+                # model usage (e.g., sonnet 3.7 signature with opus 4.1 evaluator) - if the API
+                # rejects this, we'll get an error and can adjust.
+                # Otherwise use redacted=True for other providers
+                if signature and is_anthropic_evaluator and cot_source_is_anthropic:
+                    # Anthropic evaluator with Anthropic CoT - use signature
+                    # (May work across different Anthropic models, e.g., sonnet -> opus)
+                    return ChatMessageAssistant(
+                        content=[
+                            ContentReasoning(reasoning=cot, signature=signature),
+                            ContentText(text=output_text),
+                        ]
+                    )
+                elif not is_anthropic_evaluator:
+                    # Non-Anthropic evaluator - include plaintext reasoning so it appears in logs
+                    return ChatMessageAssistant(
+                        content=[
+                            ContentReasoning(reasoning=cot),
+                            ContentText(text=output_text),
+                        ]
+                    )
+                elif cot_source_is_anthropic:
+                    # Anthropic evaluator with Anthropic CoT but no signature - fall back to redacted
+                    return ChatMessageAssistant(
+                        content=[
+                            ContentReasoning(reasoning=cot, redacted=True),
+                            ContentText(text=output_text),
+                        ]
+                    )
+
+            # No CoT, or skip CoT for Anthropic evaluator with non-Anthropic CoT (no signature)
+            return ChatMessageAssistant(content=output_text)
+
+        # Which generator (control vs treatment) owns each output slot depends on presentation order
+        # (position-swap bias control). Use metadata["correct_answer"] to determine the order
+        # canonical order ("1"): output1 is control, output2 is treatment.
+        # swapped presentation ("2"): output1 is treatment, output2 is control.
+        is_canonical_order = sample_data["metadata"].get("correct_answer") == "1"
+
         # Build conversation history starting with user prompt for output1
         messages = [ChatMessageUser(content=generation_prompt)]
 
-        # Add output1 with CoT if available
-        cot1 = sample_data.get("cot1")
-        signature1 = sample_data.get("signature1")
-        if cot1:
-            # Determine which treatment model generated output1
-            # In sample 1: output1 is from treatment_name_1 (control)
-            # In sample 2: output1 is from treatment_name_2 (treatment, swapped)
-            # Check metadata to see which sample this is
-            is_first_sample = sample_data["metadata"].get("correct_answer") == "1"
-            cot1_source_is_anthropic = (
-                is_control_anthropic if is_first_sample else is_treatment_anthropic
+        cot1_source_is_anthropic = is_control_anthropic if is_canonical_order else is_treatment_anthropic
+        # Add output1 with CoT if available.
+        messages.append(
+            assistant_message_with_optional_cot(
+                "output1", "cot1", "signature1", cot1_source_is_anthropic
             )
-
-            # Use ContentReasoning with signature if available (for Anthropic models)
-            # Note: Signatures are tied to specific reasoning content. We allow cross-Anthropic
-            # model usage (e.g., sonnet 3.7 signature with opus 4.1 evaluator) - if the API
-            # rejects this, we'll get an error and can adjust.
-            # Otherwise use redacted=True for other providers
-            if signature1 and is_anthropic_evaluator and cot1_source_is_anthropic:
-                # Anthropic evaluator with Anthropic CoT - use signature
-                # (May work across different Anthropic models, e.g., sonnet -> opus)
-                messages.append(
-                    ChatMessageAssistant(
-                        content=[
-                            ContentReasoning(reasoning=cot1, signature=signature1),
-                            ContentText(text=sample_data["output1"]),
-                        ]
-                    )
-                )
-            elif not is_anthropic_evaluator:
-                # Non-Anthropic evaluator - include plaintext reasoning so it appears in logs
-                messages.append(
-                    ChatMessageAssistant(
-                        content=[
-                            ContentReasoning(reasoning=cot1),
-                            ContentText(text=sample_data["output1"]),
-                        ]
-                    )
-                )
-            elif cot1_source_is_anthropic:
-                # Anthropic evaluator with Anthropic CoT but no signature - fall back to redacted
-                messages.append(
-                    ChatMessageAssistant(
-                        content=[
-                            ContentReasoning(reasoning=cot1, redacted=True),
-                            ContentText(text=sample_data["output1"]),
-                        ]
-                    )
-                )
-            else:
-                # Skip CoT for Anthropic evaluator with non-Anthropic CoT (no signature)
-                messages.append(ChatMessageAssistant(content=sample_data["output1"]))
-        else:
-            messages.append(ChatMessageAssistant(content=sample_data["output1"]))
+        )
 
         # Second interaction with output2 (same article/question)
         messages.append(ChatMessageUser(content=generation_prompt))
 
-        # Add output2 with CoT if available
-        cot2 = sample_data.get("cot2")
-        signature2 = sample_data.get("signature2")
-        if cot2:
-            # Determine which treatment model generated output2
-            is_first_sample = sample_data["metadata"].get("correct_answer") == "1"
-            cot2_source_is_anthropic = (
-                is_treatment_anthropic if is_first_sample else is_control_anthropic
+        cot2_source_is_anthropic = is_treatment_anthropic if is_canonical_order else is_control_anthropic
+        # Add output2 with CoT if available.
+        messages.append(
+            assistant_message_with_optional_cot(
+                "output2", "cot2", "signature2", cot2_source_is_anthropic
             )
-
-            # Use ContentReasoning with signature if available (for Anthropic models)
-            # Note: Signatures are tied to specific reasoning content. We allow cross-Anthropic
-            # model usage (e.g., sonnet 3.7 signature with opus 4.1 evaluator) - if the API
-            # rejects this, we'll get an error and can adjust.
-            # Otherwise use redacted=True for other providers
-            if signature2 and is_anthropic_evaluator and cot2_source_is_anthropic:
-                # Anthropic evaluator with Anthropic CoT - use signature
-                # (May work across different Anthropic models, e.g., sonnet -> opus)
-                messages.append(
-                    ChatMessageAssistant(
-                        content=[
-                            ContentReasoning(reasoning=cot2, signature=signature2),
-                            ContentText(text=sample_data["output2"]),
-                        ]
-                    )
-                )
-            elif not is_anthropic_evaluator:
-                # Non-Anthropic evaluator - include plaintext reasoning so it appears in logs
-                messages.append(
-                    ChatMessageAssistant(
-                        content=[
-                            ContentReasoning(reasoning=cot2),
-                            ContentText(text=sample_data["output2"]),
-                        ]
-                    )
-                )
-            elif cot2_source_is_anthropic:
-                # Anthropic evaluator with Anthropic CoT but no signature - fall back to redacted
-                messages.append(
-                    ChatMessageAssistant(
-                        content=[
-                            ContentReasoning(reasoning=cot2, redacted=True),
-                            ContentText(text=sample_data["output2"]),
-                        ]
-                    )
-                )
-            else:
-                # Skip CoT for Anthropic evaluator with non-Anthropic CoT (no signature)
-                messages.append(ChatMessageAssistant(content=sample_data["output2"]))
-        else:
-            messages.append(ChatMessageAssistant(content=sample_data["output2"]))
+        )
 
         # Final verification question
         messages.append(ChatMessageUser(content=config.SR_task_prompt))
