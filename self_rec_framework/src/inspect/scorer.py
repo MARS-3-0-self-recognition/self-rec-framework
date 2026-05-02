@@ -53,8 +53,10 @@ def logprob_scorer():
                 metadata={"failure": True},
             )
 
+        # "1" or "2" at this point. Represents the model's prediction/guess/answer.
         pred = final_char
 
+        # "C" if correct, "I" if incorrect. Represents whether or not the model's answer was correct.
         acc = "C" if pred == correct else "I"
 
         return Score(
