@@ -21,7 +21,11 @@ from self_rec_framework.src.helpers.model_names import (
     INSPECT_MODEL_NAMES,
     is_thinking_model,
 )
-from self_rec_framework.src.inspect.config import ExperimentConfig, load_experiment_config
+from self_rec_framework.src.inspect.config import (
+    ExperimentConfig,
+    ensure_evaluator_reasoning,
+    load_experiment_config,
+)
 from self_rec_framework.src.inspect.scorer import logprob_scorer, answer_length_scorer
 from self_rec_framework.src.inspect.data import load_dataset_pairwise, load_dataset_individual
 
@@ -31,7 +35,7 @@ from self_rec_framework.src.helpers.utils import (
 )
 
 
-def _get_model_with_custom_base_url(model_name: str, inspect_model_str: str):
+def _get_model_with_custom_base_url(model_name: str, inspect_model_str: str) -> str:
     """
     Get a Model object, handling custom base URLs for providers like XAI.
 
@@ -200,7 +204,7 @@ def _configure_thinking_model_params(
         model: Optional inspect model string (for provider detection)
     """
     # Determine provider if model string provided
-    inspect_model_str = str(model) if model else None
+    inspect_model_str = model or None
 
     # For dual-mode models WITHOUT -thinking suffix, explicitly disable reasoning
     if not is_thinking_model(model_name):
@@ -355,11 +359,7 @@ def get_task_function(
         ("UT", "PW-Q", "Pref"): pairwise_query,
         ("AT", "IND-Q", "Rec"): individual_query,
         ("UT", "IND-Q", "Rec"): individual_query,
-        (
-            "UT",
-            "IND-Q",
-            "Pref",
-        ): individual_query,  # Pref tasks use same function as Rec
+        ("UT", "IND-Q", "Pref"): individual_query,  # Pref tasks use same function as Rec
     }
 
     key = (tags, format_type, base_task)
@@ -426,11 +426,9 @@ def pairwise_query(
         Task object configured with logprobs enabled
     """
     config = exp_config
-    from self_rec_framework.src.inspect.config import ensure_evaluator_reasoning
-
     ensure_evaluator_reasoning(config, model_name)
 
-    inspect_model_str: str = inspect_model_name(model_name)
+    inspect_model_str = inspect_model_name(model_name)
     # Get model object (handles custom base URLs for XAI/Grok, etc.)
     inspect_model = _get_model_with_custom_base_url(model_name, inspect_model_str)
 
@@ -530,17 +528,12 @@ def pairwise_conversation_assistant_tags(
         Task object configured with logprobs enabled
     """
     config = exp_config
-    from self_rec_framework.src.inspect.config import ensure_evaluator_reasoning
-
     ensure_evaluator_reasoning(config, model_name)
 
-    inspect_model_str: str = inspect_model_name(model_name)
+    inspect_model_str = inspect_model_name(model_name)
 
     # Get model object (handles custom base URLs for XAI, etc.)
     inspect_model = _get_model_with_custom_base_url(model_name, inspect_model_str)
-
-    # Check if evaluator is Anthropic (they have strict requirements for reasoning content)
-    is_anthropic_evaluator = "anthropic" in inspect_model_str.lower()
 
     # Check if treatment models are Anthropic (to determine if we can use their reasoning format)
     # Get base model names (remove -thinking suffix and treatment suffixes)
@@ -559,6 +552,8 @@ def pairwise_conversation_assistant_tags(
         else ""
     )
 
+    # Check if evaluator is Anthropic (they have strict requirements for reasoning content)
+    is_anthropic_evaluator = "anthropic" in inspect_model_str.lower()
     is_control_anthropic = "anthropic" in control_inspect.lower()
     is_treatment_anthropic = "anthropic" in treatment_inspect.lower()
 
@@ -578,11 +573,8 @@ def pairwise_conversation_assistant_tags(
             content=sample_data["content"]
         )
 
-        # Build conversation history
-        messages = []
-
-        # First interaction with output1
-        messages.append(ChatMessageUser(content=generation_prompt))
+        # Build conversation history starting with user prompt for output1
+        messages = [ChatMessageUser(content=generation_prompt)]
 
         # Add output1 with CoT if available
         cot1 = sample_data.get("cot1")
@@ -756,11 +748,9 @@ def pairwise_conversation_user_tags(
         Task object configured with logprobs enabled
     """
     config = exp_config
-    from self_rec_framework.src.inspect.config import ensure_evaluator_reasoning
-
     ensure_evaluator_reasoning(config, model_name)
 
-    inspect_model_str: str = inspect_model_name(model_name)
+    inspect_model_str = inspect_model_name(model_name)
     # Get model object (handles custom base URLs for XAI/Grok, etc.)
     inspect_model = _get_model_with_custom_base_url(model_name, inspect_model_str)
 
@@ -843,11 +833,9 @@ def individual_conversation_assistant_tags(
         Task object configured with logprobs enabled
     """
     config = exp_config
-    from self_rec_framework.src.inspect.config import ensure_evaluator_reasoning
-
     ensure_evaluator_reasoning(config, model_name)
 
-    inspect_model_str: str = inspect_model_name(model_name)
+    inspect_model_str = inspect_model_name(model_name)
     # Get model object (handles custom base URLs for XAI/Grok, etc.)
     inspect_model = _get_model_with_custom_base_url(model_name, inspect_model_str)
 
@@ -942,7 +930,7 @@ def individual_conversation_user_tags(
     """
     config = exp_config
 
-    inspect_model_str: str = inspect_model_name(model_name)
+    inspect_model_str = inspect_model_name(model_name)
     # Get model object (handles custom base URLs for XAI/Grok, etc.)
     inspect_model = _get_model_with_custom_base_url(model_name, inspect_model_str)
 
@@ -1026,7 +1014,7 @@ def individual_query(
     """
     config = exp_config
 
-    inspect_model_str: str = inspect_model_name(model_name)
+    inspect_model_str = inspect_model_name(model_name)
     # Get model object (handles custom base URLs for XAI/Grok, etc.)
     inspect_model = _get_model_with_custom_base_url(model_name, inspect_model_str)
 
