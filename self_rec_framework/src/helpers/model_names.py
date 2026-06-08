@@ -836,7 +836,8 @@ INSPECT_MODEL_NAMES: dict[str, str] = {
     if v.model_name is not None
 }
 
-# Model parameter counts (in billions, unless specified with 'T' for trillions)
+# Model parameter counts ('B' designates "in billions", 'T' for "in trillions", 
+# "unknown" signifies the parameter count is not officially given).
 # Values are based on model names or official documentation only.
 # For MoE models, values represent total parameters (not active per token).
 # Use MODEL_PARAMETER_COUNTS_ESTIMATED for estimated values.
@@ -846,7 +847,8 @@ MODEL_PARAMETER_COUNTS: dict[str, str] = {
     if v.parameter_count is not None
 }
 
-# Estimated parameter counts for models where official values are not available.
+# Estimated parameter counts for when official values are not available ('B' designates "in billions", 
+# 'T' for "in trillions").
 # These are research estimates based on model performance, architecture comparisons,
 # and industry analysis. Values should be treated as approximate.
 MODEL_PARAMETER_COUNTS_ESTIMATED: dict[str, str] = {
