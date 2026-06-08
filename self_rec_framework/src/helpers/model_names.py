@@ -1,87 +1,839 @@
 from collections import defaultdict
+from dataclasses import dataclass
 
+@dataclass
+class ModelInfo:
+    model_name: str | None
+    parameter_count: str | None
+    parameter_count_estimated: str | None
+    release_date: str | None
+    release_date_estimated: str | None
+    capability_tier: int | None
+    lm_arena_ranking: int | None  # Updated from https://arena.ai/leaderboard/text on 2026-03-27.
+    lm_arena_score: int | None  # Updated from https://arena.ai/leaderboard/text on 2026-03-27.
+    gpu_tier: str | None
 
-INSPECT_MODEL_NAMES: dict = {
+INSPECT_MODELS: dict[str, ModelInfo] = {
     # OpenAI
-    "gpt-4o-mini": "openai/gpt-4o-mini",
-    "gpt-4o": "openai/gpt-4o",
-    "gpt-4.1-mini": "openai/gpt-4.1-mini-2025-04-14",
-    "gpt-4.1": "openai/gpt-4.1-2025-04-14",
-    "gpt-5-mini": "openai/gpt-5-mini",
-    "gpt-5-mini-thinking": "openai/gpt-5-mini",
-    "gpt-5": "openai/gpt-5",
-    "gpt-5-thinking": "openai/gpt-5",
-    #"gpt-oss-20b-thinking": "together/openai/gpt-oss-20b",
-    #"gpt-oss-120b-thinking": "together/openai/gpt-oss-120b",
-    "o3": "openai/o3-2025-04-16",
-    "o3-thinking": "openai/o3-2025-04-16",
-    "o3-mini": "openai/o3-mini-2025-01-31",
-    "o3-mini-thinking": "openai/o3-mini-2025-01-31",
+    "gpt-4o-mini": ModelInfo(
+        model_name="openai/gpt-4o-mini",
+        parameter_count="unknown",
+        parameter_count_estimated="8B",  # Estimated, similar to Claude 3 Haiku
+        release_date="2024-07-18",  # Confirmed
+        release_date_estimated=None,
+        capability_tier=1,  # Small model (~8B estimated)
+        lm_arena_ranking=188,  # gpt-4o-mini-2024-07-18, score: 1317
+        lm_arena_score=1317,
+        gpu_tier=None,
+    ),
+    "gpt-4o": ModelInfo(
+        model_name="openai/gpt-4o",
+        parameter_count="unknown",
+        parameter_count_estimated="1.8T",  # Estimated, similar to GPT-4
+        release_date="2024-05",  # Confirmed (month only)
+        release_date_estimated=None,
+        capability_tier=4,  # Large frontier model (~1.8T estimated)
+        lm_arena_ranking=150,  # gpt-4o-2024-05-13, score: 1345
+        lm_arena_score=1345,
+        gpu_tier=None,
+    ),
+    "gpt-4.1-mini": ModelInfo(
+        model_name="openai/gpt-4.1-mini-2025-04-14",
+        parameter_count="unknown",
+        parameter_count_estimated="8B",  # Estimated, similar to gpt-4o-mini
+        release_date="2025-04-14",  # From model name
+        release_date_estimated=None,
+        capability_tier=1,  # Small model (~8B estimated)
+        lm_arena_ranking=111,  # gpt-4.1-mini-2025-04-14, score: 1382
+        lm_arena_score=1382,
+        gpu_tier=None,
+    ),
+    "gpt-4.1": ModelInfo(
+        model_name="openai/gpt-4.1-2025-04-14",
+        parameter_count="unknown",
+        parameter_count_estimated="1.8T",  # Estimated, similar to gpt-4o
+        release_date="2025-04-14",  # From model name
+        release_date_estimated=None,
+        capability_tier=4,  # Large frontier model (~1.8T estimated), newer than 4o
+        lm_arena_ranking=69,  # gpt-4.1-2025-04-14, score: 1413
+        lm_arena_score=1413,
+        gpu_tier=None,
+    ),
+    "gpt-5-mini": ModelInfo(
+        model_name="openai/gpt-5-mini",
+        parameter_count="unknown",
+        parameter_count_estimated="unknown",  # No reliable estimate available
+        release_date="unknown",
+        release_date_estimated="2025-08-07",  # Estimated, same as GPT-5
+        capability_tier=2,  # Medium model, newer generation
+        lm_arena_ranking=94,  # gpt-5-mini-high, score: 1382
+        lm_arena_score=1382,
+        gpu_tier=None,
+    ),
+    "gpt-5-mini-thinking": ModelInfo(
+        model_name="openai/gpt-5-mini",
+        parameter_count="unknown",
+        parameter_count_estimated="unknown",  # No reliable estimate available
+        release_date="unknown",
+        release_date_estimated="2025-08-07",  # Estimated, same as GPT-5
+        capability_tier=2,  # Medium model, newer generation
+        lm_arena_ranking=94,  # gpt-5-mini-high, score: 1382
+        lm_arena_score=1382,
+        gpu_tier=None,
+    ),
+    "gpt-5": ModelInfo(
+        model_name="openai/gpt-5",
+        parameter_count="unknown",
+        parameter_count_estimated="1.8T",  # Estimated, similar to GPT-4
+        release_date="2025-08-07",  # Confirmed
+        release_date_estimated=None,
+        capability_tier=5,  # Latest flagship frontier model (~1.8T estimated)
+        lm_arena_ranking=38,  # gpt-5.1, score: 1439
+        lm_arena_score=1439,
+        gpu_tier=None,
+    ),
+    "gpt-5-thinking": ModelInfo(
+        model_name="openai/gpt-5",
+        parameter_count="unknown",
+        parameter_count_estimated="1.8T",  # Estimated, similar to GPT-4
+        release_date="2025-08-07",  # Confirmed
+        release_date_estimated=None,
+        capability_tier=5,  # Latest flagship frontier model
+        lm_arena_ranking=38,  # gpt-5.1, score: 1439
+        lm_arena_score=1439,
+        gpu_tier=None,
+    ),
+    "o3": ModelInfo(
+        model_name="openai/o3-2025-04-16",
+        parameter_count="unknown",
+        parameter_count_estimated="unknown",  # No reliable estimate available (likely > o3-mini)
+        release_date="2025-04-16",  # From model name
+        release_date_estimated=None,
+        capability_tier=5,  # Latest reasoning-focused frontier model
+        lm_arena_ranking=43,  # o3-2025-04-16, score: 1431
+        lm_arena_score=1431,
+        gpu_tier=None,
+    ),
+    "o3-thinking": ModelInfo(
+        model_name="openai/o3-2025-04-16",
+        parameter_count="unknown",
+        parameter_count_estimated="unknown",  # No reliable estimate available
+        release_date="2025-04-16",  # From model name
+        release_date_estimated=None,
+        capability_tier=5,  # Latest reasoning-focused frontier model
+        lm_arena_ranking=43,  # o3-2025-04-16, score: 1431
+        lm_arena_score=1431,
+        gpu_tier=None,
+    ),
+    "o3-mini": ModelInfo(
+        model_name="openai/o3-mini-2025-01-31",
+        parameter_count="36B",  # Confirmed
+        parameter_count_estimated=None,
+        release_date="2025-01-31",  # From model name
+        release_date_estimated=None,
+        capability_tier=3,  # Medium-large reasoning model (36B)
+        lm_arena_ranking=142,  # o3-mini, score: 1348
+        lm_arena_score=1348,
+        gpu_tier=None,
+    ),
+    "o3-mini-thinking": ModelInfo(
+        model_name="openai/o3-mini-2025-01-31",
+        parameter_count="36B",  # Confirmed
+        parameter_count_estimated=None,
+        release_date="2025-01-31",  # From model name
+        release_date_estimated=None,
+        capability_tier=3,  # Medium-large reasoning model
+        lm_arena_ranking=142,  # o3-mini, score: 1348
+        lm_arena_score=1348,
+        gpu_tier=None,
+    ),
     # Anthropic
-    "sonnet-4.5": "anthropic/claude-sonnet-4-5-20250929",
-    "sonnet-4.5-thinking": "anthropic/claude-sonnet-4-5-20250929",
-    "sonnet-3.7": "anthropic/claude-3-7-sonnet-20250219",
-    "sonnet-3.7-thinking": "anthropic/claude-3-7-sonnet-20250219",
-    "haiku-3.5": "anthropic/claude-3-5-haiku-20241022",
-    "haiku-3.5-thinking": "anthropic/claude-3-5-haiku-20241022",
-    "haiku-4.5": "anthropic/claude-4-5-haiku-20251001",
-    "haiku-4.5-thinking": "anthropic/claude-4-5-haiku-20251001",
-    "opus-4.1": "anthropic/claude-opus-4-1-20250805",
-    "opus-4.1-thinking": "anthropic/claude-opus-4-1-20250805",
+    "sonnet-4.5": ModelInfo(
+        model_name="anthropic/claude-sonnet-4-5-20250929",
+        parameter_count="unknown",
+        parameter_count_estimated="unknown",  # No reliable estimate available
+        release_date="2025-09-29",  # From model name
+        release_date_estimated=None,
+        capability_tier=5,  # Latest flagship Claude model (newest version)
+        lm_arena_ranking=25,  # claude-sonnet-4-5-20250929, score: 1453
+        lm_arena_score=1453,
+        gpu_tier=None,
+    ),
+    "sonnet-4.5-thinking": ModelInfo(
+        model_name="anthropic/claude-sonnet-4-5-20250929",
+        parameter_count="unknown",
+        parameter_count_estimated="unknown",  # No reliable estimate available
+        release_date="2025-09-29",  # From model name
+        release_date_estimated=None,
+        capability_tier=5,  # Latest flagship Claude model
+        lm_arena_ranking=25,  # claude-sonnet-4-5-20250929, score: 1453
+        lm_arena_score=1453,
+        gpu_tier=None,
+    ),
+    "sonnet-3.7": ModelInfo(
+        model_name="anthropic/claude-3-7-sonnet-20250219",
+        parameter_count="unknown",
+        parameter_count_estimated="unknown",  # No reliable estimate available
+        release_date="2025-02-19",  # From model name
+        release_date_estimated=None,
+        capability_tier=4,  # Large frontier model (earlier version)
+        lm_arena_ranking=115,  # claude-3-7-sonnet-20250219, score: 1386
+        lm_arena_score=1386,
+        gpu_tier=None,
+    ),
+    "sonnet-3.7-thinking": ModelInfo(
+        model_name="anthropic/claude-3-7-sonnet-20250219",
+        parameter_count="unknown",
+        parameter_count_estimated="unknown",  # No reliable estimate available
+        release_date="2025-02-19",  # From model name
+        release_date_estimated=None,
+        capability_tier=4,  # Large frontier model
+        lm_arena_ranking=97,  # claude-3-7-sonnet-20250219-thinking-32k, score: 1379
+        lm_arena_score=1379,
+        gpu_tier=None,
+    ),
+    "haiku-3.5": ModelInfo(
+        model_name="anthropic/claude-3-5-haiku-20241022",
+        parameter_count="unknown",
+        parameter_count_estimated="8B",  # Estimated, similar to GPT-4o-mini
+        release_date="2024-10-22",  # From model name
+        release_date_estimated=None,
+        capability_tier=1,  # Small model (~8B estimated)
+        lm_arena_ranking=169,  # claude-3-5-haiku-20241022, score: 1336
+        lm_arena_score=1336,
+        gpu_tier=None,
+    ),
+    "haiku-3.5-thinking": ModelInfo(
+        model_name="anthropic/claude-3-5-haiku-20241022",
+        parameter_count="unknown",
+        parameter_count_estimated="8B",  # Estimated, same as haiku-3.5
+        release_date="2024-10-22",  # From model name
+        release_date_estimated=None,
+        capability_tier=1,  # Small model
+        lm_arena_ranking=169,  # claude-3-5-haiku-20241022, score: 1336
+        lm_arena_score=1336,
+        gpu_tier=None,
+    ),
+    "haiku-4.5": ModelInfo(
+        model_name="anthropic/claude-4-5-haiku-20251001",
+        parameter_count="unknown",
+        parameter_count_estimated="8B",  # Estimated, similar to haiku-3.5
+        release_date="2025-10-01",  # From model name
+        release_date_estimated=None,
+        capability_tier=1,  # Small model (~8B estimated), newer version
+        lm_arena_ranking=76,  # claude-haiku-4-5-20251001, score: 1407
+        lm_arena_score=1407,
+        gpu_tier=None,
+    ),
+    "haiku-4.5-thinking": ModelInfo(
+        model_name="anthropic/claude-4-5-haiku-20251001",
+        parameter_count="unknown",
+        parameter_count_estimated="8B",  # Estimated, same as haiku-4.5
+        release_date="2025-10-01",  # From model name
+        release_date_estimated=None,
+        capability_tier=1,  # Small model, newer version
+        lm_arena_ranking=76,  # claude-haiku-4-5-20251001, score: 1407
+        lm_arena_score=1407,
+        gpu_tier=None,
+    ),
+    "opus-4.1": ModelInfo(
+        model_name="anthropic/claude-opus-4-1-20250805",
+        parameter_count="unknown",
+        parameter_count_estimated="unknown",  # No reliable estimate available
+        release_date="2025-08-05",  # From model name
+        release_date_estimated=None,
+        capability_tier=5,  # Flagship Claude model (highest tier)
+        lm_arena_ranking=70,  # claude-opus-4-20250514, score: 1412
+        lm_arena_score=1412,
+        gpu_tier=None,
+    ),
+    "opus-4.1-thinking": ModelInfo(
+        model_name="anthropic/claude-opus-4-1-20250805",
+        parameter_count="unknown",
+        parameter_count_estimated="unknown",  # No reliable estimate available
+        release_date="2025-08-05",  # From model name
+        release_date_estimated=None,
+        capability_tier=5,  # Flagship Claude model
+        lm_arena_ranking=70,  # claude-opus-4-20250514, score: 1412
+        lm_arena_score=1412,
+        gpu_tier=None,
+    ),
     # Google
-    "gemini-2.0-flash": "google/gemini-2.0-flash",
-    "gemini-2.0-flash-thinking": "google/gemini-2.0-flash",
-    "gemini-2.0-flash-lite": "google/gemini-2.0-flash-lite",
-    "gemini-2.0-flash-lite-thinking": "google/gemini-2.0-flash-lite",
-    "gemini-2.5-flash": "google/gemini-2.5-flash",
-    "gemini-2.5-flash-thinking": "google/gemini-2.5-flash",
-    "gemini-2.5-pro": "google/gemini-2.5-pro",
-    "gemini-2.5-pro-thinking": "google/gemini-2.5-pro",
-    # XAI (uses OpenAI provider with custom base URL via INSPECT_MODELS_OPENAI_GROK_3_MINI_BETA_*)
-    "grok-3-mini": "openai/grok-3-mini",
-    "grok-3-mini-thinking": "openai/grok-3-mini",
-    "grok-4.1-fast": "openai/grok-4-1-fast-non-reasoning",
-    "grok-4.1-fast-thinking": "openai/grok-4-1-fast-reasoning",
-    ## Together-specific models
-    # Llama models
-    "ll-3.3-70b-dsR1-thinking": "together/deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
-    "ll-70B-dsr1-thinking": "together/deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
-    "ll-3.1-405b": "together/meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
-    # Qwen models
-    "qwen-2.5-7b": "together/Qwen/Qwen2.5-7B-Instruct-Turbo",
-    "qwen-2.5-72b": "together/Qwen/Qwen2.5-72B-Instruct-Turbo",
-    "qwen-3.0-80b": "together/Qwen/Qwen3-Next-80B-A3B-Instruct",
-    "qwen-3.0-80b-thinking": "together/Qwen/Qwen3-Next-80B-A3B-Thinking",
-    "qwen-3.0-235b": "together/Qwen/Qwen3-235B-A22B-Instruct-2507",
-    "qwen-3.0-235b-thinking": "together/Qwen/Qwen3-235B-A22B-Thinking-2507",
-    # DeepSeek models
-    "deepseek-3.0": "together/deepseek-ai/DeepSeek-V3",
-    "deepseek-3.1": "together/deepseek-ai/DeepSeek-V3.1",
-    "deepseek-3.1-thinking": "together/deepseek-ai/DeepSeek-V3.1",
-    "deepseek-r1-thinking": "together/deepseek-ai/DeepSeek-R1",  # reasoning model
-    "deepseek-r1-0528-thinking": "together/deepseek-ai/DeepSeek-R1-0528",
+    "gemini-2.0-flash": ModelInfo(
+        model_name="google/gemini-2.0-flash",
+        parameter_count="20B",  # Confirmed
+        parameter_count_estimated=None,
+        release_date="2025-02-05",  # General availability
+        release_date_estimated=None,
+        capability_tier=2,  # Medium model (20B)
+        lm_arena_ranking=129,  # gemini-2.0-flash-001, score: 1360
+        lm_arena_score=1360,
+        gpu_tier=None,
+    ),
+    "gemini-2.0-flash-thinking": ModelInfo(
+        model_name="google/gemini-2.0-flash",
+        parameter_count="20B",  # Confirmed
+        parameter_count_estimated=None,
+        release_date="2025-02-05",  # General availability
+        release_date_estimated=None,
+        capability_tier=2,  # Medium model
+        lm_arena_ranking=129,  # gemini-2.0-flash-001, score: 1360
+        lm_arena_score=1360,
+        gpu_tier=None,
+    ),
+    "gemini-2.0-flash-lite": ModelInfo(
+        model_name="google/gemini-2.0-flash-lite",
+        parameter_count="unknown",
+        parameter_count_estimated="10B",  # Estimated, smaller than flash (20B)
+        release_date="2025-02-05",  # Preview release
+        release_date_estimated=None,
+        capability_tier=1,  # Small model (~10B estimated)
+        lm_arena_ranking=112,  # gemini-2.5-flash-lite-preview-09-2025-no-thinking, score: 1380
+        lm_arena_score=1380,
+        gpu_tier=None,
+    ),
+    "gemini-2.0-flash-lite-thinking": ModelInfo(
+        model_name="google/gemini-2.0-flash-lite",
+        parameter_count="unknown",
+        parameter_count_estimated="10B",  # Estimated, same as flash-lite
+        release_date="2025-02-05",  # Preview release
+        release_date_estimated=None,
+        capability_tier=1,  # Small model
+        lm_arena_ranking=112,  # gemini-2.5-flash-lite, score: 1380
+        lm_arena_score=1380,
+        gpu_tier=None,
+    ),
+    "gemini-2.5-flash": ModelInfo(
+        model_name="google/gemini-2.5-flash",
+        parameter_count="5B",  # Confirmed
+        parameter_count_estimated=None,
+        release_date="2025-06-17",  # General availability
+        release_date_estimated=None,
+        capability_tier=1,  # Small model (5B), newer but smaller
+        lm_arena_ranking=73,  # gemini-2.5-flash, score: 1411
+        lm_arena_score=1411,
+        gpu_tier=None,
+    ),
+    "gemini-2.5-flash-thinking": ModelInfo(
+        model_name="google/gemini-2.5-flash",
+        parameter_count="5B",  # Confirmed
+        parameter_count_estimated=None,
+        release_date="2025-06-17",  # General availability
+        release_date_estimated=None,
+        capability_tier=1,  # Small model
+        lm_arena_ranking=73,  # gemini-2.5-flash, score: 1411
+        lm_arena_score=1411,
+        gpu_tier=None,
+    ),
+    "gemini-2.5-pro": ModelInfo(
+        model_name="google/gemini-2.5-pro",
+        parameter_count="unknown",
+        parameter_count_estimated="unknown",  # No reliable estimate available (likely > flash)
+        release_date="2025-06-17",  # General availability
+        release_date_estimated=None,
+        capability_tier=4,  # Large flagship model
+        lm_arena_ranking=28,  # gemini-2.5-pro, score: 1448
+        lm_arena_score=1448,
+        gpu_tier=None,
+    ),
+    "gemini-2.5-pro-thinking": ModelInfo(
+        model_name="google/gemini-2.5-pro",
+        parameter_count="unknown",
+        parameter_count_estimated="unknown",  # No reliable estimate available
+        release_date="2025-06-17",  # General availability
+        release_date_estimated=None,
+        capability_tier=4,  # Large flagship model
+        lm_arena_ranking=28,  # gemini-2.5-pro, score: 1448
+        lm_arena_score=1448,
+        gpu_tier=None,
+    ),
+    # XAI
+    "grok-3-mini": ModelInfo(
+        model_name="openai/grok-3-mini",
+        parameter_count="unknown",
+        parameter_count_estimated="unknown",  # No reliable estimate available
+        release_date="2025-02-14",  # Confirmed
+        release_date_estimated=None,
+        capability_tier=1,  # Small model (mini variant)
+        lm_arena_ranking=123,  # grok-3-mini-high, score: 1378
+        lm_arena_score=1378,
+        gpu_tier=None,
+    ),
+    "grok-3-mini-thinking": ModelInfo(
+        model_name="openai/grok-3-mini",
+        parameter_count="unknown",
+        parameter_count_estimated="unknown",  # No reliable estimate available
+        release_date="2025-02-14",  # Confirmed
+        release_date_estimated=None,
+        capability_tier=1,  # Small model
+        lm_arena_ranking=123,  # grok-3-mini-high, score: 1378
+        lm_arena_score=1378,
+        gpu_tier=None,
+    ),
+    "grok-4.1-fast": ModelInfo(
+        model_name="openai/grok-4-1-fast-non-reasoning",
+        parameter_count="unknown",
+        parameter_count_estimated="unknown",  # No reliable estimate available
+        release_date="2024-11-17",  # Confirmed
+        release_date_estimated=None,
+        capability_tier=3,  # Medium-large model (fast variant)
+        lm_arena_ranking=41,  # grok-4-1-fast-reasoning, score: 1435
+        lm_arena_score=1435,
+        gpu_tier=None,
+    ),
+    "grok-4.1-fast-thinking": ModelInfo(
+        model_name="openai/grok-4-1-fast-reasoning",
+        parameter_count="unknown",
+        parameter_count_estimated="unknown",  # No reliable estimate available
+        release_date="2024-11-17",  # Confirmed
+        release_date_estimated=None,
+        capability_tier=3,  # Medium-large model
+        lm_arena_ranking=41,  # grok-4-1-fast-reasoning, score: 1435
+        lm_arena_score=1435,
+        gpu_tier=None,
+    ),
+    # Together - Llama
+    "ll-3.3-70b-dsR1-thinking": ModelInfo(
+        model_name="together/deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+        parameter_count="70B",  # From model name (distilled)
+        parameter_count_estimated=None,
+        release_date="unknown",
+        release_date_estimated="2025-05",  # Estimated, based on DeepSeek-R1 release
+        capability_tier=3,  # Medium-large model (70B, distilled)
+        lm_arena_ranking=None,  # Not found on leaderboard
+        lm_arena_score=None,  # Not found on leaderboard
+        gpu_tier=None,
+    ),
+    "ll-70B-dsr1-thinking": ModelInfo(
+        model_name="together/deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+        parameter_count=None,
+        parameter_count_estimated=None,
+        release_date=None,
+        release_date_estimated=None,
+        capability_tier=None,
+        lm_arena_ranking=None,
+        lm_arena_score=None,
+        gpu_tier=None,
+    ),
+    "ll-3.1-405b": ModelInfo(
+        model_name="together/meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
+        parameter_count="405B",  # From model name
+        parameter_count_estimated=None,
+        release_date="2024-07-23",  # Confirmed
+        release_date_estimated=None,
+        capability_tier=5,  # Very large model (405B)
+        lm_arena_ranking=155,  # llama-3.1-405b-instruct-bf16, score: 1346
+        lm_arena_score=1346,
+        gpu_tier="large",
+    ),
+    "ll-3.1-70b": ModelInfo(
+        model_name=None,
+        parameter_count="70B",  # From model name
+        parameter_count_estimated=None,
+        release_date="2024-07-23",  # Confirmed
+        release_date_estimated=None,
+        capability_tier=3,  # Medium-large model (70B)
+        lm_arena_ranking=208,  # llama-3.1-70b-instruct, score: 1293
+        lm_arena_score=1293,
+        gpu_tier="large",
+    ),
+    # Together - Qwen
+    "qwen-2.5-7b": ModelInfo(
+        model_name="together/Qwen/Qwen2.5-7B-Instruct-Turbo",
+        parameter_count="7B",  # From model name
+        parameter_count_estimated=None,
+        release_date="2024-09-19",  # Confirmed
+        release_date_estimated=None,
+        capability_tier=1,  # Small model (7B)
+        lm_arena_ranking=None,  # Not on leaderboard
+        lm_arena_score=None,  # Not on leaderboard
+        gpu_tier=None,
+    ),
+    "qwen-2.5-72b": ModelInfo(
+        model_name="together/Qwen/Qwen2.5-72B-Instruct-Turbo",
+        parameter_count="72B",  # From model name
+        parameter_count_estimated=None,
+        release_date="2024-09-19",  # Confirmed
+        release_date_estimated=None,
+        capability_tier=3,  # Medium-large model (72B)
+        lm_arena_ranking=205,  # qwen2.5-72b-instruct, score: 1302
+        lm_arena_score=1302,
+        gpu_tier=None,
+    ),
+    "qwen-3.0-80b": ModelInfo(
+        model_name="together/Qwen/Qwen3-Next-80B-A3B-Instruct",
+        parameter_count="80B",  # From model name
+        parameter_count_estimated=None,
+        release_date="unknown",
+        release_date_estimated="2025-07",  # Estimated, similar to qwen-3.0-235b
+        capability_tier=3,  # Medium-large model (80B), newer version
+        lm_arena_ranking=85,  # qwen3-next-80b-a3b-instruct, score: 1402
+        lm_arena_score=1402,
+        gpu_tier=None,
+    ),
+    "qwen-3.0-80b-thinking": ModelInfo(
+        model_name="together/Qwen/Qwen3-Next-80B-A3B-Thinking",
+        parameter_count="80B",  # From model name
+        parameter_count_estimated=None,
+        release_date="unknown",
+        release_date_estimated="2025-07",  # Estimated, same as qwen-3.0-80b
+        capability_tier=3,  # Medium-large model
+        lm_arena_ranking=85,  # qwen3-next-80b-a3b-instruct, score: 1402
+        lm_arena_score=1402,
+        gpu_tier=None,
+    ),
+    "qwen-3.0-235b": ModelInfo(
+        model_name="together/Qwen/Qwen3-235B-A22B-Instruct-2507",
+        parameter_count="235B",  # From model name
+        parameter_count_estimated=None,
+        release_date="2025-07",  # Estimated from model name (2507 = July 2025)
+        release_date_estimated=None,
+        capability_tier=4,  # Large model (235B)
+        lm_arena_ranking=54,  # qwen3-235b-a22b-instruct-2507, score: 1422
+        lm_arena_score=1422,
+        gpu_tier=None,
+    ),
+    "qwen-3.0-235b-thinking": ModelInfo(
+        model_name="together/Qwen/Qwen3-235B-A22B-Thinking-2507",
+        parameter_count="235B",  # From model name
+        parameter_count_estimated=None,
+        release_date="2025-07",  # Estimated from model name
+        release_date_estimated=None,
+        capability_tier=4,  # Large model
+        lm_arena_ranking=89,  # qwen3-235b-a22b-thinking-2507, score: 1400
+        lm_arena_score=1400,
+        gpu_tier=None,
+    ),
+    # Together - DeepSeek
+    "deepseek-3.0": ModelInfo(
+        model_name="together/deepseek-ai/DeepSeek-V3",
+        parameter_count="671B",  # Total parameters (MoE)
+        parameter_count_estimated=None,
+        release_date="2024-12",  # Confirmed (month only)
+        release_date_estimated=None,
+        capability_tier=5,  # Very large MoE model (671B total)
+        lm_arena_ranking=95,  # deepseek-v3-0324, score: 1395
+        lm_arena_score=1395,
+        gpu_tier=None,
+    ),
+    "deepseek-3.1": ModelInfo(
+        model_name="together/deepseek-ai/DeepSeek-V3.1",
+        parameter_count="671B",  # Total parameters (MoE)
+        parameter_count_estimated=None,
+        release_date="2025-08-19",  # Confirmed
+        release_date_estimated=None,
+        capability_tier=5,  # Very large MoE model (671B total), newer version
+        lm_arena_ranking=59,  # deepseek-v3.1, score: 1418
+        lm_arena_score=1418,
+        gpu_tier=None,
+    ),
+    "deepseek-3.1-thinking": ModelInfo(
+        model_name="together/deepseek-ai/DeepSeek-V3.1",
+        parameter_count=None,
+        parameter_count_estimated=None,
+        release_date=None,
+        release_date_estimated=None,
+        capability_tier=None,
+        lm_arena_ranking=59,  # deepseek-v3.1, score: 1418
+        lm_arena_score=1418,
+        gpu_tier=None,
+    ),
+    "deepseek-r1-thinking": ModelInfo(
+        model_name="together/deepseek-ai/DeepSeek-R1",  # reasoning model
+        parameter_count="671B",  # Total parameters (MoE, same architecture as V3)
+        parameter_count_estimated=None,
+        release_date="2025-05",  # Confirmed (month only, version R1-0528)
+        release_date_estimated=None,
+        capability_tier=5,  # Very large reasoning model (671B total)
+        lm_arena_ranking=56,  # deepseek-r1-0528, score: 1422
+        lm_arena_score=1422,
+        gpu_tier=None,
+    ),
+    "deepseek-r1-0528-thinking": ModelInfo(
+        model_name="together/deepseek-ai/DeepSeek-R1-0528",
+        parameter_count=None,
+        parameter_count_estimated=None,
+        release_date=None,
+        release_date_estimated=None,
+        capability_tier=None,
+        lm_arena_ranking=56,  # deepseek-r1-0528, score: 1422
+        lm_arena_score=1422,
+        gpu_tier=None,
+    ),
     # Moonshot
-    "kimi-k2": "together/moonshotai/Kimi-K2-Instruct-0905",
-    "kimi-k2-thinking": "together/moonshotai/Kimi-K2-Thinking",
-    "kimi-k2.5": "together/moonshotai/Kimi-K2.5",
-    "kimi-k2.5-thinking": "together/moonshotai/Kimi-K2.5",
-    #MiniMax
-    "minimax-m2.5-thinking": "together/MiniMaxAI/MiniMax-M2.5",
-    #GLM
-    "glm-4.5-air-thinking": "together/zai-org/GLM-4.5-Air-FP8",
-    "glm-4.7-thinking": "together/zai-org/GLM-4.7",
-    ## Local HF models (require GPU — dispatched to RunPod when run locally)
-    "ll-3.1-8b": "hf/meta-llama/Llama-3.1-8B-Instruct",
-    "ll-3.3-70b": "hf/meta-llama/Llama-3.3-70B-Instruct",
-    #"qwen-2.5-7b": "hf/Qwen/Qwen2.5-7B-Instruct-Turbo",
-    "qwen-3.0-30b": "hf/Qwen/Qwen3-30B-A3B-Instruct-2507",
-    "qwen-3.0-30b-thinking": "hf/Qwen/Qwen3-30B-A3B-Instruct-2507",  # Same model, native reasoning
-    "qwen-3.5-27b": "hf/Qwen/Qwen3.5-27B",
-    "qwen-3.5-27b-thinking": "hf/Qwen/Qwen3.5-27B",  # Same model, native reasoning
-    "gpt-oss-20b": "hf/openai/gpt-oss-20b",
-    "gpt-oss-20b-thinking": "hf/openai/gpt-oss-20b",  # Same model, native reasoning
-    "gpt-oss-120b": "hf/openai/gpt-oss-120b",
-    "gpt-oss-120b-thinking": "hf/openai/gpt-oss-120b",  # Same model, native reasoning
+    "kimi-k2": ModelInfo(
+        model_name="together/moonshotai/Kimi-K2-Instruct-0905",
+        parameter_count="unknown",
+        parameter_count_estimated="unknown",  # No reliable estimate available
+        release_date="2025-07-12",  # Confirmed
+        release_date_estimated=None,
+        capability_tier=4,  # Large flagship model
+        lm_arena_ranking=57,  # kimi-k2-0905-preview, score: 1419
+        lm_arena_score=1419,
+        gpu_tier=None,
+    ),
+    "kimi-k2-thinking": ModelInfo(
+        model_name="together/moonshotai/Kimi-K2-Thinking",
+        parameter_count="unknown",
+        parameter_count_estimated="unknown",  # No reliable estimate available
+        release_date="2025-11-06",  # Confirmed
+        release_date_estimated=None,
+        capability_tier=4,  # Large flagship reasoning model
+        lm_arena_ranking=42,  # kimi-k2-thinking-turbo, score: 1434
+        lm_arena_score=1434,
+        gpu_tier=None,
+    ),
+    "kimi-k2.5": ModelInfo(
+        model_name="together/moonshotai/Kimi-K2.5",
+        parameter_count=None,
+        parameter_count_estimated=None,
+        release_date=None,
+        release_date_estimated=None,
+        capability_tier=None,
+        lm_arena_ranking=42,  # kimi-k2.5-instant, score: 1433
+        lm_arena_score=1433,
+        gpu_tier=None,
+    ),
+    "kimi-k2.5-thinking": ModelInfo(
+        model_name="together/moonshotai/Kimi-K2.5",
+        parameter_count=None,
+        parameter_count_estimated=None,
+        release_date=None,
+        release_date_estimated=None,
+        capability_tier=None,
+        lm_arena_ranking=23,  # kimi-k2.5-thinking, score: 1454
+        lm_arena_score=1454,
+        gpu_tier=None,
+    ),
+    # MiniMax / GLM
+    "minimax-m2.5-thinking": ModelInfo(
+        model_name="together/MiniMaxAI/MiniMax-M2.5",
+        parameter_count=None,
+        parameter_count_estimated=None,
+        release_date=None,
+        release_date_estimated=None,
+        capability_tier=None,
+        lm_arena_ranking=78,  # minimax-m2.5, score: 1406
+        lm_arena_score=1406,
+        gpu_tier=None,
+    ),
+    "glm-4.5-air-thinking": ModelInfo(
+        model_name="together/zai-org/GLM-4.5-Air-FP8",
+        parameter_count=None,
+        parameter_count_estimated=None,
+        release_date=None,
+        release_date_estimated=None,
+        capability_tier=None,
+        lm_arena_ranking=118,  # glm-4.5-air, score: 1373
+        lm_arena_score=1373,
+        gpu_tier=None,
+    ),
+    "glm-4.7-thinking": ModelInfo(
+        model_name="together/zai-org/GLM-4.7",
+        parameter_count=None,
+        parameter_count_estimated=None,
+        release_date=None,
+        release_date_estimated=None,
+        capability_tier=None,
+        lm_arena_ranking=35,  # glm-4.7, score: 1443
+        lm_arena_score=1443,
+        gpu_tier=None,
+    ),
+    # HF local
+    "ll-3.1-8b": ModelInfo(
+        model_name="hf/meta-llama/Llama-3.1-8B-Instruct",
+        parameter_count="8B",  # From model name
+        parameter_count_estimated=None,
+        release_date="2024-07-23",  # Confirmed
+        release_date_estimated=None,
+        capability_tier=1,  # Small model (8B)
+        lm_arena_ranking=260,  # llama-3.1-8b-instruct, score: 1211
+        lm_arena_score=1211,
+        gpu_tier="small",
+    ),
+    "ll-3.3-70b": ModelInfo(
+        model_name="hf/meta-llama/Llama-3.3-70B-Instruct",
+        parameter_count=None,
+        parameter_count_estimated=None,
+        release_date=None,
+        release_date_estimated=None,
+        capability_tier=None,
+        lm_arena_ranking=183,  # llama-3.3-70b-instruct, score: 1318
+        lm_arena_score=1318,
+        gpu_tier=None,
+    ),
+    "qwen-3.0-30b": ModelInfo(
+        model_name="hf/Qwen/Qwen3-30B-A3B-Instruct-2507",
+        parameter_count=None,
+        parameter_count_estimated=None,
+        release_date=None,
+        release_date_estimated=None,
+        capability_tier=None,
+        lm_arena_ranking=109,  # qwen3-30b-a3b-instruct-2507, score: 1383
+        lm_arena_score=1383,
+        gpu_tier=None,
+    ),
+    "qwen-3.0-30b-thinking": ModelInfo(
+        model_name="hf/Qwen/Qwen3-30B-A3B-Instruct-2507",  # Same model, native reasoning
+        parameter_count=None,
+        parameter_count_estimated=None,
+        release_date=None,
+        release_date_estimated=None,
+        capability_tier=None,
+        lm_arena_ranking=None,
+        lm_arena_score=None,
+        gpu_tier=None,
+    ),
+    "qwen-3.5-27b": ModelInfo(
+        model_name="hf/Qwen/Qwen3.5-27B",
+        parameter_count=None,
+        parameter_count_estimated=None,
+        release_date=None,
+        release_date_estimated=None,
+        capability_tier=None,
+        lm_arena_ranking=79,  # qwen3.5-27b, score: 1405
+        lm_arena_score=1405,
+        gpu_tier="medium",
+    ),
+    "qwen-3.5-27b-thinking": ModelInfo(
+        model_name="hf/Qwen/Qwen3.5-27B",  # Same model, native reasoning
+        parameter_count=None,
+        parameter_count_estimated=None,
+        release_date=None,
+        release_date_estimated=None,
+        capability_tier=None,
+        lm_arena_ranking=None,
+        lm_arena_score=None,
+        gpu_tier=None,
+    ),
+    "gpt-oss-20b": ModelInfo(
+        model_name="hf/openai/gpt-oss-20b",
+        parameter_count=None,
+        parameter_count_estimated=None,
+        release_date=None,
+        release_date_estimated=None,
+        capability_tier=None,
+        lm_arena_ranking=184,  # gpt-oss-20b, score: 1318
+        lm_arena_score=1318,
+        gpu_tier=None,
+    ),
+    "gpt-oss-20b-thinking": ModelInfo(
+        model_name="hf/openai/gpt-oss-20b",  # Same model, native reasoning
+        parameter_count="20B",  # From model name
+        parameter_count_estimated=None,
+        release_date="unknown",
+        release_date_estimated="unknown",  # No reliable estimate available
+        capability_tier=2,  # Medium model (20B)
+        lm_arena_ranking=184,  # Same model in thinking mode
+        lm_arena_score=1318,
+        gpu_tier=None,
+    ),
+    "gpt-oss-120b": ModelInfo(
+        model_name="hf/openai/gpt-oss-120b",
+        parameter_count=None,
+        parameter_count_estimated=None,
+        release_date=None,
+        release_date_estimated=None,
+        capability_tier=None,
+        lm_arena_ranking=134,  # gpt-oss-120b, score: 1354
+        lm_arena_score=1354,
+        gpu_tier=None,
+    ),
+    "gpt-oss-120b-thinking": ModelInfo(
+        model_name="hf/openai/gpt-oss-120b",  # Same model, native reasoning
+        parameter_count="120B",  # From model name
+        parameter_count_estimated=None,
+        release_date="unknown",
+        release_date_estimated="unknown",  # No reliable estimate available
+        capability_tier=3,  # Large model (120B)
+        lm_arena_ranking=134,  # Same model in thinking mode
+        lm_arena_score=1354,
+        gpu_tier=None,
+    ),
+    # Fireworks
+    "ll-3.1-8b_fw": ModelInfo(
+        model_name=None,
+        parameter_count="8B",  # From model name
+        parameter_count_estimated=None,
+        release_date="2024-07-23",  # Same as Together version
+        release_date_estimated=None,
+        capability_tier=1,  # Small model (8B)
+        lm_arena_ranking=260,  # Same as Together version
+        lm_arena_score=1211,
+        gpu_tier=None,
+    ),
+    "ll-3.1-70b_fw": ModelInfo(
+        model_name=None,
+        parameter_count="70B",  # From model name
+        parameter_count_estimated=None,
+        release_date="2024-07-23",  # Same as Together version
+        release_date_estimated=None,
+        capability_tier=3,  # Medium-large model (70B)
+        lm_arena_ranking=208,  # Same as Together version
+        lm_arena_score=1293,
+        gpu_tier=None,
+    ),
+    "ll-3.1-405b_fw": ModelInfo(
+        model_name=None,
+        parameter_count="405B",  # From model name
+        parameter_count_estimated=None,
+        release_date="2024-07-23",  # Same as Together version
+        release_date_estimated=None,
+        capability_tier=5,  # Very large model (405B)
+        lm_arena_ranking=155,  # Same as Together version
+        lm_arena_score=1346,
+        gpu_tier=None,
+    ),
+    "qwen-3.0-30b_fw": ModelInfo(
+        model_name=None,
+        parameter_count="30B",  # From model name
+        parameter_count_estimated=None,
+        release_date="unknown",
+        release_date_estimated="2025-07",  # Estimated, similar to other Qwen 3.0 models
+        capability_tier=2,  # Medium model (30B)
+        lm_arena_ranking=109,  # Same as Together version
+        lm_arena_score=1383,
+        gpu_tier=None,
+    ),
+    "qwen-3.0-235b_fw": ModelInfo(
+        model_name=None,
+        parameter_count="235B",  # From model name
+        parameter_count_estimated=None,
+        release_date="2025-07",  # Estimated, same as Together version
+        release_date_estimated=None,
+        capability_tier=4,  # Large model (235B)
+        lm_arena_ranking=54,  # Same as Together version
+        lm_arena_score=1422,
+        gpu_tier=None,
+    ),
+    "deepseek-3.1_fw": ModelInfo(
+        model_name=None,
+        parameter_count="671B",  # Total parameters (MoE)
+        parameter_count_estimated=None,
+        release_date="2025-08-19",  # Same as Together version
+        release_date_estimated=None,
+        capability_tier=5,  # Very large MoE model (671B total)
+        lm_arena_ranking=59,  # Same as Together version
+        lm_arena_score=1418,
+        gpu_tier=None,
+    ),
+    "deepseek-r1_fw": ModelInfo(
+        model_name=None,
+        parameter_count="671B",  # Total parameters (MoE)
+        parameter_count_estimated=None,
+        release_date="2025-05-28",  # From model name (0528 = May 28)
+        release_date_estimated=None,
+        capability_tier=5,  # Very large reasoning model (671B total)
+        lm_arena_ranking=56,  # Same as Together version (deepseek-r1-0528)
+        lm_arena_score=1422,
+        gpu_tier=None,
+    ),
+}
+
+INSPECT_MODEL_NAMES: dict[str, str] = {
+    k: v.model_name
+    for k, v in INSPECT_MODELS.items()
+    if v.model_name is not None
 }
 
 # Model parameter counts (in billions, unless specified with 'T' for trillions)
@@ -89,463 +841,63 @@ INSPECT_MODEL_NAMES: dict = {
 # For MoE models, values represent total parameters (not active per token).
 # Use MODEL_PARAMETER_COUNTS_ESTIMATED for estimated values.
 MODEL_PARAMETER_COUNTS: dict[str, str] = {
-    # OpenAI
-    "gpt-4o-mini": "unknown",
-    "gpt-4o": "unknown",
-    "gpt-4.1-mini": "unknown",
-    "gpt-4.1": "unknown",
-    "gpt-5-mini": "unknown",
-    "gpt-5-mini-thinking": "unknown",
-    "gpt-5": "unknown",
-    "gpt-5-thinking": "unknown",
-    "gpt-oss-20b-thinking": "20B",  # From model name
-    "gpt-oss-120b-thinking": "120B",  # From model name
-    "o3": "unknown",
-    "o3-thinking": "unknown",
-    "o3-mini": "36B",  # Confirmed
-    "o3-mini-thinking": "36B",  # Confirmed
-    # Anthropic
-    "sonnet-4.5": "unknown",
-    "sonnet-4.5-thinking": "unknown",
-    "sonnet-3.7": "unknown",
-    "sonnet-3.7-thinking": "unknown",
-    "haiku-3.5": "unknown",
-    "haiku-3.5-thinking": "unknown",
-    "haiku-4.5": "unknown",
-    "haiku-4.5-thinking": "unknown",
-    "opus-4.1": "unknown",
-    "opus-4.1-thinking": "unknown",
-    # Google
-    "gemini-2.0-flash": "20B",  # Confirmed
-    "gemini-2.0-flash-thinking": "20B",  # Confirmed
-    "gemini-2.0-flash-lite": "unknown",
-    "gemini-2.0-flash-lite-thinking": "unknown",
-    "gemini-2.5-flash": "5B",  # Confirmed
-    "gemini-2.5-flash-thinking": "5B",  # Confirmed
-    "gemini-2.5-pro": "unknown",
-    "gemini-2.5-pro-thinking": "unknown",
-    # XAI
-    "grok-3-mini": "unknown",
-    "grok-3-mini-thinking": "unknown",
-    "grok-4.1-fast": "unknown",
-    "grok-4.1-fast-thinking": "unknown",
-    # Together - Llama
-    "ll-3.1-8b": "8B",  # From model name
-    "ll-3.1-70b": "70B",  # From model name
-    "ll-3.3-70b-dsR1-thinking": "70B",  # From model name (distilled)
-    "ll-3.1-405b": "405B",  # From model name
-    # Together - Qwen
-    "qwen-2.5-7b": "7B",  # From model name
-    "qwen-2.5-72b": "72B",  # From model name
-    "qwen-3.0-80b": "80B",  # From model name
-    "qwen-3.0-80b-thinking": "80B",  # From model name
-    "qwen-3.0-235b": "235B",  # From model name
-    "qwen-3.0-235b-thinking": "235B",  # From model name
-    # Together - DeepSeek (MoE: 671B total, 37B active per token)
-    "deepseek-3.0": "671B",  # Total parameters (MoE)
-    "deepseek-3.1": "671B",  # Total parameters (MoE)
-    "deepseek-r1-thinking": "671B",  # Total parameters (MoE, same architecture as V3)
-    # Moonshot
-    "kimi-k2": "unknown",
-    "kimi-k2-thinking": "unknown",
-    # Fireworks - Llama
-    "ll-3.1-8b_fw": "8B",  # From model name
-    "ll-3.1-70b_fw": "70B",  # From model name
-    "ll-3.1-405b_fw": "405B",  # From model name
-    # Fireworks - Qwen
-    "qwen-3.0-30b_fw": "30B",  # From model name
-    "qwen-3.0-235b_fw": "235B",  # From model name
-    # Fireworks - DeepSeek
-    "deepseek-3.1_fw": "671B",  # Total parameters (MoE)
-    "deepseek-r1_fw": "671B",  # Total parameters (MoE)
+    k: v.parameter_count
+    for k, v in INSPECT_MODELS.items()
+    if v.parameter_count is not None
 }
 
 # Estimated parameter counts for models where official values are not available.
 # These are research estimates based on model performance, architecture comparisons,
 # and industry analysis. Values should be treated as approximate.
 MODEL_PARAMETER_COUNTS_ESTIMATED: dict[str, str] = {
-    # OpenAI
-    "gpt-4o-mini": "8B",  # Estimated, similar to Claude 3 Haiku
-    "gpt-4o": "1.8T",  # Estimated, similar to GPT-4
-    "gpt-4.1-mini": "8B",  # Estimated, similar to gpt-4o-mini
-    "gpt-4.1": "1.8T",  # Estimated, similar to gpt-4o
-    "gpt-5-mini": "unknown",  # No reliable estimate available
-    "gpt-5-mini-thinking": "unknown",  # No reliable estimate available
-    "gpt-5": "1.8T",  # Estimated, similar to GPT-4
-    "gpt-5-thinking": "1.8T",  # Estimated, similar to GPT-4
-    "o3": "unknown",  # No reliable estimate available (likely > o3-mini)
-    "o3-thinking": "unknown",  # No reliable estimate available
-    # Anthropic
-    "sonnet-4.5": "unknown",  # No reliable estimate available
-    "sonnet-4.5-thinking": "unknown",  # No reliable estimate available
-    "sonnet-3.7": "unknown",  # No reliable estimate available
-    "sonnet-3.7-thinking": "unknown",  # No reliable estimate available
-    "haiku-3.5": "8B",  # Estimated, similar to GPT-4o-mini
-    "haiku-3.5-thinking": "8B",  # Estimated, same as haiku-3.5
-    "haiku-4.5": "8B",  # Estimated, similar to haiku-3.5
-    "haiku-4.5-thinking": "8B",  # Estimated, same as haiku-4.5
-    "opus-4.1": "unknown",  # No reliable estimate available
-    "opus-4.1-thinking": "unknown",  # No reliable estimate available
-    # Google
-    "gemini-2.0-flash-lite": "10B",  # Estimated, smaller than flash (20B)
-    "gemini-2.0-flash-lite-thinking": "10B",  # Estimated, same as flash-lite
-    "gemini-2.5-pro": "unknown",  # No reliable estimate available (likely > flash)
-    "gemini-2.5-pro-thinking": "unknown",  # No reliable estimate available
-    # XAI
-    "grok-3-mini": "unknown",  # No reliable estimate available
-    "grok-3-mini-thinking": "unknown",  # No reliable estimate available
-    "grok-4.1-fast": "unknown",  # No reliable estimate available
-    "grok-4.1-fast-thinking": "unknown",  # No reliable estimate available
-    # Moonshot
-    "kimi-k2": "unknown",  # No reliable estimate available
-    "kimi-k2-thinking": "unknown",  # No reliable estimate available
+    k: v.parameter_count_estimated
+    for k, v in INSPECT_MODELS.items()
+    if v.parameter_count_estimated is not None
 }
 
 # Model release dates (YYYY-MM-DD format)
 # Values are based on official announcements, model names with embedded dates, or confirmed release dates.
 # Use MODEL_RELEASE_DATES_ESTIMATED for estimated values.
 MODEL_RELEASE_DATES: dict[str, str] = {
-    # OpenAI
-    "gpt-4o-mini": "2024-07-18",  # Confirmed
-    "gpt-4o": "2024-05",  # Confirmed (month only)
-    "gpt-4.1-mini": "2025-04-14",  # From model name
-    "gpt-4.1": "2025-04-14",  # From model name
-    "gpt-5-mini": "unknown",
-    "gpt-5-mini-thinking": "unknown",
-    "gpt-5": "2025-08-07",  # Confirmed
-    "gpt-5-thinking": "2025-08-07",  # Confirmed
-    "gpt-oss-20b-thinking": "unknown",
-    "gpt-oss-120b-thinking": "unknown",
-    "o3": "2025-04-16",  # From model name
-    "o3-thinking": "2025-04-16",  # From model name
-    "o3-mini": "2025-01-31",  # From model name
-    "o3-mini-thinking": "2025-01-31",  # From model name
-    # Anthropic
-    "sonnet-4.5": "2025-09-29",  # From model name
-    "sonnet-4.5-thinking": "2025-09-29",  # From model name
-    "sonnet-3.7": "2025-02-19",  # From model name
-    "sonnet-3.7-thinking": "2025-02-19",  # From model name
-    "haiku-3.5": "2024-10-22",  # From model name
-    "haiku-3.5-thinking": "2024-10-22",  # From model name
-    "haiku-4.5": "2025-10-01",  # From model name
-    "haiku-4.5-thinking": "2025-10-01",  # From model name
-    "opus-4.1": "2025-08-05",  # From model name
-    "opus-4.1-thinking": "2025-08-05",  # From model name
-    # Google
-    "gemini-2.0-flash": "2025-02-05",  # General availability
-    "gemini-2.0-flash-thinking": "2025-02-05",  # General availability
-    "gemini-2.0-flash-lite": "2025-02-05",  # Preview release
-    "gemini-2.0-flash-lite-thinking": "2025-02-05",  # Preview release
-    "gemini-2.5-flash": "2025-06-17",  # General availability
-    "gemini-2.5-flash-thinking": "2025-06-17",  # General availability
-    "gemini-2.5-pro": "2025-06-17",  # General availability
-    "gemini-2.5-pro-thinking": "2025-06-17",  # General availability
-    # XAI
-    "grok-3-mini": "2025-02-14",  # Confirmed
-    "grok-3-mini-thinking": "2025-02-14",  # Confirmed
-    "grok-4.1-fast": "2024-11-17",  # Confirmed
-    "grok-4.1-fast-thinking": "2024-11-17",  # Confirmed
-    # Together - Llama
-    "ll-3.1-8b": "2024-07-23",  # Confirmed
-    "ll-3.1-70b": "2024-07-23",  # Confirmed
-    "ll-3.3-70b-dsR1-thinking": "unknown",
-    "ll-3.1-405b": "2024-07-23",  # Confirmed
-    # Together - Qwen
-    "qwen-2.5-7b": "2024-09-19",  # Confirmed
-    "qwen-2.5-72b": "2024-09-19",  # Confirmed
-    "qwen-3.0-80b": "unknown",
-    "qwen-3.0-80b-thinking": "unknown",
-    "qwen-3.0-235b": "2025-07",  # Estimated from model name (2507 = July 2025)
-    "qwen-3.0-235b-thinking": "2025-07",  # Estimated from model name
-    # Together - DeepSeek
-    "deepseek-3.0": "2024-12",  # Confirmed (month only)
-    "deepseek-3.1": "2025-08-19",  # Confirmed
-    "deepseek-r1-thinking": "2025-05",  # Confirmed (month only, version R1-0528)
-    # Moonshot
-    "kimi-k2": "2025-07-12",  # Confirmed
-    "kimi-k2-thinking": "2025-11-06",  # Confirmed
-    # Fireworks - Llama
-    "ll-3.1-8b_fw": "2024-07-23",  # Same as Together version
-    "ll-3.1-70b_fw": "2024-07-23",  # Same as Together version
-    "ll-3.1-405b_fw": "2024-07-23",  # Same as Together version
-    # Fireworks - Qwen
-    "qwen-3.0-30b_fw": "unknown",
-    "qwen-3.0-235b_fw": "2025-07",  # Estimated, same as Together version
-    # Fireworks - DeepSeek
-    "deepseek-3.1_fw": "2025-08-19",  # Same as Together version
-    "deepseek-r1_fw": "2025-05-28",  # From model name (0528 = May 28)
+    k: v.release_date
+    for k, v in INSPECT_MODELS.items()
+    if v.release_date is not None
 }
 
 # Estimated release dates for models where official dates are not available.
 # These are estimates based on model naming patterns, release timelines, and industry analysis.
 MODEL_RELEASE_DATES_ESTIMATED: dict[str, str] = {
-    # OpenAI
-    "gpt-5-mini": "2025-08-07",  # Estimated, same as GPT-5
-    "gpt-5-mini-thinking": "2025-08-07",  # Estimated, same as GPT-5
-    "gpt-oss-20b-thinking": "unknown",  # No reliable estimate available
-    "gpt-oss-120b-thinking": "unknown",  # No reliable estimate available
-    # Together - Llama
-    "ll-3.3-70b-dsR1-thinking": "2025-05",  # Estimated, based on DeepSeek-R1 release
-    # Together - Qwen
-    "qwen-3.0-80b": "2025-07",  # Estimated, similar to qwen-3.0-235b
-    "qwen-3.0-80b-thinking": "2025-07",  # Estimated, same as qwen-3.0-80b
-    # Fireworks - Qwen
-    "qwen-3.0-30b_fw": "2025-07",  # Estimated, similar to other Qwen 3.0 models
+    k: v.release_date_estimated
+    for k, v in INSPECT_MODELS.items()
+    if v.release_date_estimated is not None
 }
 
 # Model capability tiers (1 = lowest, 5 = highest)
 # Tiers are based on relative capabilities considering model size, version progression,
 # release date, and known performance benchmarks within the model set.
 MODEL_CAPABILITY_TIERS: dict[str, int] = {
-    # OpenAI
-    "gpt-4o-mini": 1,  # Small model (~8B estimated)
-    "gpt-4o": 4,  # Large frontier model (~1.8T estimated)
-    "gpt-4.1-mini": 1,  # Small model (~8B estimated)
-    "gpt-4.1": 4,  # Large frontier model (~1.8T estimated), newer than 4o
-    "gpt-5-mini": 2,  # Medium model, newer generation
-    "gpt-5-mini-thinking": 2,  # Medium model, newer generation
-    "gpt-5": 5,  # Latest flagship frontier model (~1.8T estimated)
-    "gpt-5-thinking": 5,  # Latest flagship frontier model
-    "gpt-oss-20b-thinking": 2,  # Medium model (20B)
-    "gpt-oss-120b-thinking": 3,  # Large model (120B)
-    "o3": 5,  # Latest reasoning-focused frontier model
-    "o3-thinking": 5,  # Latest reasoning-focused frontier model
-    "o3-mini": 3,  # Medium-large reasoning model (36B)
-    "o3-mini-thinking": 3,  # Medium-large reasoning model
-    # Anthropic
-    "sonnet-4.5": 5,  # Latest flagship Claude model (newest version)
-    "sonnet-4.5-thinking": 5,  # Latest flagship Claude model
-    "sonnet-3.7": 4,  # Large frontier model (earlier version)
-    "sonnet-3.7-thinking": 4,  # Large frontier model
-    "haiku-3.5": 1,  # Small model (~8B estimated)
-    "haiku-3.5-thinking": 1,  # Small model
-    "haiku-4.5": 1,  # Small model (~8B estimated), newer version
-    "haiku-4.5-thinking": 1,  # Small model, newer version
-    "opus-4.1": 5,  # Flagship Claude model (highest tier)
-    "opus-4.1-thinking": 5,  # Flagship Claude model
-    # Google
-    "gemini-2.0-flash": 2,  # Medium model (20B)
-    "gemini-2.0-flash-thinking": 2,  # Medium model
-    "gemini-2.0-flash-lite": 1,  # Small model (~10B estimated)
-    "gemini-2.0-flash-lite-thinking": 1,  # Small model
-    "gemini-2.5-flash": 1,  # Small model (5B), newer but smaller
-    "gemini-2.5-flash-thinking": 1,  # Small model
-    "gemini-2.5-pro": 4,  # Large flagship model
-    "gemini-2.5-pro-thinking": 4,  # Large flagship model
-    # XAI
-    "grok-3-mini": 1,  # Small model (mini variant)
-    "grok-3-mini-thinking": 1,  # Small model
-    "grok-4.1-fast": 3,  # Medium-large model (fast variant)
-    "grok-4.1-fast-thinking": 3,  # Medium-large model
-    # Together - Llama
-    "ll-3.1-8b": 1,  # Small model (8B)
-    "ll-3.1-70b": 3,  # Medium-large model (70B)
-    "ll-3.3-70b-dsR1-thinking": 3,  # Medium-large model (70B, distilled)
-    "ll-3.1-405b": 5,  # Very large model (405B)
-    # Together - Qwen
-    "qwen-2.5-7b": 1,  # Small model (7B)
-    "qwen-2.5-72b": 3,  # Medium-large model (72B)
-    "qwen-3.0-80b": 3,  # Medium-large model (80B), newer version
-    "qwen-3.0-80b-thinking": 3,  # Medium-large model
-    "qwen-3.0-235b": 4,  # Large model (235B)
-    "qwen-3.0-235b-thinking": 4,  # Large model
-    # Together - DeepSeek (MoE: 671B total, 37B active per token)
-    "deepseek-3.0": 5,  # Very large MoE model (671B total)
-    "deepseek-3.1": 5,  # Very large MoE model (671B total), newer version
-    "deepseek-r1-thinking": 5,  # Very large reasoning model (671B total)
-    # Moonshot
-    "kimi-k2": 4,  # Large flagship model
-    "kimi-k2-thinking": 4,  # Large flagship reasoning model
-    # Fireworks - Llama
-    "ll-3.1-8b_fw": 1,  # Small model (8B)
-    "ll-3.1-70b_fw": 3,  # Medium-large model (70B)
-    "ll-3.1-405b_fw": 5,  # Very large model (405B)
-    # Fireworks - Qwen
-    "qwen-3.0-30b_fw": 2,  # Medium model (30B)
-    "qwen-3.0-235b_fw": 4,  # Large model (235B)
-    # Fireworks - DeepSeek
-    "deepseek-3.1_fw": 5,  # Very large MoE model (671B total)
-    "deepseek-r1_fw": 5,  # Very large reasoning model (671B total)
+    k: v.capability_tier
+    for k, v in INSPECT_MODELS.items()
+    if v.capability_tier is not None
 }
+
 # LM Arena rankings from https://arena.ai/leaderboard (text)
 # Rankings are based on Elo scores from the leaderboard (as of Mar 17, 2026).
 # Lower rank number = higher position on leaderboard (rank 1 is best).
 # Models not found on leaderboard are marked as None.
 LM_ARENA_RANKINGS: dict[str, int | None] = {
-    # Updated from https://arena.ai/leaderboard/text on 2026-03-27.
-    # OpenAI
-    "gpt-4o-mini": 188,  # gpt-4o-mini-2024-07-18, score: 1317
-    "gpt-4o": 150,  # gpt-4o-2024-05-13, score: 1345
-    "gpt-4.1-mini": 111,  # gpt-4.1-mini-2025-04-14, score: 1382
-    "gpt-4.1": 69,  # gpt-4.1-2025-04-14, score: 1413
-    "gpt-5-mini": 94,  # gpt-5-mini-high, score: 1382
-    "gpt-5-mini-thinking": 94,  # gpt-5-mini-high, score: 1382
-    "gpt-5": 38,  # gpt-5.1, score: 1439
-    "gpt-5-thinking": 38,  # gpt-5.1, score: 1439
-    "gpt-oss-20b": 184,  # gpt-oss-20b, score: 1318
-    "gpt-oss-20b-thinking": 184,  # Same model in thinking mode
-    "gpt-oss-120b": 134,  # gpt-oss-120b, score: 1354
-    "gpt-oss-120b-thinking": 134,  # Same model in thinking mode
-    "o3": 43,  # o3-2025-04-16, score: 1431
-    "o3-thinking": 43,  # o3-2025-04-16, score: 1431
-    "o3-mini": 142,  # o3-mini, score: 1348
-    "o3-mini-thinking": 142,  # o3-mini, score: 1348
-    # Anthropic
-    "sonnet-4.5": 25,  # claude-sonnet-4-5-20250929, score: 1453
-    "sonnet-4.5-thinking": 25,  # claude-sonnet-4-5-20250929, score: 1453
-    "sonnet-3.7": 115,  # claude-3-7-sonnet-20250219, score: 1386
-    "sonnet-3.7-thinking": 97,  # claude-3-7-sonnet-20250219-thinking-32k, score: 1379
-    "haiku-3.5": 169,  # claude-3-5-haiku-20241022, score: 1336
-    "haiku-3.5-thinking": 169,  # claude-3-5-haiku-20241022, score: 1336
-    "haiku-4.5": 76,  # claude-haiku-4-5-20251001, score: 1407
-    "haiku-4.5-thinking": 76,  # claude-haiku-4-5-20251001, score: 1407
-    "opus-4.1": 70,  # claude-opus-4-20250514, score: 1412
-    "opus-4.1-thinking": 70,  # claude-opus-4-20250514, score: 1412
-    # Google
-    "gemini-2.0-flash": 129,  # gemini-2.0-flash-001, score: 1360
-    "gemini-2.0-flash-thinking": 129,  # gemini-2.0-flash-001, score: 1360
-    "gemini-2.0-flash-lite": 112,  # gemini-2.5-flash-lite-preview-09-2025-no-thinking, score: 1380
-    "gemini-2.0-flash-lite-thinking": 112,  # gemini-2.5-flash-lite, score: 1380
-    "gemini-2.5-flash": 73,  # gemini-2.5-flash, score: 1411
-    "gemini-2.5-flash-thinking": 73,  # gemini-2.5-flash, score: 1411
-    "gemini-2.5-pro": 28,  # gemini-2.5-pro, score: 1448
-    "gemini-2.5-pro-thinking": 28,  # gemini-2.5-pro, score: 1448
-    # XAI
-    "grok-3-mini": 123,  # grok-3-mini-high, score: 1378
-    "grok-3-mini-thinking": 123,  # grok-3-mini-high, score: 1378
-    "grok-4.1-fast": 41,  # grok-4-1-fast-reasoning, score: 1435
-    "grok-4.1-fast-thinking": 41,  # grok-4-1-fast-reasoning, score: 1435
-    # Together - Llama
-    "ll-3.1-8b": 260,  # llama-3.1-8b-instruct, score: 1211
-    "ll-3.1-70b": 208,  # llama-3.1-70b-instruct, score: 1293
-    "ll-3.3-70b": 183,  # llama-3.3-70b-instruct, score: 1318
-    "ll-3.3-70b-dsR1-thinking": None,  # Not found on leaderboard
-    "ll-3.1-405b": 155,  # llama-3.1-405b-instruct-bf16, score: 1346
-    # Together - Qwen
-    "qwen-2.5-7b": None,  # Not on leaderboard
-    "qwen-2.5-72b": 205,  # qwen2.5-72b-instruct, score: 1302
-    "qwen-3.0-30b": 109,  # qwen3-30b-a3b-instruct-2507, score: 1383
-    "qwen-3.0-80b": 85,  # qwen3-next-80b-a3b-instruct, score: 1402
-    "qwen-3.0-80b-thinking": 85,  # qwen3-next-80b-a3b-instruct, score: 1402
-    "qwen-3.0-235b": 54,  # qwen3-235b-a22b-instruct-2507, score: 1422
-    "qwen-3.0-235b-thinking": 89,  # qwen3-235b-a22b-thinking-2507, score: 1400
-    "qwen-3.5-27b": 79,  # qwen3.5-27b, score: 1405
-    # Together - DeepSeek
-    "deepseek-3.0": 95,  # deepseek-v3-0324, score: 1395
-    "deepseek-3.1": 59,  # deepseek-v3.1, score: 1418
-    "deepseek-3.1-thinking": 59,  # deepseek-v3.1, score: 1418
-    "deepseek-r1-thinking": 56,  # deepseek-r1-0528, score: 1422
-    "deepseek-r1-0528-thinking": 56,  # deepseek-r1-0528, score: 1422
-    # Moonshot
-    "kimi-k2": 57,  # kimi-k2-0905-preview, score: 1419
-    "kimi-k2-thinking": 42,  # kimi-k2-thinking-turbo, score: 1434
-    "kimi-k2.5": 42,  # kimi-k2.5-instant, score: 1433
-    "kimi-k2.5-thinking": 23,  # kimi-k2.5-thinking, score: 1454
-    # Together - MiniMax
-    "minimax-m2.5-thinking": 78,  # minimax-m2.5, score: 1406
-    # Together - GLM (Zhipu)
-    "glm-4.5-air-thinking": 118,  # glm-4.5-air, score: 1373
-    "glm-4.7-thinking": 35,  # glm-4.7, score: 1443
-    # Fireworks - Llama
-    "ll-3.1-8b_fw": 260,  # Same as Together version
-    "ll-3.1-70b_fw": 208,  # Same as Together version
-    "ll-3.1-405b_fw": 155,  # Same as Together version
-    # Fireworks - Qwen
-    "qwen-3.0-30b_fw": 109,  # Same as Together version
-    "qwen-3.0-235b_fw": 54,  # Same as Together version
-    # Fireworks - DeepSeek
-    "deepseek-3.1_fw": 59,  # Same as Together version
-    "deepseek-r1_fw": 56,  # Same as Together version (deepseek-r1-0528)
+    k: v.lm_arena_ranking
+    for k, v in INSPECT_MODELS.items()
+    if v.lm_arena_ranking is not None
 }
 
 # LM Arena Elo scores from https://arena.ai/leaderboard (text)
 # Scores as of Mar 17, 2026. Higher score = better model.
 # Models not found on leaderboard are marked as None.
 LM_ARENA_SCORES: dict[str, int | None] = {
-    # Updated from https://arena.ai/leaderboard/text on 2026-03-27.
-    # OpenAI
-    "gpt-4o-mini": 1317,  # rank 188
-    "gpt-4o": 1345,  # rank 150 (gpt-4o-2024-05-13)
-    "gpt-4.1-mini": 1382,  # rank 111
-    "gpt-4.1": 1413,  # rank 69
-    "gpt-5-mini": 1382,  # rank 94
-    "gpt-5-mini-thinking": 1382,  # rank 94
-    "gpt-5": 1439,  # rank 38
-    "gpt-5-thinking": 1439,  # rank 38
-    "gpt-oss-20b": 1318,  # rank 184
-    "gpt-oss-20b-thinking": 1318,  # rank 184
-    "gpt-oss-120b": 1354,  # rank 134
-    "gpt-oss-120b-thinking": 1354,  # rank 134
-    "o3": 1431,  # rank 43
-    "o3-thinking": 1431,  # rank 43
-    "o3-mini": 1348,  # rank 142
-    "o3-mini-thinking": 1348,  # rank 142
-    # Anthropic
-    "sonnet-4.5": 1453,  # rank 25
-    "sonnet-4.5-thinking": 1453,  # rank 25
-    "sonnet-3.7": 1386,  # rank 115
-    "sonnet-3.7-thinking": 1379,  # rank 97
-    "haiku-3.5": 1336,  # rank 169
-    "haiku-3.5-thinking": 1336,  # rank 169
-    "haiku-4.5": 1407,  # rank 76
-    "haiku-4.5-thinking": 1407,  # rank 76
-    "opus-4.1": 1412,  # rank 70 (claude-opus-4-20250514)
-    "opus-4.1-thinking": 1412,  # rank 70
-    # Google
-    "gemini-2.0-flash": 1360,  # rank 129 (gemini-2.0-flash-001)
-    "gemini-2.0-flash-thinking": 1360,  # rank 129
-    "gemini-2.0-flash-lite": 1380,  # rank 112 (gemini-2.5-flash-lite-no-thinking)
-    "gemini-2.0-flash-lite-thinking": 1380,  # rank 112
-    "gemini-2.5-flash": 1411,  # rank 73
-    "gemini-2.5-flash-thinking": 1411,  # rank 73
-    "gemini-2.5-pro": 1448,  # rank 28
-    "gemini-2.5-pro-thinking": 1448,  # rank 28
-    # XAI
-    "grok-3-mini": 1378,  # rank 123
-    "grok-3-mini-thinking": 1378,  # rank 123
-    "grok-4.1-fast": 1435,  # rank 41
-    "grok-4.1-fast-thinking": 1435,  # rank 41
-    # Together - Llama
-    "ll-3.1-8b": 1211,  # rank 260
-    "ll-3.1-70b": 1293,  # rank 208
-    "ll-3.3-70b": 1318,  # rank 183 (llama-3.3-70b-instruct)
-    "ll-3.3-70b-dsR1-thinking": None,  # Not found on leaderboard
-    "ll-3.1-405b": 1346,  # rank 155
-    # Together - Qwen
-    "qwen-2.5-7b": None,  # Not on leaderboard
-    "qwen-2.5-72b": 1302,  # rank 205
-    "qwen-3.0-30b": 1383,  # rank 109 (qwen3-30b-a3b-instruct-2507)
-    "qwen-3.0-80b": 1402,  # rank 85
-    "qwen-3.0-80b-thinking": 1402,  # rank 85
-    "qwen-3.0-235b": 1422,  # rank 54 (qwen3-235b-a22b-instruct-2507)
-    "qwen-3.0-235b-thinking": 1400,  # rank 89 (qwen3-235b-a22b-thinking-2507)
-    "qwen-3.5-27b": 1405,  # rank 79 (qwen3.5-27b)
-    # Together - DeepSeek
-    "deepseek-3.0": 1395,  # rank 95 (deepseek-v3-0324)
-    "deepseek-3.1": 1418,  # rank 59 (deepseek-v3.1)
-    "deepseek-3.1-thinking": 1418,  # rank 59
-    "deepseek-r1-thinking": 1422,  # rank 56 (deepseek-r1-0528)
-    "deepseek-r1-0528-thinking": 1422,  # rank 56
-    # Moonshot
-    "kimi-k2": 1419,  # rank 57
-    "kimi-k2-thinking": 1434,  # rank 42
-    "kimi-k2.5": 1433,  # rank 42 (kimi-k2.5-instant)
-    "kimi-k2.5-thinking": 1454,  # rank 23
-    # Together - MiniMax
-    "minimax-m2.5-thinking": 1406,  # rank 78
-    # Together - GLM (Zhipu)
-    "glm-4.5-air-thinking": 1373,  # rank 118
-    "glm-4.7-thinking": 1443,  # rank 35
-    # Fireworks - Llama
-    "ll-3.1-8b_fw": 1211,  # Same as Together version
-    "ll-3.1-70b_fw": 1293,  # Same as Together version
-    "ll-3.1-405b_fw": 1346,  # Same as Together version
-    # Fireworks - Qwen
-    "qwen-3.0-30b_fw": 1383,  # Same as Together version
-    "qwen-3.0-235b_fw": 1422,  # Same as Together version
-    # Fireworks - DeepSeek
-    "deepseek-3.1_fw": 1418,  # Same as Together version
-    "deepseek-r1_fw": 1422,  # Same as Together version
+    k: v.lm_arena_score
+    for k, v in INSPECT_MODELS.items()
+    if v.lm_arena_score is not None
 }
 
 # GPU tier for hf/ models that need local GPU inference.
@@ -554,10 +906,9 @@ LM_ARENA_SCORES: dict[str, int | None] = {
 #   "medium" — 27B-35B models, ~60GB VRAM (A100 80GB, L40S)
 #   "large"  — 70B+ models, ~80GB+ VRAM (A100 80GB, H100)
 MODEL_GPU_TIER: dict[str, str] = {
-    "ll-3.1-8b": "small",
-    "qwen-3.5-27b": "medium",
-    "ll-3.1-70b": "large",
-    "ll-3.1-405b": "large",
+    k: v.gpu_tier
+    for k, v in INSPECT_MODELS.items()
+    if v.gpu_tier is not None
 }
 
 
