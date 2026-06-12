@@ -105,15 +105,17 @@ def load_bigcodebench_data(
     skipped_count = 0
 
     # Determine which prompt field to use
-    prompt_field = "instruct_prompt" if prompt_type == "instruct" else "complete_prompt"
+    if prompt_type == "instruct":
+        prompt_field = "instruct_prompt"
+        fallback_field = "complete_prompt"
+    else:
+        prompt_field = "complete_prompt"
+        fallback_field = "instruct_prompt"
 
     for idx, sample in enumerate(dataset):
         # Get the prompt based on prompt_type
         if prompt_field not in sample:
             # Fallback: try the other prompt type if available
-            fallback_field = (
-                "complete_prompt" if prompt_type == "instruct" else "instruct_prompt"
-            )
             if fallback_field in sample:
                 prompt = sample[fallback_field]
                 print(
