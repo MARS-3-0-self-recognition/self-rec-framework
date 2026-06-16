@@ -1,5 +1,5 @@
 temperature: 0.3
-max_final_answer_tokens: null
+max_final_answer_tokens: max
 
 tags: "UT"
 format: "PW-Q"

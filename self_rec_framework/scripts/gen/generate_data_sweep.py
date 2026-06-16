@@ -244,14 +244,12 @@ def run_sweep_generation(
                 if tinker_key:
                     os.environ["OPENAI_API_KEY"] = tinker_key
                 os.environ["OPENAI_BASE_URL"] = tinker_base_url
-                # Strip hf/ prefix to get HF model ID, then strip any provider
-                # prefix (e.g., "openai/gpt-oss-20b" -> "gpt-oss-20b") to avoid
-                # double-prefixing when we add "openai/"
+                # Strip only the hf/ route prefix; preserve the HF-org namespace
+                # (e.g., "openai/gpt-oss-20b" stays intact — the "openai/" there
+                # is the vendor namespace on Tinker, NOT an inspect_ai provider).
+                # Prepend "openai/" so inspect_ai parses provider=openai and
+                # forwards the full path (e.g. "openai/gpt-oss-20b") to Tinker.
                 hf_model_id = inspect_name.removeprefix("hf/")
-                for provider_prefix in ("openai/", "anthropic/", "google/", "together/"):
-                    if hf_model_id.startswith(provider_prefix):
-                        hf_model_id = hf_model_id.removeprefix(provider_prefix)
-                        break
                 INSPECT_MODEL_NAMES[model_name] = f"openai/{hf_model_id}"
                 # Also override the base model name so that thinking model
                 # resolution (which looks up base_name) uses Tinker too

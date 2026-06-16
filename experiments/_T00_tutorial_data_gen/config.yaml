@@ -1,6 +1,6 @@
 temperature: 0.0
-max_final_answer_tokens: null
-max_thinking_tokens: null
+max_final_answer_tokens: max
+max_thinking_tokens: max
 
 treatments:
   typos: [S2]

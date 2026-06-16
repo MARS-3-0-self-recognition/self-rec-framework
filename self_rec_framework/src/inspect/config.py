@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 import yaml
-from typing import Optional
+from typing import Optional, Union
 from pathlib import Path
 from self_rec_framework.src.helpers.utils import project_root, package_root
 
@@ -28,9 +28,11 @@ class ExperimentConfig:
     # Generation parameters
     temperature: Optional[float] = None  # Evaluator inference temperature
     generator_temperature: Optional[float] = None  # Data generation temperature (for dir lookup)
-    max_final_answer_tokens: Optional[int] = None
-    max_thinking_tokens: Optional[int] = (
-        None  # Max tokens for thinking models (default: 8192)
+    # Token budgets accept an int, null, or the string "max" (resolved per-model
+    # to the model's output ceiling via get_model_max_tokens at task-build time).
+    max_final_answer_tokens: Optional[Union[int, str]] = None
+    max_thinking_tokens: Optional[Union[int, str]] = (
+        None  # Max tokens for thinking models; "max" -> model ceiling
     )
     seed: Optional[int] = None
 
@@ -51,10 +53,37 @@ class ExperimentConfig:
     #   RT = Reasoning Trace only
     generator_output: Optional[str] = None
 
+    # In-context learning (ICL) — inject QA examples before evaluation
+    icl_model: Optional[str] = None       # Model whose responses to use (e.g., "deepseek-3.1")
+    icl_count: Optional[int] = None       # Number of QA pairs to inject
+    icl_seed: Optional[int] = None        # Seed for reproducible sampling (default: seed or 42)
+    icl_data_subset: Optional[str] = None # Data subset override for ICL (default: same as eval)
+    icl_dataset: Optional[str] = None     # Dataset override for ICL pool (default: same as eval)
+    # If True, each eval UUID gets a different random subset of ICL examples
+    # (in its own order). The two answer-order-bias samples sharing a UUID get
+    # the SAME ICL context so their comparison stays fair.
+    icl_shuffle_per_sample: bool = False
+
+    # Optional two-level naming for ICA-style experiments.
+    # When both are set, eval logs land under:
+    #   data/results/{dataset}/{subset}/{experiment_name}/{mini_batch_name}/
+    # When unset, legacy single-level layout is preserved (old MSJ configs).
+    experiment_name: Optional[str] = None
+    mini_batch_name: Optional[str] = None
+
     # Built prompts (set after initialization)
     generation_prompt: Optional[str] = None
     SR_task_prompt: Optional[str] = None
     system_prompt: Optional[str] = None
+
+    def __post_init__(self):
+        # The only non-int string accepted for token budgets is the "max" sentinel.
+        for field_name in ("max_final_answer_tokens", "max_thinking_tokens"):
+            value = getattr(self, field_name)
+            if isinstance(value, str) and value.lower() != "max":
+                raise ValueError(
+                    f"{field_name} must be an integer, null, or 'max' — got {value!r}."
+                )
 
     def is_pairwise(self) -> bool:
         """Check if this is a pairwise task (PW-*) vs individual (IND-*)."""
@@ -63,8 +92,10 @@ class ExperimentConfig:
     def config_name_for_logging(self) -> str:
         """Generate a config name for logging directories."""
         priming_str = "Pr" if self.priming else "NPr"
-        # Normalize task name: "Pref-N" → "Pref-N", "Pref" → "Pref" (backward compat)
-        return f"{self.tags}_{self.format}_{self.task}_{priming_str}"
+        name = f"{self.tags}_{self.format}_{self.task}_{priming_str}"
+        if self.icl_model and self.icl_count:
+            name += f"_ICL-{self.icl_model}-{self.icl_count}"
+        return name
 
 
 def load_experiment_config(
@@ -104,10 +135,20 @@ def load_experiment_config(
         reasoning_effort=config_dict.get("reasoning_effort", "high"),
         reasoning_summary=config_dict.get("reasoning_summary", None),
         reasoning_history=config_dict.get("reasoning_history", "all"),
+        icl_model=config_dict.get("icl_model"),
+        icl_count=config_dict.get("icl_count"),
+        icl_seed=config_dict.get("icl_seed"),
+        icl_data_subset=config_dict.get("icl_data_subset"),
+        icl_dataset=config_dict.get("icl_dataset"),
+        icl_shuffle_per_sample=config_dict.get("icl_shuffle_per_sample", False),
+        experiment_name=config_dict.get("experiment_name"),
+        mini_batch_name=config_dict.get("mini_batch_name"),
     )
 
-    # Build prompts automatically
-    _build_prompts(exp_config)
+    # Build prompts automatically. MMLU tasks have no SR prompt — the
+    # inspect_ai multiple_choice solver provides its own template, so skip.
+    if exp_config.task != "MMLU":
+        _build_prompts(exp_config)
 
     return exp_config
 
@@ -333,11 +374,14 @@ def _build_prompts(
 
     # Build SR task prompt
     # SR_task_preface structure:
-    #   AT.All - for all AT tasks
+    #   AT.{PW|IND} - for AT tasks based on pair_type
+    #     (clarifies whether the task refers to the most recent query (IND)
+    #     or the last two queries (PW) in the conversation — important for
+    #     ICA where the prompt includes many prior turns)
     #   UT.{C|Q} - for UT tasks based on format_type
     try:
         if exp_config.tags == "AT":
-            sr_task_preface_keys = [exp_config.tags]  # Will find "All" wildcard
+            sr_task_preface_keys = [exp_config.tags, pair_type]
         else:  # UT
             sr_task_preface_keys = [exp_config.tags, format_type]
         sr_task_preface = _get_nested_prompt(
@@ -345,7 +389,7 @@ def _build_prompts(
         ).strip()
     except KeyError as e:
         raise ValueError(
-            f"SR_task_preface not implemented for tags={exp_config.tags}, format={format_type}"
+            f"SR_task_preface not implemented for tags={exp_config.tags}, pair_type={pair_type}"
         ) from e
 
     # Get SR task template: SR_task[pair_type][format_type][base_task]
