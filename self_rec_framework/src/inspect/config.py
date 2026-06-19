@@ -85,6 +85,25 @@ class ExperimentConfig:
                     f"{field_name} must be an integer, null, or 'max' — got {value!r}."
                 )
 
+        # ICL must be fully configured or not at all. A half-config (only one of
+        # icl_model/icl_count) would otherwise silently disable ICL and produce
+        # non-ICL results that look valid.
+        if bool(self.icl_model) != bool(self.icl_count):
+            raise ValueError(
+                "icl_model and icl_count must be set together (got "
+                f"icl_model={self.icl_model!r}, icl_count={self.icl_count!r})."
+            )
+
+        # Two-level ICA layout requires both names or neither. Setting only one
+        # makes the sweep write to the legacy single-level path while the analyzer
+        # looks under the nested path, yielding "no eval logs found".
+        if bool(self.experiment_name) != bool(self.mini_batch_name):
+            raise ValueError(
+                "experiment_name and mini_batch_name must be set together (got "
+                f"experiment_name={self.experiment_name!r}, "
+                f"mini_batch_name={self.mini_batch_name!r})."
+            )
+
     def is_pairwise(self) -> bool:
         """Check if this is a pairwise task (PW-*) vs individual (IND-*)."""
         return self.format.startswith("PW")

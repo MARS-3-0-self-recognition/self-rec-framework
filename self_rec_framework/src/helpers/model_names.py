@@ -47,6 +47,7 @@ INSPECT_MODEL_NAMES: dict = {
     "ll-3.3-70b-dsR1-thinking": "together/deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
     "ll-70B-dsr1-thinking": "together/deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
     "ll-3.1-405b": "together/meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
+    "ll-3-8b-lite": "together/meta-llama/Meta-Llama-3-8B-Instruct-Lite",  # cheap small instruct (tutorial set)
     # Qwen models
     "qwen-2.5-7b": "together/Qwen/Qwen2.5-7B-Instruct-Turbo",
     "qwen-2.5-72b": "together/Qwen/Qwen2.5-72B-Instruct-Turbo",
@@ -82,6 +83,12 @@ INSPECT_MODEL_NAMES: dict = {
     "gpt-oss-20b-thinking": "hf/openai/gpt-oss-20b",  # Same model, native reasoning
     "gpt-oss-120b": "hf/openai/gpt-oss-120b",
     "gpt-oss-120b-thinking": "hf/openai/gpt-oss-120b",  # Same model, native reasoning
+    # Together-served gpt-oss (provider-tagged variants). Bare names above stay
+    # hf/ (local/tinker for training); eval sets use these tg: routes.
+    "tg:gpt-oss-20b": "together/openai/gpt-oss-20b",
+    "tg:gpt-oss-20b-thinking": "together/openai/gpt-oss-20b",
+    "tg:gpt-oss-120b": "together/openai/gpt-oss-120b",
+    "tg:gpt-oss-120b-thinking": "together/openai/gpt-oss-120b",
     ## SGTR-trained Tinker LoRA samplers (served via Tinker OAI proxy when gpu_dispatch=tinker)
     ## Keys match data/training_reorganized/05_MSJ/ dir names so get_data_model_name()
     ## can resolve them to their base model for response-data lookup.
@@ -163,6 +170,7 @@ MODEL_MAX_TOKENS: dict[str, int] = {
     "ll-3.3-70b-dsR1": 32768,  # R1 max generation = 32768
     "ll-70B-dsr1": 32768,
     "ll-3.1-405b": 8192,
+    "ll-3-8b-lite": 8192,
     # Together — Qwen (context-bound; thinking-budget values per Qwen cards)
     "qwen-2.5-7b": 8192,
     "qwen-2.5-72b": 8192,
@@ -816,8 +824,27 @@ def get_base_model_name(model_name: str) -> str:
     Returns:
         Base model name without "-thinking" suffix
     """
+    # Strip an optional provider tag (hf:/tg:) so base-model logic (max-tokens,
+    # thinking detection, data lookup) is provider-agnostic. The tag only steers
+    # the inspect route (INSPECT_MODEL_NAMES lookup), which uses the full name.
+    model_name = strip_provider_tag(model_name)
     if model_name.endswith("-thinking"):
         return model_name[:-9]  # Remove "-thinking" suffix
+    return model_name
+
+
+# Provider tags let a config disambiguate which backend a shorthand resolves to
+# when the same model is served by more than one provider (e.g. gpt-oss on both
+# hf and Together). A tagged name like "tg:gpt-oss-20b-thinking" has its own
+# explicit INSPECT_MODEL_NAMES entry; bare names remain the canonical default.
+PROVIDER_TAGS = ("hf:", "tg:")
+
+
+def strip_provider_tag(model_name: str) -> str:
+    """Remove a leading provider tag (hf:/tg:) if present."""
+    for tag in PROVIDER_TAGS:
+        if model_name.startswith(tag):
+            return model_name[len(tag):]
     return model_name
 
 
@@ -1051,6 +1078,10 @@ def get_data_model_name(model_name: str) -> str:
     Returns:
         Model name to use for data directory lookup
     """
+    # Strip any provider tag (hf:/tg:) — data identity is provider-agnostic, so a
+    # tagged route (e.g. tg:gpt-oss-20b-thinking) reads the same data as the bare name.
+    model_name = strip_provider_tag(model_name)
+
     # Strip -thinking suffix first for trained model resolution
     clean_name = model_name.removesuffix("-thinking") if model_name.endswith("-thinking") else model_name
 

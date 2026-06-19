@@ -472,7 +472,29 @@ def run_sweep_experiment(
     import yaml as _yaml
     with open(experiment_config) as _f:
         _raw_config = _yaml.safe_load(_f)
+    # The experiment config may declare `overwrite: true` as a default; the CLI
+    # --overwrite flag (when passed) still forces it on.
+    overwrite = overwrite or bool(_raw_config.get("overwrite", False))
     gpu_dispatch = _raw_config.get("gpu_dispatch")
+
+    # hf/ evaluator models are called live during eval and need GPU execution.
+    # Require an explicit dispatch (same protocol as the gen sweep) rather than
+    # silently running them on the local machine. Generator models are excluded:
+    # their outputs are pre-generated data, not called here.
+    def _resolves_to_hf(name: str) -> bool:
+        route = INSPECT_MODEL_NAMES.get(name, "")
+        if not route and name.endswith("-thinking"):
+            route = INSPECT_MODEL_NAMES.get(name.removesuffix("-thinking"), "")
+        return route.startswith("hf/")
+
+    hf_evaluators = [m for m in model_names if _resolves_to_hf(m)]
+    if hf_evaluators and gpu_dispatch not in ("local", "tinker"):
+        raise ValueError(
+            f"hf/ evaluator models require an explicit 'gpu_dispatch' in the config: "
+            f"{', '.join(hf_evaluators)}. Set gpu_dispatch to 'local' (run on this "
+            f"machine's GPU) or 'tinker' (Tinker OAI proxy)."
+        )
+
     if gpu_dispatch == "tinker":
         tinker_base_url = "https://tinker.thinkingmachines.dev/services/tinker-prod/oai/api/v1"
         tinker_key = os.environ.get("TINKER_API_KEY", "")
@@ -497,13 +519,6 @@ def run_sweep_experiment(
                     base = model_name.removesuffix("-thinking")
                     INSPECT_MODEL_NAMES[base] = f"openai/{hf_model_id}"
                 print(f"  Tinker: {model_name} -> openai/{hf_model_id}")
-
-        # Also remap trained model names (contain _sft-as_)
-        for model_name in list(model_names):
-            if "_sft-as_" in model_name:
-                # Trained models aren't in INSPECT_MODEL_NAMES — they use Tinker
-                # checkpoints via the eval task's model resolution
-                pass
 
     # MMLU-MC format has no treatment/control pair — skip the dataset discovery
     # and run one task per evaluator with a placeholder treatment name.
@@ -860,8 +875,11 @@ def run_sweep_experiment(
 
         # Check if evaluator is a Together AI model by looking up inspect name
         is_together = False
+        is_tinker = False
         if evaluator_model in INSPECT_MODEL_NAMES:
             is_together = INSPECT_MODEL_NAMES[evaluator_model].startswith("together/")
+            # Tinker OAI proxy (LoRA samplers) doesn't implement OpenAI's batch API
+            is_tinker = "tinker://" in INSPECT_MODEL_NAMES[evaluator_model]
 
         if (
             is_gemini
@@ -870,6 +888,7 @@ def run_sweep_experiment(
             or is_o3
             or is_grok
             or is_together
+            or is_tinker
         ):
             no_batch_tasks.append(task)
             no_batch_descriptions.append(desc)
