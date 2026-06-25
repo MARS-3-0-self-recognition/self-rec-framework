@@ -1,8 +1,8 @@
 #!/bin/bash
 # Run all bash scripts in one or more directories consecutively
 #
-# Usage: ./scripts/run.sh <directory1> [directory2] ...
-# Example: ./scripts/run.sh experiments/ICML_01/bash/analysis/bigcodebench experiments/ICML_01/bash/analysis/_inter-dataset
+# Usage: ./scripts/utils/run.sh <directory1> [directory2] ...
+# Example: ./scripts/utils/run.sh experiments/_tutorials/_T01_tutorial_evals_individual/bash/b00_analysis/_inter-dataset
 #
 # Note: Continues running subsequent scripts even if one fails.
 # Failed scripts are reported in the summary at the end.
@@ -12,7 +12,7 @@
 
 if [ -z "$1" ]; then
     echo "Usage: $0 <directory1> [directory2] ..."
-    echo "Example: $0 experiments/ICML_01_UT_PW-Q_Rec_NPr_FA_Inst/bash"
+    echo "Example: $0 experiments/_tutorials/_T01_tutorial_evals_individual/bash/b00_analysis/_inter-dataset"
     exit 1
 fi
 
@@ -33,8 +33,10 @@ for DIR in "$@"; do
     fi
 
     # Find all .sh files in the directory, sorted alphabetically
-    # Exclude config.sh files (shared configuration files, not executable scripts)
-    SCRIPTS=$(find "$DIR" -maxdepth 1 -name "*.sh" -type f -not -name "config.sh" | sort)
+    # Exclude config.sh (shared config, sourced not run) and run_*.sh entry
+    # points (run_sweep.sh / run_all_analyses.sh etc.) — those invoke THIS
+    # runner, so executing them here would recurse or double-run.
+    SCRIPTS=$(find "$DIR" -maxdepth 1 -name "*.sh" -type f -not -name "config.sh" -not -name "run_*.sh" | sort)
 
     if [ -z "$SCRIPTS" ]; then
         echo "No bash scripts found in '$DIR'"
