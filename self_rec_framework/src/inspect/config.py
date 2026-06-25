@@ -29,7 +29,7 @@ class ExperimentConfig:
     temperature: Optional[float] = None  # Evaluator inference temperature
     generator_temperature: Optional[float] = None  # Data generation temperature (for dir lookup)
     # Token budgets accept an int, null, or the string "max" (resolved per-model
-    # to the model's output ceiling via get_model_max_tokens at task-build time).
+    # to the model's output ceiling via get_model_output_token_cap at task-build time).
     max_final_answer_tokens: Optional[Union[int, str]] = None
     max_thinking_tokens: Optional[Union[int, str]] = (
         None  # Max tokens for thinking models; "max" -> model ceiling

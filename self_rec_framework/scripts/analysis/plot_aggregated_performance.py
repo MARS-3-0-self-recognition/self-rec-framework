@@ -1074,8 +1074,25 @@ def main():
         required=True,
         help="Path to aggregated_performance.csv or aggregated_deviation.csv",
     )
-    
+    parser.add_argument(
+        "--figures",
+        type=str,
+        default="all",
+        help="Comma-separated figures to generate, or 'all' (default). Keys: "
+        "stacked, grouped, dataset_grouped, answer_ratio, grouped_arena, "
+        "accept_ratio, f1. Example: --figures grouped",
+    )
+
     args = parser.parse_args()
+
+    # Figure selection: None => generate everything; otherwise only the named keys.
+    selected = (
+        None
+        if args.figures.strip().lower() == "all"
+        else {f.strip() for f in args.figures.split(",") if f.strip()}
+    )
+    def want(key: str) -> bool:
+        return selected is None or key in selected
     
     file_path = Path(args.aggregated_file)
     if not file_path.exists():
@@ -1125,38 +1142,41 @@ def main():
     output_dir = file_path.parent
     
     # 1. Stacked Bar Chart (Existing style)
-    stacked_output = output_dir / file_path.name.replace(".csv", ".png")
-    plot_stacked_bar_chart(
-        df, 
-        stacked_output, 
-        experiment_title=experiment_title, 
-        is_deviation=is_deviation
-    )
-    print()
+    if want("stacked"):
+        stacked_output = output_dir / file_path.name.replace(".csv", ".png")
+        plot_stacked_bar_chart(
+            df,
+            stacked_output,
+            experiment_title=experiment_title,
+            is_deviation=is_deviation
+        )
+        print()
 
     # 2. Grouped Bar Chart (New style: Models on X axis, side-by-side bars)
-    grouped_output = output_dir / file_path.name.replace(".csv", "_grouped.png")
-    plot_grouped_bar_chart(
-        df, 
-        grouped_output, 
-        experiment_title=experiment_title, 
-        is_deviation=is_deviation
-    )
-    print()
+    if want("grouped"):
+        grouped_output = output_dir / file_path.name.replace(".csv", "_grouped.png")
+        plot_grouped_bar_chart(
+            df,
+            grouped_output,
+            experiment_title=experiment_title,
+            is_deviation=is_deviation
+        )
+        print()
 
     # 3. Dataset-Grouped Bar Chart (New style: 4 groups by dataset, models sorted within each)
-    dataset_grouped_output = output_dir / file_path.name.replace(".csv", "_dataset_grouped.png")
-    plot_dataset_grouped_bar_chart(
-        df, 
-        dataset_grouped_output, 
-        experiment_title=experiment_title, 
-        is_deviation=is_deviation
-    )
-    print()
+    if want("dataset_grouped"):
+        dataset_grouped_output = output_dir / file_path.name.replace(".csv", "_dataset_grouped.png")
+        plot_dataset_grouped_bar_chart(
+            df,
+            dataset_grouped_output,
+            experiment_title=experiment_title,
+            is_deviation=is_deviation
+        )
+        print()
 
     # 4. Answer Choice Ratio Chart (if aggregated_answer_choice_ratio.csv exists)
     answer_ratio_file = output_dir / "aggregated_answer_choice_ratio.csv"
-    if answer_ratio_file.exists():
+    if want("answer_ratio") and answer_ratio_file.exists():
         df_answer = pd.read_csv(answer_ratio_file, index_col=0)
         answer_output = output_dir / "aggregated_answer_choice_ratio.png"
         plot_answer_choice_ratio_chart(
@@ -1167,18 +1187,19 @@ def main():
         print()
 
     # 5. Grouped Bar Chart sorted by LM Arena ranking
-    arena_grouped_output = output_dir / file_path.name.replace(".csv", "_grouped_arena.png")
-    plot_grouped_bar_chart(
-        df,
-        arena_grouped_output,
-        experiment_title=experiment_title,
-        is_deviation=is_deviation,
-        sort_by="arena_ranking",
-    )
-    print()
+    if want("grouped_arena"):
+        arena_grouped_output = output_dir / file_path.name.replace(".csv", "_grouped_arena.png")
+        plot_grouped_bar_chart(
+            df,
+            arena_grouped_output,
+            experiment_title=experiment_title,
+            is_deviation=is_deviation,
+            sort_by="arena_ranking",
+        )
+        print()
 
     # 6. Answer Choice Ratio Chart sorted by LM Arena ranking
-    if answer_ratio_file.exists():
+    if want("answer_ratio") and answer_ratio_file.exists():
         df_answer = pd.read_csv(answer_ratio_file, index_col=0)
         arena_answer_output = output_dir / "aggregated_answer_choice_ratio_arena.png"
         plot_answer_choice_ratio_chart(
@@ -1191,7 +1212,7 @@ def main():
 
     # 7. Accept Ratio Chart (if aggregated_accept_ratio.csv exists, IND experiments only)
     accept_ratio_file = output_dir / "aggregated_accept_ratio.csv"
-    if accept_ratio_file.exists():
+    if want("accept_ratio") and accept_ratio_file.exists():
         df_accept = pd.read_csv(accept_ratio_file, index_col=0)
         accept_output = output_dir / "aggregated_accept_ratio.png"
         plot_accept_ratio_chart(
@@ -1213,7 +1234,7 @@ def main():
 
     # 9. F1 Score Chart (if aggregated_f1.csv exists, IND experiments only)
     f1_file = output_dir / "aggregated_f1.csv"
-    if f1_file.exists():
+    if want("f1") and f1_file.exists():
         df_f1 = pd.read_csv(f1_file, index_col=0)
         f1_output = output_dir / "aggregated_f1_grouped.png"
         plot_f1_chart(

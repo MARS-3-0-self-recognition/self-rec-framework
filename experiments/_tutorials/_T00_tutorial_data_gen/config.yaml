@@ -1,0 +1,13 @@
+temperature: 0.0
+max_final_answer_tokens: max
+max_thinking_tokens: max
+max_tasks: 1
+
+# Tutorials regenerate by default (no need to pass --overwrite on the CLI).
+overwrite: true
+
+model_names: ["gemma-3n-e4b"] #["-set", "tutorial"]
+
+treatments:
+  caps: [S2]
+  typos: [S2]

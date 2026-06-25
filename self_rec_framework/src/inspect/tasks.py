@@ -21,7 +21,8 @@ from self_rec_framework.src.helpers.model_names import (
     needs_together_reasoning_activation,
     INSPECT_MODEL_NAMES,
     is_thinking_model,
-    get_model_max_tokens,
+    get_model_output_token_cap,
+    get_model_context_window,
     get_model_max_thinking_tokens,
 )
 from self_rec_framework.src.inspect.config import ExperimentConfig, load_experiment_config
@@ -254,6 +255,14 @@ class ReasoningTokensRequiredError(Exception):
     pass
 
 
+class ContextWindowExceededError(Exception):
+    """Raised when a model's context window can't fit the estimated input plus a
+    minimal output budget — i.e. the evaluator genuinely can't run this task. The
+    sweep catches this to skip the model gracefully rather than abort."""
+
+    pass
+
+
 def _disable_reasoning_for_instruct_mode(
     model_name: str,
     config_params: dict,
@@ -310,7 +319,7 @@ def _resolve_max_tokens(value, model_name: str, kind: str = "output"):
 
     - None -> None (unset)
     - int  -> the int unchanged
-    - "max" -> the model's ceiling: the output ceiling (MODEL_MAX_TOKENS) when
+    - "max" -> the model's ceiling: the output ceiling (MODEL_OUTPUT_TOKEN_CAP) when
       kind="output", or the thinking-budget cap (get_model_max_thinking_tokens)
       when kind="thinking". Raises ValueError if the model is unknown.
 
@@ -321,11 +330,47 @@ def _resolve_max_tokens(value, model_name: str, kind: str = "output"):
     if isinstance(value, str) and value.lower() == "max":
         if kind == "thinking":
             return get_model_max_thinking_tokens(model_name)
-        return get_model_max_tokens(model_name)
+        return get_model_output_token_cap(model_name)
     raise ValueError(
         f"Invalid token budget {value!r} for model '{model_name}': "
         f"expected an integer, null, or 'max'."
     )
+
+
+def _is_max_sentinel(value) -> bool:
+    """True if a token-budget config value is the 'max' sentinel."""
+    return isinstance(value, str) and value.lower() == "max"
+
+
+def _sample_input_chars(sample_input) -> int:
+    """Best-effort character count of a sample's input.
+
+    Handles both a plain string prompt and a list of chat messages (whose
+    content may itself be a string or a list of content blocks). Used to
+    estimate input tokens when resolving a "max" output budget.
+    """
+    if isinstance(sample_input, str):
+        return len(sample_input)
+    total = 0
+    for msg in sample_input:
+        content = getattr(msg, "content", "")
+        if isinstance(content, str):
+            total += len(content)
+        elif isinstance(content, list):
+            for block in content:
+                total += len(getattr(block, "text", "") or "")
+        else:
+            total += len(str(content))
+    return total
+
+
+# Reservation applied when an output budget is "max", so input + max_tokens
+# stays within the provider's context window. Input tokens are estimated from
+# characters (~chars/3, which conservatively over-counts English/code) plus the
+# system prompt; the margin covers chat-template special tokens and estimate
+# variance. If the reservation leaves less than the floor for output, we raise.
+_INPUT_RESERVE_MARGIN = 512
+_OUTPUT_FLOOR = 512
 
 
 def _configure_thinking_model_params(
@@ -333,6 +378,7 @@ def _configure_thinking_model_params(
     config: ExperimentConfig,
     config_params: dict,
     model: str | None = None,
+    samples: list | None = None,
 ) -> None:
     """
     Configure max_tokens, reasoning_tokens, and reasoning parameters for thinking models.
@@ -358,17 +404,50 @@ def _configure_thinking_model_params(
     # membership checks below and in _disable_reasoning_for_instruct_mode are safe)
     inspect_model_str = str(model) if model else ""
 
+    # Resolve a "max" output budget to a concrete int. The provider enforces
+    # (input + output) <= context window, so the most we can emit is
+    #   min(output_cap, context_window - estimated_input - margin).
+    # output_cap (the API's max generation tokens) and context_window are per-model
+    # specs; estimated_input is measured from the actual prompts (~chars/3); margin
+    # is fixed slack. Only used when a budget is "max"; computed lazily so non-"max"
+    # runs do no extra work. Raises ContextWindowExceededError when the input can't
+    # fit, so the sweep can skip this evaluator instead of failing every request.
+    def max_output_ceiling() -> int:
+        output_cap = get_model_output_token_cap(model_name)
+        if not samples:
+            return output_cap
+        max_in = max((_sample_input_chars(s.input) for s in samples), default=0)
+        sys_chars = len(config.system_prompt or "")
+        # ceil((input chars + system chars) / 3) conservatively over-counts tokens
+        est_input = -(-(max_in + sys_chars) // 3)
+        context_window = get_model_context_window(model_name)
+        usable = min(output_cap, context_window - est_input - _INPUT_RESERVE_MARGIN)
+        if usable < _OUTPUT_FLOOR:
+            raise ContextWindowExceededError(
+                f"Estimated input (~{est_input} tokens) leaves < {_OUTPUT_FLOOR} "
+                f"tokens for output within '{model_name}' context window "
+                f"{context_window}. This evaluator can't fit the prompt — reduce "
+                f"input length or use a longer-context model."
+            )
+        return usable
+
     # A call site (mmlu/generation) may have pre-seeded config_params["max_tokens"]
     # straight from config.max_final_answer_tokens, including the raw "max" sentinel.
     # Resolve it here so every downstream path sees a concrete int.
     if "max_tokens" in config_params:
-        config_params["max_tokens"] = _resolve_max_tokens(
-            config_params["max_tokens"], model_name
+        seed = config_params["max_tokens"]
+        config_params["max_tokens"] = (
+            max_output_ceiling() if _is_max_sentinel(seed)
+            else _resolve_max_tokens(seed, model_name)
         )
 
-    # Resolve the answer-token budget ("max" -> model output ceiling). Applies to
-    # every model regardless of reasoning mode, so instruct models honor it too.
-    resolved_answer = _resolve_max_tokens(config.max_final_answer_tokens, model_name)
+    # Resolve the answer-token budget ("max" -> reserved model output ceiling).
+    # Applies to every model regardless of reasoning mode, so instruct models
+    # honor it too.
+    if _is_max_sentinel(config.max_final_answer_tokens):
+        resolved_answer = max_output_ceiling()
+    else:
+        resolved_answer = _resolve_max_tokens(config.max_final_answer_tokens, model_name)
 
     # For dual-mode models WITHOUT -thinking suffix, explicitly disable reasoning
     if not is_thinking_model(model_name):
@@ -394,7 +473,9 @@ def _configure_thinking_model_params(
         config.max_thinking_tokens, model_name, kind="thinking"
     )
     uses_max = "max" in (config.max_thinking_tokens, config.max_final_answer_tokens)
-    model_ceiling = get_model_max_tokens(model_name) if uses_max else None
+    # Reserve input headroom in the shared output ceiling so thinking+answer
+    # budgets can't overflow the context window.
+    model_ceiling = max_output_ceiling() if uses_max else None
 
     # For models that support separate reasoning_tokens parameter
     if needs_reasoning_params(model_name):
@@ -674,7 +755,7 @@ def pairwise_query(
     # Configure thinking model parameters (max_tokens, reasoning_tokens, reasoning_history, etc.)
     # This will set reasoning_history from config if model is a thinking model
     _configure_thinking_model_params(
-        model_name, config, config_params, inspect_model_str
+        model_name, config, config_params, inspect_model_str, samples=inspect_samples
     )
     if logprobs:
         config_params["logprobs"] = True
@@ -909,7 +990,7 @@ def pairwise_conversation_assistant_tags(
     # Configure thinking model parameters (max_tokens, reasoning_tokens, reasoning_history, etc.)
     # This will set reasoning_history from config if model is a thinking model
     _configure_thinking_model_params(
-        model_name, config, config_params, inspect_model_str
+        model_name, config, config_params, inspect_model_str, samples=inspect_samples
     )
     if logprobs:
         config_params["logprobs"] = True
@@ -1003,7 +1084,7 @@ def pairwise_conversation_user_tags(
     config_params = {"system_message": config.system_prompt}
     # Configure thinking model parameters (max_tokens, reasoning_tokens)
     _configure_thinking_model_params(
-        model_name, config, config_params, inspect_model_str
+        model_name, config, config_params, inspect_model_str, samples=inspect_samples
     )
     if logprobs:
         config_params["logprobs"] = True
@@ -1108,7 +1189,7 @@ def individual_conversation_assistant_tags(
     # Configure thinking model parameters (max_tokens, reasoning_tokens, reasoning_history, etc.)
     # This will set reasoning_history from config if model is a thinking model
     _configure_thinking_model_params(
-        model_name, config, config_params, inspect_model_str
+        model_name, config, config_params, inspect_model_str, samples=inspect_samples
     )
     if logprobs:
         config_params["logprobs"] = True
@@ -1200,7 +1281,7 @@ def individual_conversation_user_tags(
     config_params = {"system_message": config.system_prompt}
     # Configure thinking model parameters (max_tokens, reasoning_tokens)
     _configure_thinking_model_params(
-        model_name, config, config_params, inspect_model_str
+        model_name, config, config_params, inspect_model_str, samples=inspect_samples
     )
     if logprobs:
         config_params["logprobs"] = True
@@ -1376,7 +1457,7 @@ def mmlu_multiple_choice(
     if config.seed is not None:
         config_params["seed"] = config.seed
     _configure_thinking_model_params(
-        model_name, config, config_params, inspect_model_str
+        model_name, config, config_params, inspect_model_str, samples=inspect_samples
     )
 
     return Task(
@@ -1468,7 +1549,7 @@ def generation(
     # Note: max_tokens may already be set from config.max_final_answer_tokens above (line 927)
     # The helper will respect existing max_tokens and only set it if not present
     _configure_thinking_model_params(
-        model_name, config, generate_config_params, inspect_model_str
+        model_name, config, generate_config_params, inspect_model_str, samples=inspect_samples
     )
 
     return Task(

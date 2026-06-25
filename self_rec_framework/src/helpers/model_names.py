@@ -47,7 +47,8 @@ INSPECT_MODEL_NAMES: dict = {
     "ll-3.3-70b-dsR1-thinking": "together/deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
     "ll-70B-dsr1-thinking": "together/deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
     "ll-3.1-405b": "together/meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
-    "ll-3-8b-lite": "together/meta-llama/Meta-Llama-3-8B-Instruct-Lite",  # cheap small instruct (tutorial set)
+    "ll-3-8b-lite": "together/meta-llama/Meta-Llama-3-8B-Instruct-Lite",  # cheap small instruct (Llama 3, 8k ctx)
+    "gemma-3n-e4b": "together/google/gemma-3n-E4B-it",  # cheap small instruct, 32k ctx, serverless (tutorial set)
     # Qwen models
     "qwen-2.5-7b": "together/Qwen/Qwen2.5-7B-Instruct-Turbo",
     "qwen-2.5-72b": "together/Qwen/Qwen2.5-72B-Instruct-Turbo",
@@ -127,7 +128,7 @@ INSPECT_MODEL_NAMES: dict = {
 # model may emit in a single response, including reasoning for thinking models).
 # Used to resolve the `"max"` sentinel in experiment configs
 # (max_final_answer_tokens / max_thinking_tokens) to a concrete budget — see
-# get_model_max_tokens(). Keyed by BASE model name (without the "-thinking"
+# get_model_output_token_cap(). Keyed by BASE model name (without the "-thinking"
 # suffix); the lookup strips "-thinking" before matching, so one entry covers
 # both the instruct and thinking variant of the same underlying model.
 #
@@ -142,7 +143,7 @@ INSPECT_MODEL_NAMES: dict = {
 # thinking variants (which share one budget across reasoning + answer) not to
 # truncate. Entries marked "# new/unverified" are recent models whose limits come
 # from aggregators rather than a primary source; confirm against your deployment.
-MODEL_MAX_TOKENS: dict[str, int] = {
+MODEL_OUTPUT_TOKEN_CAP: dict[str, int] = {
     # OpenAI (hard output ceilings)
     "gpt-4o-mini": 16384,
     "gpt-4o": 16384,
@@ -171,6 +172,8 @@ MODEL_MAX_TOKENS: dict[str, int] = {
     "ll-70B-dsr1": 32768,
     "ll-3.1-405b": 8192,
     "ll-3-8b-lite": 8192,
+    # Together — Google Gemma
+    "gemma-3n-e4b": 8192,
     # Together — Qwen (context-bound; thinking-budget values per Qwen cards)
     "qwen-2.5-7b": 8192,
     "qwen-2.5-72b": 8192,
@@ -198,10 +201,82 @@ MODEL_MAX_TOKENS: dict[str, int] = {
     "gpt-oss-120b": 32768,
 }
 
+# Total CONTEXT WINDOW per model (max input + output tokens combined). A fixed
+# model spec — distinct from MODEL_OUTPUT_TOKEN_CAP (the max GENERATION tokens).
+# Used to resolve a "max" output budget without overflowing context: the provider
+# enforces (input + max_tokens) <= context_window, so the usable output budget is
+#   min(output_cap, context_window - estimated_input - margin)
+# (see get_model_context_window() and tasks.py:max_output_ceiling). Keyed by BASE
+# model name (the "-thinking" suffix is stripped before lookup).
+#
+# Verified against provider docs / model cards (Jun 2026). For Together-served
+# models this is the context length AS SERVED, which can be SMALLER than the base
+# model's theoretical max (e.g. Qwen2.5 is served at 32768, not its YaRN-extended
+# 131072). Where a provider published only a rounded "NNK" label, the exact
+# power-of-two / config integer is used. Anthropic models list their 200k default
+# (1M is available only via a beta header).
+MODEL_CONTEXT_WINDOW: dict[str, int] = {
+    # OpenAI
+    "gpt-4o-mini": 128000,
+    "gpt-4o": 128000,
+    "gpt-4.1-mini": 1047576,
+    "gpt-4.1": 1047576,
+    "gpt-5-mini": 400000,
+    "gpt-5": 400000,
+    "o3": 200000,
+    "o3-mini": 200000,
+    # Anthropic (200k default; 1M only via beta header)
+    "sonnet-4.5": 200000,
+    "sonnet-3.7": 200000,
+    "haiku-3.5": 200000,
+    "haiku-4.5": 200000,
+    "opus-4.1": 200000,
+    # Google
+    "gemini-2.0-flash": 1048576,
+    "gemini-2.0-flash-lite": 1048576,
+    "gemini-2.5-flash": 1048576,
+    "gemini-2.5-pro": 1048576,
+    # XAI / Grok
+    "grok-3-mini": 131072,
+    "grok-4.1-fast": 2000000,
+    # Together — Llama / DeepSeek-R1 distills
+    "ll-3.3-70b-dsR1": 131072,
+    "ll-70B-dsr1": 131072,
+    "ll-3.1-405b": 131072,
+    "ll-3-8b-lite": 8192,  # Llama 3 (NOT 3.1) — 8k base context
+    # Together — Google Gemma
+    "gemma-3n-e4b": 32768,  # Gemma 3n E4B — 32k ctx (tutorial set)
+    # Together — Qwen (Qwen2.5 served BELOW its YaRN-extended max)
+    "qwen-2.5-7b": 32768,
+    "qwen-2.5-72b": 32768,
+    "qwen-3.0-80b": 262144,
+    "qwen-3.0-235b": 262144,
+    # Together — DeepSeek (served 131072; r1-0528 served at full 163840)
+    "deepseek-3.0": 131072,
+    "deepseek-3.1": 131072,
+    "deepseek-r1": 131072,
+    "deepseek-r1-0528": 163840,
+    # Together — Moonshot
+    "kimi-k2": 262144,
+    "kimi-k2.5": 262144,
+    # Together — MiniMax (Together serves 192k)
+    "minimax-m2.5": 196608,
+    # Together — GLM
+    "glm-4.5-air": 131072,
+    "glm-4.7": 202752,
+    # Local HF (served on RunPod)
+    "ll-3.1-8b": 131072,
+    "ll-3.3-70b": 131072,
+    "qwen-3.0-30b": 262144,
+    "qwen-3.5-27b": 262144,
+    "gpt-oss-20b": 131072,
+    "gpt-oss-120b": 131072,
+}
+
 # Sparse override for models that enforce a SEPARATE thinking-token budget cap
 # below their total output ceiling. For every other model the thinking budget is
-# bounded only by the shared output budget (MODEL_MAX_TOKENS), so they need no
-# entry here — get_model_max_thinking_tokens() falls back to MODEL_MAX_TOKENS.
+# bounded only by the shared output budget (MODEL_OUTPUT_TOKEN_CAP), so they need no
+# entry here — get_model_max_thinking_tokens() falls back to MODEL_OUTPUT_TOKEN_CAP.
 # Today only Gemini 2.5 needs this: its `thinkingBudget` maxes out well below
 # `maxOutputTokens` (verified against ai.google.dev/gemini-api/docs/thinking).
 # Keyed by BASE model name (the "-thinking" suffix is stripped before lookup).
@@ -848,9 +923,9 @@ def strip_provider_tag(model_name: str) -> str:
     return model_name
 
 
-def get_model_max_tokens(model_name: str) -> int:
+def get_model_output_token_cap(model_name: str) -> int:
     """
-    Look up a model's maximum output-token ceiling from MODEL_MAX_TOKENS.
+    Look up a model's maximum output-token ceiling from MODEL_OUTPUT_TOKEN_CAP.
 
     Resolves the `"max"` token sentinel used in experiment configs. The lookup
     tries the exact name first, then the base name (with the "-thinking" suffix
@@ -863,20 +938,53 @@ def get_model_max_tokens(model_name: str) -> int:
         The model's maximum output tokens.
 
     Raises:
-        ValueError: If the model is not in MODEL_MAX_TOKENS — either set an
+        ValueError: If the model is not in MODEL_OUTPUT_TOKEN_CAP — either set an
             explicit token count in the config, or add the model to the table.
     """
-    if model_name in MODEL_MAX_TOKENS:
-        return MODEL_MAX_TOKENS[model_name]
+    if model_name in MODEL_OUTPUT_TOKEN_CAP:
+        return MODEL_OUTPUT_TOKEN_CAP[model_name]
 
     base_name = get_base_model_name(model_name)
-    if base_name in MODEL_MAX_TOKENS:
-        return MODEL_MAX_TOKENS[base_name]
+    if base_name in MODEL_OUTPUT_TOKEN_CAP:
+        return MODEL_OUTPUT_TOKEN_CAP[base_name]
 
     raise ValueError(
         f"No max-token entry for model '{model_name}'. Either set an explicit "
         f"token count in the experiment config instead of 'max', or add '{base_name}' "
-        f"to MODEL_MAX_TOKENS in self_rec_framework/src/helpers/model_names.py."
+        f"to MODEL_OUTPUT_TOKEN_CAP in self_rec_framework/src/helpers/model_names.py."
+    )
+
+
+def get_model_context_window(model_name: str) -> int:
+    """
+    Look up a model's total context window (max input + output tokens) from
+    MODEL_CONTEXT_WINDOW.
+
+    Used when resolving a "max" output budget so that input + output stays within
+    the model's context window. Tries the exact name first, then the base name
+    (with the "-thinking" suffix stripped).
+
+    Args:
+        model_name: Short model name (may include the "-thinking" suffix).
+
+    Returns:
+        The model's total context window in tokens.
+
+    Raises:
+        ValueError: If the model is not in MODEL_CONTEXT_WINDOW — add it to the
+            table (a context window is a fixed model spec, not configurable).
+    """
+    if model_name in MODEL_CONTEXT_WINDOW:
+        return MODEL_CONTEXT_WINDOW[model_name]
+
+    base_name = get_base_model_name(model_name)
+    if base_name in MODEL_CONTEXT_WINDOW:
+        return MODEL_CONTEXT_WINDOW[base_name]
+
+    raise ValueError(
+        f"No context-window entry for model '{model_name}'. Add '{base_name}' to "
+        f"MODEL_CONTEXT_WINDOW in self_rec_framework/src/helpers/model_names.py "
+        f"(the context window is a fixed model spec — look it up from provider docs)."
     )
 
 
@@ -886,7 +994,7 @@ def get_model_max_thinking_tokens(model_name: str) -> int:
 
     Resolves the `"max"` sentinel for max_thinking_tokens. Most models have no
     separate thinking cap (reasoning and answer share one output budget), so this
-    falls back to get_model_max_tokens(). Only models in MODEL_MAX_THINKING_TOKENS
+    falls back to get_model_output_token_cap(). Only models in MODEL_MAX_THINKING_TOKENS
     (e.g. Gemini 2.5, whose `thinkingBudget` caps below `maxOutputTokens`) override.
 
     Args:
@@ -896,7 +1004,7 @@ def get_model_max_thinking_tokens(model_name: str) -> int:
         The model's maximum thinking-token budget.
 
     Raises:
-        ValueError: If the model is unknown (via get_model_max_tokens fallback).
+        ValueError: If the model is unknown (via get_model_output_token_cap fallback).
     """
     if model_name in MODEL_MAX_THINKING_TOKENS:
         return MODEL_MAX_THINKING_TOKENS[model_name]
@@ -906,7 +1014,7 @@ def get_model_max_thinking_tokens(model_name: str) -> int:
         return MODEL_MAX_THINKING_TOKENS[base_name]
 
     # No separate thinking cap — bounded by the shared output ceiling.
-    return get_model_max_tokens(model_name)
+    return get_model_output_token_cap(model_name)
 
 
 def needs_reasoning_params(model_name: str) -> bool:

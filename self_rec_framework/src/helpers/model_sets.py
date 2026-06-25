@@ -14,11 +14,9 @@ def get_model_set(model_set_name: str | None = None) -> list[str]:
     if model_set_name is None:
         return []
     if model_set_name.lower() == "test" or model_set_name.lower() == "tutorial":
-        # Two cheap, currently-available Together serverless models (no GPU
-        # dispatch needed). ll-3.1-8b (hf/) was retired from Together serverless.
         return [
-            "ll-3-8b-lite",   # together/meta-llama/Meta-Llama-3-8B-Instruct-Lite
-            "qwen-2.5-7b",    # together/Qwen/Qwen2.5-7B-Instruct-Turbo
+            "gemma-3n-e4b",  # together/google/gemma-3n-E4B-it (32k ctx, serverless — fits pairwise)
+            "qwen-2.5-7b",   # together/Qwen/Qwen2.5-7B-Instruct-Turbo (32k ctx)
         ]
     if model_set_name.lower() == "sgtr-training-judges":
         return [

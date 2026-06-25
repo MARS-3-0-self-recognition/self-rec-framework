@@ -360,10 +360,20 @@ def plot_grouped_bar_chart(
     df_counts_exp2: pd.DataFrame | None = None,
     df_perf_exp1: pd.DataFrame | None = None,
     df_perf_exp2: pd.DataFrame | None = None,
+    df_se_exp1: pd.DataFrame | None = None,
+    df_se_exp2: pd.DataFrame | None = None,
+    save_minimal: bool = True,
 ):
     """
     Create a grouped bar chart with models on x-axis and side-by-side dataset bars.
     Shows exp1 - exp2 differences with error bars and significance markers.
+
+    Error bars use the per-(model,dataset) standard error of each experiment's
+    performance metric when df_se_exp1/df_se_exp2 are provided (the statistically
+    correct source — IND performance is a balanced average of control/treatment
+    proportions, not a single binomial proportion, so it can't be derived from the
+    aggregate value + total count). Falls back to a binomial estimate from counts
+    when SE matrices aren't available.
 
     Args:
         df: DataFrame with models as index, datasets as columns, differences as values
@@ -420,10 +430,44 @@ def plot_grouped_bar_chart(
     else:
         colors = plt.cm.Set3(np.linspace(0, 1, n_datasets))
 
-    # Calculate error bars if counts available
+    # Calculate error bars.
     error_bars = None
     error_bar_count = 0
-    if df_counts_exp1 is not None and df_counts_exp2 is not None:
+
+    def _se_lookup(df_se, model, short_dataset):
+        """SE for (model, dataset) from a matrix whose columns are full dataset
+        paths; matches via extract_dataset_name to the shortened df column."""
+        if df_se is None or model not in df_se.index:
+            return np.nan
+        for col in df_se.columns:
+            if extract_dataset_name(col) == short_dataset:
+                v = df_se.loc[model, col]
+                return v if pd.notna(v) else np.nan
+        return np.nan
+
+    if df_se_exp1 is not None and df_se_exp2 is not None:
+        # Correct error bars: combine the propagated per-(model,dataset) standard
+        # errors of each experiment's performance metric.
+        # SE_diff = sqrt(SE1^2 + SE2^2); bar = 1.96 * SE_diff (95% CI half-width).
+        errors = []
+        for model in df.index:
+            model_errors = []
+            for dataset in df.columns:
+                s1 = _se_lookup(df_se_exp1, model, dataset)
+                s2 = _se_lookup(df_se_exp2, model, dataset)
+                if pd.notna(s1) and pd.notna(s2):
+                    error_bar_count += 1
+                    model_errors.append(1.96 * np.sqrt(s1 ** 2 + s2 ** 2))
+                else:
+                    model_errors.append(0)
+            errors.append(model_errors)
+        error_bars = np.array(errors).T
+        print(f"  ✓ Error bars from propagated SE for {error_bar_count} model-dataset combinations")
+    elif df_counts_exp1 is not None and df_counts_exp2 is not None:
+        # Fallback (no SE matrices available): binomial estimate from counts. This
+        # treats each performance value as a single binomial proportion over the
+        # total count, which OVERESTIMATES uncertainty for IND (a balanced average
+        # of control/treatment proportions). Prefer the propagated-SE path above.
         # Calculate error propagation: SE_diff = sqrt(SE_exp1² + SE_exp2²)
         errors = []
         for model in df.index:
@@ -715,7 +759,8 @@ def plot_grouped_bar_chart(
     plt.tight_layout(rect=[0, 0, 0.85, 1])
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     print(f"  ✓ Saved grouped bar chart to: {output_path}")
-    save_figure_minimal_version(ax, output_path)
+    if save_minimal:
+        save_figure_minimal_version(ax, output_path)
     plt.close()
 
 
@@ -1030,8 +1075,11 @@ def plot_performance_scatter(
                             label=None,  # Custom legend will be created
                             zorder=1
                         )
-                    else:
-                        # Fallback to unweighted if weighted regression failed
+                    elif np.ptp(x_vals_filtered) >= 1e-10:
+                        # Fallback to unweighted regression — only when x actually
+                        # varies. A constant x (every model at the same score) can't
+                        # be regressed; that's why the weighted fit returned None,
+                        # and stats.linregress would raise on it too. Skip the line.
                         slope, intercept, r_value, p_value, std_err = stats.linregress(x_vals_filtered, y_vals_filtered)
                         datasets_with_fit[dataset] = r_value
                         x_line = np.linspace(line_min, line_max, 100)
@@ -1042,26 +1090,29 @@ def plot_performance_scatter(
                     # Not enough valid points for regression
                     pass
             else:
-                # Unweighted regression
-                slope, intercept, r_value, p_value, std_err = stats.linregress(x_vals, y_vals)
-                datasets_with_fit[dataset] = r_value
-                
-                # Plot regression line extending to full range
-                x_line = np.linspace(line_min, line_max, 100)
-                y_line = slope * x_line + intercept
-                
-                # Use dataset color for the regression line
-                line_color = dataset_line_colors[dataset]
-                
-                ax.plot(
-                    x_line,
-                    y_line,
-                    color=line_color,
-                    linestyle='--',
-                    linewidth=1.5,
-                    alpha=0.7,
-                    label=None  # Custom legend will be created
-                )
+                # Unweighted regression — skip when x has no variance (a constant
+                # x can't be regressed; stats.linregress would raise on it).
+                x_clean = x_vals[~np.isnan(x_vals)]
+                if len(x_clean) >= 2 and np.ptp(x_clean) >= 1e-10:
+                    slope, intercept, r_value, p_value, std_err = stats.linregress(x_vals, y_vals)
+                    datasets_with_fit[dataset] = r_value
+
+                    # Plot regression line extending to full range
+                    x_line = np.linspace(line_min, line_max, 100)
+                    y_line = slope * x_line + intercept
+
+                    # Use dataset color for the regression line
+                    line_color = dataset_line_colors[dataset]
+
+                    ax.plot(
+                        x_line,
+                        y_line,
+                        color=line_color,
+                        linestyle='--',
+                        linewidth=1.5,
+                        alpha=0.7,
+                        label=None  # Custom legend will be created
+                    )
     
     # Add 1:1 reference line (y = x) extending to full range
     # Use different color from chance lines (#888888 is lighter gray)
@@ -1270,8 +1321,24 @@ def main():
         action="store_true",
         help="Pair exp1 models ending with -thinking to exp2 instruct names (one row per base model).",
     )
+    parser.add_argument(
+        "--figures",
+        type=str,
+        default="all",
+        help="Comma-separated figures to generate, or 'all' (default). Keys: "
+        "diverging, grouped, grouped_minimal, scatter. Example: --figures grouped",
+    )
 
     args = parser.parse_args()
+
+    # Figure selection: None => generate everything; otherwise only the named keys.
+    selected_figures = (
+        None
+        if args.figures.strip().lower() == "all"
+        else {f.strip() for f in args.figures.split(",") if f.strip()}
+    )
+    def want_figure(key: str) -> bool:
+        return selected_figures is None or key in selected_figures
 
     # Restore -set from placeholder
     args.model_names = [
@@ -1381,6 +1448,24 @@ def main():
     if df_counts_exp1 is None or df_counts_exp2 is None:
         print(f"  ⚠ Warning: Missing counts data (error bars and significance will be omitted)\n")
 
+    # Load propagated per-(model,dataset) standard errors (aggregated_se.csv) when
+    # present — the statistically correct source for error bars (see
+    # plot_grouped_bar_chart). Falls back to the counts-based estimate when absent.
+    df1_se = None
+    df2_se = None
+    se_exp1_file = exp1_file.parent / "aggregated_se.csv"
+    se_exp2_file = exp2_file.parent / "aggregated_se.csv"
+    if se_exp1_file.exists() and se_exp2_file.exists():
+        try:
+            df1_se = pd.read_csv(se_exp1_file, index_col=0)
+            df2_se = pd.read_csv(se_exp2_file, index_col=0)
+            print(f"  ✓ Loaded propagated SE for error bars ({df1_se.shape[0]}×{df1_se.shape[1]} / {df2_se.shape[0]}×{df2_se.shape[1]})")
+        except Exception as e:
+            df1_se = df2_se = None
+            print(f"  ⚠ Could not load aggregated_se.csv ({e}); falling back to counts-based error bars")
+    else:
+        print("  ⚠ aggregated_se.csv not found for one/both experiments; using counts-based error bars")
+
     # In reasoning_vs_instruct mode, align count DFs to instruct-name index (for plots)
     if reasoning_vs_instruct and df_counts_exp1 is not None and df_counts_exp2 is not None:
         df1_temp = pd.read_csv(exp1_file, index_col=0)
@@ -1393,37 +1478,43 @@ def main():
         df_counts_exp1.index = reindex_instruct
         df_counts_exp2 = df_counts_exp2.reindex(reindex_instruct)
 
-    # Generate plots
-    plot_path = output_dir / "performance_contrast.png"
-    plot_diverging_stacked_bar_chart(df_diff, plot_path, args.exp1_name, args.exp2_name)
-    print()
-    
+    # Generate plots (subject to --figures selection)
+    if want_figure("diverging"):
+        plot_path = output_dir / "performance_contrast.png"
+        plot_diverging_stacked_bar_chart(df_diff, plot_path, args.exp1_name, args.exp2_name)
+        print()
+
     # Generate grouped bar chart
-    grouped_plot_path = output_dir / "performance_contrast_grouped.png"
-    plot_grouped_bar_chart(
-        df_diff, 
-        grouped_plot_path, 
-        args.exp1_name, 
-        args.exp2_name,
-        df_counts_exp1=df_counts_exp1,
-        df_counts_exp2=df_counts_exp2,
-        df_perf_exp1=df1_orig,
-        df_perf_exp2=df2_orig
-    )
-    print()
-    
+    if want_figure("grouped"):
+        grouped_plot_path = output_dir / "performance_contrast_grouped.png"
+        plot_grouped_bar_chart(
+            df_diff,
+            grouped_plot_path,
+            args.exp1_name,
+            args.exp2_name,
+            df_counts_exp1=df_counts_exp1,
+            df_counts_exp2=df_counts_exp2,
+            df_perf_exp1=df1_orig,
+            df_perf_exp2=df2_orig,
+            df_se_exp1=df1_se,
+            df_se_exp2=df2_se,
+            save_minimal=want_figure("grouped_minimal"),
+        )
+        print()
+
     # Generate scatter plot
-    scatter_path = output_dir / "performance_scatter.png"
-    plot_performance_scatter(
-        df1_orig, 
-        df2_orig, 
-        scatter_path, 
-        args.exp1_name, 
-        args.exp2_name,
-        df_counts_exp1=df_counts_exp1,
-        df_counts_exp2=df_counts_exp2
-    )
-    print()
+    if want_figure("scatter"):
+        scatter_path = output_dir / "performance_scatter.png"
+        plot_performance_scatter(
+            df1_orig,
+            df2_orig,
+            scatter_path,
+            args.exp1_name,
+            args.exp2_name,
+            df_counts_exp1=df_counts_exp1,
+            df_counts_exp2=df_counts_exp2
+        )
+        print()
 
     # Display preview
     print(f"{'='*70}")

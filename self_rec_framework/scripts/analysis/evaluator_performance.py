@@ -20,6 +20,7 @@ Output:
 """
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -119,6 +120,77 @@ def compute_pairwise_performance(pivot: pd.DataFrame) -> pd.Series:
     Compute performance for pairwise format: row means (average across all treatments).
     """
     return pivot.mean(axis=1, skipna=True)
+
+
+def compute_individual_performance_se(
+    pivot: pd.DataFrame, pivot_counts: pd.DataFrame | None
+) -> pd.Series:
+    """Standard error of the individual-format performance D_j = (C_j + mean_i T_ji)/2.
+
+    Because D_j is a BALANCED AVERAGE of the control accuracy C_j and the mean
+    treatment accuracy (not a single binomial proportion over all samples), its
+    variance is:
+        Var(D_j) = 1/4 [ C_j(1-C_j)/n_c + (1/k^2) Σ_i T_ji(1-T_ji)/n_ti ]
+    using a Wald binomial variance for each control/treatment accuracy (k = number
+    of treatments). Returns NaN when counts are unavailable.
+    """
+    se = pd.Series(np.nan, index=pivot.index, dtype=float)
+    if pivot_counts is None:
+        return se
+    for evaluator in pivot.index:
+        # Control (diagonal) variance
+        var_c = np.nan
+        if evaluator in pivot.columns and evaluator in pivot_counts.index and evaluator in pivot_counts.columns:
+            C = pivot.loc[evaluator, evaluator]
+            n_c = pivot_counts.loc[evaluator, evaluator]
+            if pd.notna(C) and pd.notna(n_c) and n_c > 0:
+                var_c = C * (1 - C) / n_c
+        # Treatment (off-diagonal) variances
+        t_vars = []
+        for model in pivot.columns:
+            if model == evaluator:
+                continue
+            T = pivot.loc[evaluator, model]
+            n_t = (
+                pivot_counts.loc[evaluator, model]
+                if (evaluator in pivot_counts.index and model in pivot_counts.columns)
+                else np.nan
+            )
+            if pd.notna(T) and pd.notna(n_t) and n_t > 0:
+                t_vars.append(T * (1 - T) / n_t)
+        if pd.notna(var_c) and t_vars:
+            k = len(t_vars)
+            var_d = 0.25 * (var_c + (1.0 / k ** 2) * sum(t_vars))
+            se.loc[evaluator] = np.sqrt(var_d)
+    return se
+
+
+def compute_pairwise_performance_se(
+    pivot: pd.DataFrame, pivot_counts: pd.DataFrame | None
+) -> pd.Series:
+    """Standard error of the pairwise performance D_j = mean_i A_ji (row mean of
+    accuracies across k treatments):
+        Var(D_j) = (1/k^2) Σ_i A_ji(1-A_ji)/n_ji
+    (Wald binomial variance per cell). Returns NaN when counts are unavailable.
+    """
+    se = pd.Series(np.nan, index=pivot.index, dtype=float)
+    if pivot_counts is None:
+        return se
+    for evaluator in pivot.index:
+        a_vars = []
+        for model in pivot.columns:
+            A = pivot.loc[evaluator, model]
+            n_a = (
+                pivot_counts.loc[evaluator, model]
+                if (evaluator in pivot_counts.index and model in pivot_counts.columns)
+                else np.nan
+            )
+            if pd.notna(A) and pd.notna(n_a) and n_a > 0:
+                a_vars.append(A * (1 - A) / n_a)
+        if a_vars:
+            k = len(a_vars)
+            se.loc[evaluator] = np.sqrt((1.0 / k ** 2) * sum(a_vars))
+    return se
 
 
 def compute_individual_deviation(pivot: pd.DataFrame) -> pd.Series:
@@ -732,16 +804,31 @@ def main():
         if parts[0].isdigit():
             experiment_code = parts[1]
 
-    # Detect format: individual has diagonal data (or experiment name contains _IND)
-    has_diagonal_data = False
-    for model in pivot.index:
-        if model in pivot.columns:
-            if pd.notna(pivot.loc[model, model]):
-                has_diagonal_data = True
-                break
-    if "_IND" in experiment_code:
+    # Detect IND vs PW format. The experiment config's `format` field is
+    # authoritative when available — scripts/utils/load_config.sh exports it as
+    # SRF_EXPERIMENT_FORMAT so this never has to guess from the folder name.
+    # Fall back to data/name heuristics for ad-hoc runs without the env var.
+    # (`has_diagonal_data` is kept as the variable name; it now means "treat as
+    # individual format".)
+    exp_format = os.environ.get("SRF_EXPERIMENT_FORMAT", "").upper()
+    if exp_format.startswith("IND"):
         has_diagonal_data = True
-        print("IND experiment detected from name: Using individual-format metrics.\n")
+        print("IND experiment (from config format): using individual-format metrics.\n")
+    elif exp_format.startswith("PW"):
+        has_diagonal_data = False
+        print("PW experiment (from config format): using pairwise-format metrics.\n")
+    else:
+        # Heuristic fallback: individual format has diagonal (self-eval) data,
+        # or the experiment name contains "_IND".
+        has_diagonal_data = False
+        for model in pivot.index:
+            if model in pivot.columns:
+                if pd.notna(pivot.loc[model, model]):
+                    has_diagonal_data = True
+                    break
+        if "_IND" in experiment_code:
+            has_diagonal_data = True
+            print("IND experiment detected from name: Using individual-format metrics.\n")
 
     experiment_mapping = get_experiment_name_mapping()
     experiment_title = experiment_mapping.get(experiment_code, experiment_code)
@@ -751,6 +838,7 @@ def main():
         print("Individual format detected: Computing average recognition accuracy\n")
         performance_scores = compute_individual_performance(pivot)
         deviation_scores = compute_individual_deviation(pivot)
+        se_scores = compute_individual_performance_se(pivot, pivot_counts)
         # Compute total n_samples per evaluator for individual format
         # n_samples = n_samples(C_j) + sum(n_samples(T_i))
         total_counts = None
@@ -774,17 +862,21 @@ def main():
         )
         performance_scores = compute_pairwise_performance(pivot)
         deviation_scores = compute_pairwise_deviation(pivot)
+        se_scores = compute_pairwise_performance_se(pivot, pivot_counts)
         # Compute total n_samples per evaluator for pairwise format
         # n_samples = sum(n_samples across all treatments)
         total_counts = None
         if pivot_counts is not None:
             total_counts = pivot_counts.sum(axis=1)
 
-    # Save performance scores with counts
+    # Save performance scores with counts and the metric's standard error (the SE
+    # accounts for the balanced-average structure of the IND metric, so downstream
+    # comparisons can build correct error bars). See compute_*_performance_se().
     performance_path = performance_dir / "evaluator_performance.csv"
     perf_df = performance_scores.to_frame("performance")
     if total_counts is not None:
         perf_df["n_samples"] = total_counts
+    perf_df["se"] = se_scores
     perf_df.to_csv(performance_path)
     print(f"  ✓ Saved performance scores to: {performance_path}")
 

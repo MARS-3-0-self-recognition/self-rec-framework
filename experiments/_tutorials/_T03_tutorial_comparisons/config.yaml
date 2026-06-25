@@ -1,0 +1,4 @@
+# Comparison config — model_names to include in the contrast (read via the
+# shared scripts/utils/load_config.sh loader). The two experiments being
+# compared are taken from this directory's name (<exp1>-vs-<exp2>).
+model_names: ['-set', 'tutorial']

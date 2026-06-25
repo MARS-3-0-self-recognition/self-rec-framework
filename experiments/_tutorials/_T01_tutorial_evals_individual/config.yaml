@@ -1,0 +1,29 @@
+temperature: 0.3
+# Must match the T00 data-gen temperature: generator data is saved under
+# {model}_temp_0.0, and the eval uses this to locate it (temp_suffix).
+generator_temperature: 0.0
+max_final_answer_tokens: max
+
+# Tutorials regenerate by default (no need to pass --overwrite on the CLI).
+overwrite: true
+
+tags: "UT"
+format: "IND-Q"
+task: "Rec"
+priming: False
+generator_output: "FA"
+evaluator_reasoning: "DR"
+
+model_names: ['-set', 'tutorial']
+generator_models: ['-set', 'tutorial']
+
+# ============================================================================
+# Sweep & analysis parameters — read by the bash scripts (replaces config.sh).
+# model_names / generator_models (part 1) are reused.
+# ============================================================================
+treatment_type: "other_models"   # sweep: other_models | caps | typos
+max_tasks: 20                    # sweep
+batch: false                     # sweep: false | true | <int batch size>
+skip_confirmation: true          # sweep
+datasets: ["wikisum", "bigcodebench", "pku_saferlhf", "sharegpt"]  # analysis
+dataset_subsets: ["tutorial_set"]                                  # analysis

@@ -23,6 +23,7 @@ Output:
 """
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -62,6 +63,24 @@ def get_experiment_name_mapping() -> dict[str, str]:
         "AT_IND-C_Rec_Pr": "Assistant Tags Individual Conversation Primed",
         "AT_IND-C_Rec_NPr": "Assistant Tags Individual Conversation Unprimed",
     }
+
+
+def strip_temp_suffix(name: str | None) -> str | None:
+    """Strip a generation-temperature suffix ('-temp-0.0') from a parsed
+    control/treatment name so it matches the bare model name used for filtering
+    and as pivot axes.
+
+    Generator data dirs are named '{model}_temp_<T>' (e.g. when generator_temperature
+    != 1.0); inspect dash-encodes that in log filenames as '-temp-<T>', so the
+    parsed control/treatment carries it (e.g. 'gemma-3n-e4b-temp-0.0'). Without
+    stripping, that never matches the bare model name ('gemma-3n-e4b') and the
+    model is dropped from the pivot (all NaN). Model names never contain '-temp-',
+    so this is safe; for caps/typos treatments ('...-temp-0.0-caps-S2') it removes
+    only the temp segment, leaving the treatment tag intact.
+    """
+    if name is None:
+        return None
+    return re.sub(r"-temp-\d+(?:\.\d+)?", "", name)
 
 
 def parse_eval_filename(filename: str) -> tuple[str, str, str | None] | None:
@@ -258,6 +277,11 @@ def load_all_evaluations(results_dirs: list[Path]) -> pd.DataFrame:
                     continue
 
                 evaluator, control, treatment = parsed
+                # Drop the generation-temperature suffix so the generator axis
+                # uses bare model names that match the model filter (the evaluator
+                # never carries the suffix).
+                control = strip_temp_suffix(control)
+                treatment = strip_temp_suffix(treatment)
 
                 # Read log
                 log = read_eval_log(eval_file)
