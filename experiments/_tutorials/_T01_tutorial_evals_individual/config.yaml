@@ -1,12 +1,13 @@
-temperature: 0.3
-# Must match the T00 data-gen temperature: generator data is saved under
-# {model}_temp_0.0, and the eval uses this to locate it (temp_suffix).
-generator_temperature: 0.0
-max_final_answer_tokens: max
+# ============================================================================
+# MODELS  — evaluators (model_names) and the generators they judge.
+# ============================================================================
+model_names: ['-set', 'tutorial']
+generator_models: ['-set', 'tutorial']
 
-# Tutorials regenerate by default (no need to pass --overwrite on the CLI).
-overwrite: true
-
+# ============================================================================
+# EXPERIMENT DEFINITION  — operationalization (drives the experiment name and
+# the eval task that is built).
+# ============================================================================
 tags: "UT"
 format: "IND-Q"
 task: "Rec"
@@ -14,16 +15,25 @@ priming: False
 generator_output: "FA"
 evaluator_reasoning: "DR"
 
-model_names: ['-set', 'tutorial']
-generator_models: ['-set', 'tutorial']
+# ============================================================================
+# SWEEP  — generation/eval run parameters (read by the a00_sweep scripts).
+# ============================================================================
+temperature: 0.3
+# Must match the T00 data-gen temperature: generator data is saved under
+# {model}_temp_0.0, and the eval uses this to locate it (temp_suffix).
+generator_temperature: 0.0
+max_final_answer_tokens: max
+overwrite: true                  # tutorials regenerate by default
+treatment_type: "other_models"   # other_models | caps | typos
+max_tasks: 20
+batch: false                     # false | true | <int batch size>
+skip_confirmation: true
 
 # ============================================================================
-# Sweep & analysis parameters — read by the bash scripts (replaces config.sh).
-# model_names / generator_models (part 1) are reused.
+# ANALYSIS  — inputs and outputs of the b00_analysis scripts.
+# figures_to_produce names the figure files (no extension) the analysis should
+# emit; anything not listed is skipped. Leave empty/omit to produce all.
 # ============================================================================
-treatment_type: "other_models"   # sweep: other_models | caps | typos
-max_tasks: 20                    # sweep
-batch: false                     # sweep: false | true | <int batch size>
-skip_confirmation: true          # sweep
-datasets: ["wikisum", "bigcodebench", "pku_saferlhf", "sharegpt"]  # analysis
-dataset_subsets: ["tutorial_set"]                                  # analysis
+datasets: ["wikisum", "bigcodebench", "pku_saferlhf", "sharegpt"]
+dataset_subsets: ["tutorial_set"]
+figures_to_produce: ["aggregated_performance_grouped"]

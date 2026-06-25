@@ -67,4 +67,5 @@ fi
 
 uv run "$ENTRY_POINT" \
         --aggregated_file "$AGGREGATED_FILE" \
-        --model_names "${MODEL_NAMES[@]}"
+        --model_names "${MODEL_NAMES[@]}" \
+        "${FIGURES_ARG[@]}"

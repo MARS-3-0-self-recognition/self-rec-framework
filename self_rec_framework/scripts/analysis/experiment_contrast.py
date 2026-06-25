@@ -1325,20 +1325,25 @@ def main():
         "--figures",
         type=str,
         default="all",
-        help="Comma-separated figures to generate, or 'all' (default). Keys: "
-        "diverging, grouped, grouped_minimal, scatter. Example: --figures grouped",
+        help="Comma-separated figure basenames (no extension) to generate, or "
+        "'all' (default). Basenames match the output .png stems: "
+        "performance_contrast, performance_contrast_grouped, performance_scatter. "
+        "Append '_minimal' to also emit the label-free grouped version "
+        "(performance_contrast_grouped_minimal). "
+        "Example: --figures performance_contrast_grouped",
     )
 
     args = parser.parse_args()
 
-    # Figure selection: None => generate everything; otherwise only the named keys.
+    # Figure selection: None => generate everything; otherwise only the named
+    # basenames (the .png stem of each figure).
     selected_figures = (
         None
         if args.figures.strip().lower() == "all"
         else {f.strip() for f in args.figures.split(",") if f.strip()}
     )
-    def want_figure(key: str) -> bool:
-        return selected_figures is None or key in selected_figures
+    def want_figure(*names: str) -> bool:
+        return selected_figures is None or any(n in selected_figures for n in names)
 
     # Restore -set from placeholder
     args.model_names = [
@@ -1479,13 +1484,13 @@ def main():
         df_counts_exp2 = df_counts_exp2.reindex(reindex_instruct)
 
     # Generate plots (subject to --figures selection)
-    if want_figure("diverging"):
+    if want_figure("performance_contrast"):
         plot_path = output_dir / "performance_contrast.png"
         plot_diverging_stacked_bar_chart(df_diff, plot_path, args.exp1_name, args.exp2_name)
         print()
 
     # Generate grouped bar chart
-    if want_figure("grouped"):
+    if want_figure("performance_contrast_grouped", "performance_contrast_grouped_minimal"):
         grouped_plot_path = output_dir / "performance_contrast_grouped.png"
         plot_grouped_bar_chart(
             df_diff,
@@ -1498,12 +1503,12 @@ def main():
             df_perf_exp2=df2_orig,
             df_se_exp1=df1_se,
             df_se_exp2=df2_se,
-            save_minimal=want_figure("grouped_minimal"),
+            save_minimal=want_figure("performance_contrast_grouped_minimal"),
         )
         print()
 
     # Generate scatter plot
-    if want_figure("scatter"):
+    if want_figure("performance_scatter"):
         scatter_path = output_dir / "performance_scatter.png"
         plot_performance_scatter(
             df1_orig,
@@ -1529,9 +1534,12 @@ def main():
     print(f"{'='*70}")
     print(f"Output directory: {output_dir}")
     print("  • performance_contrast.csv: Difference data (exp1 - exp2)")
-    print("  • performance_contrast.png: Diverging stacked bar chart")
-    print("  • performance_contrast_grouped.png: Grouped bar chart with error bars and significance")
-    print("  • performance_scatter.png: Scatter plot (exp1 vs exp2) with regression lines")
+    if want_figure("performance_contrast"):
+        print("  • performance_contrast.png: Diverging stacked bar chart")
+    if want_figure("performance_contrast_grouped", "performance_contrast_grouped_minimal"):
+        print("  • performance_contrast_grouped.png: Grouped bar chart with error bars and significance")
+    if want_figure("performance_scatter"):
+        print("  • performance_scatter.png: Scatter plot (exp1 vs exp2) with regression lines")
     print(f"{'='*70}\n")
 
 

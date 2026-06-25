@@ -2387,8 +2387,34 @@ def main():
         default=None,
         help="Metric name for axis labels/titles. Auto-detected from --metric if not provided.",
     )
+    parser.add_argument(
+        "--figures",
+        type=str,
+        default="all",
+        help="Comma-separated figure basenames (no extension) to generate, or "
+        "'all' (default). This script owns the rank_distance*/score_distance*/"
+        "evaluator_rank_vs_generator_rank* figures. If none of these are "
+        "requested the script produces nothing.",
+    )
 
     args = parser.parse_args()
+
+    # Figure selection: None => generate everything. This script's figures all
+    # share the rank_distance / score_distance / evaluator_rank_vs_generator_rank
+    # prefixes; if a non-empty selection names none of them, skip the whole run.
+    selected_figures = (
+        None
+        if args.figures.strip().lower() == "all"
+        else {f.strip() for f in args.figures.split(",") if f.strip()}
+    )
+    if selected_figures is not None:
+        _owned_prefixes = ("rank_distance", "score_distance", "evaluator_rank_vs_generator_rank")
+        if not any(f.startswith(_owned_prefixes) for f in selected_figures):
+            print(
+                "Skipping rank-distance figures — none of this script's figures "
+                f"(prefixes {_owned_prefixes}) were requested in --figures."
+            )
+            return
 
     # Pre-process model names if set
     model_filter = None

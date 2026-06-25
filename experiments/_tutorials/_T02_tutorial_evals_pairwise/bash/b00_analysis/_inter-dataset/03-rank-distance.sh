@@ -96,4 +96,6 @@ if [ ${#MODEL_NAMES[@]} -gt 0 ]; then
     ARGS+=("--model_names" "${MODEL_NAMES[@]}")
 fi
 
+ARGS+=("${FIGURES_ARG[@]}")
+
 uv run "$ENTRY_POINT" "${ARGS[@]}"

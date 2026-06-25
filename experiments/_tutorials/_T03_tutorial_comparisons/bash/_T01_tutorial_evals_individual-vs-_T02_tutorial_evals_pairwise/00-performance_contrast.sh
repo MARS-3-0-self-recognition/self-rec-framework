@@ -116,4 +116,4 @@ uv run "$ENTRY_POINT" \
         --exp1_name "$EXP1" \
         --exp2_name "$EXP2" \
         --model_names "${MODEL_NAMES[@]}" \
-        --figures grouped
+        "${FIGURES_ARG[@]}"

@@ -8,6 +8,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Path structure: experiments/{EXP_DIR}/bash/analysis/{dataset_name}/
 EXP_DIR="$(basename "$(cd "$SCRIPT_DIR/../../.." && pwd)")"
 
+# Load config (FIGURES_ARG names which figures to emit; empty => all).
+CONFIG_FILE="$SCRIPT_DIR/../../../config.yaml"
+source scripts/utils/load_config.sh "$CONFIG_FILE"
+
 # ============================================================================
 # Find most recent aggregated_performance.csv file
 # ============================================================================
@@ -44,10 +48,11 @@ echo "==========================================================================
 AGGREGATED_FILE="$LATEST_DIR/aggregated_performance.csv"
 if [[ -f "$AGGREGATED_FILE" ]]; then
     echo "Processing Performance Data..."
-    # Tutorial: emit only the grouped bar chart (aggregated_performance_grouped.png).
+    # Figures emitted are controlled by figures_to_produce in config.yaml
+    # (FIGURES_ARG). With it unset, every figure is generated.
     uv run srf-plot-aggregated-performance \
             --aggregated_file "$AGGREGATED_FILE" \
-            --figures grouped
+            "${FIGURES_ARG[@]}"
 else
     echo "Warning: aggregated_performance.csv not found in $LATEST_DIR"
 fi

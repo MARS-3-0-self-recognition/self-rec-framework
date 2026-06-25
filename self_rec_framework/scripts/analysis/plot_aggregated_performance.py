@@ -233,6 +233,7 @@ def plot_grouped_bar_chart(
     experiment_title: str = "",
     is_deviation: bool = False,
     sort_by: str = "performance",
+    save_minimal: bool = True,
 ):
     """
     Create a grouped bar chart with models on x-axis and side-by-side dataset bars.
@@ -501,7 +502,8 @@ def plot_grouped_bar_chart(
     plt.tight_layout(rect=[0, 0, 0.85, 1])
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     print(f"  ✓ Saved grouped bar chart to: {output_path}")
-    save_figure_minimal_version(ax, output_path)
+    if save_minimal:
+        save_figure_minimal_version(ax, output_path)
     plt.close()
 
 
@@ -708,6 +710,7 @@ def plot_answer_choice_ratio_chart(
     output_path: Path,
     experiment_title: str = "",
     sort_by: str = "bias",
+    save_minimal: bool = True,
 ):
     """
     Create a grouped bar chart showing answer choice ratio (ordering bias) across datasets.
@@ -813,7 +816,8 @@ def plot_answer_choice_ratio_chart(
     plt.tight_layout(rect=[0, 0, 0.85, 1])
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     print(f"  ✓ Saved answer choice ratio chart to: {output_path}")
-    save_figure_minimal_version(ax, output_path)
+    if save_minimal:
+        save_figure_minimal_version(ax, output_path)
     plt.close()
 
 
@@ -822,6 +826,7 @@ def plot_accept_ratio_chart(
     output_path: Path,
     experiment_title: str = "",
     sort_by: str = "bias",
+    save_minimal: bool = True,
 ):
     """
     Create a grouped bar chart showing accept/reject ratio (authorship bias) across datasets.
@@ -928,7 +933,8 @@ def plot_accept_ratio_chart(
     plt.tight_layout(rect=[0, 0, 0.85, 1])
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     print(f"  ✓ Saved accept ratio chart to: {output_path}")
-    save_figure_minimal_version(ax, output_path)
+    if save_minimal:
+        save_figure_minimal_version(ax, output_path)
     plt.close()
 
 
@@ -937,6 +943,7 @@ def plot_f1_chart(
     output_path: Path,
     experiment_title: str = "",
     sort_by: str = "performance",
+    save_minimal: bool = True,
 ):
     """
     Create a grouped bar chart showing F1 scores across datasets.
@@ -1059,7 +1066,8 @@ def plot_f1_chart(
     plt.tight_layout(rect=[0, 0, 0.85, 1])
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     print(f"  ✓ Saved F1 chart to: {output_path}")
-    save_figure_minimal_version(ax, output_path)
+    if save_minimal:
+        save_figure_minimal_version(ax, output_path)
     plt.close()
 
 
@@ -1078,21 +1086,26 @@ def main():
         "--figures",
         type=str,
         default="all",
-        help="Comma-separated figures to generate, or 'all' (default). Keys: "
-        "stacked, grouped, dataset_grouped, answer_ratio, grouped_arena, "
-        "accept_ratio, f1. Example: --figures grouped",
+        help="Comma-separated figure basenames (no extension) to generate, or "
+        "'all' (default). Basenames match the output .png stems, e.g. "
+        "aggregated_performance_grouped, aggregated_performance_dataset_grouped, "
+        "aggregated_answer_choice_ratio, aggregated_accept_ratio, "
+        "aggregated_f1_grouped. Append '_minimal' to also emit the label-free "
+        "version (e.g. aggregated_performance_grouped_minimal). "
+        "Example: --figures aggregated_performance_grouped",
     )
 
     args = parser.parse_args()
 
-    # Figure selection: None => generate everything; otherwise only the named keys.
+    # Figure selection: None => generate everything; otherwise only the named
+    # basenames (the .png stem of each figure).
     selected = (
         None
         if args.figures.strip().lower() == "all"
         else {f.strip() for f in args.figures.split(",") if f.strip()}
     )
-    def want(key: str) -> bool:
-        return selected is None or key in selected
+    def want(*names: str) -> bool:
+        return selected is None or any(n in selected for n in names)
     
     file_path = Path(args.aggregated_file)
     if not file_path.exists():
@@ -1140,10 +1153,12 @@ def main():
             experiment_title = exp_name
 
     output_dir = file_path.parent
-    
+    # Figure basenames are derived from this csv's stem (e.g. "aggregated_performance").
+    base = file_path.stem
+
     # 1. Stacked Bar Chart (Existing style)
-    if want("stacked"):
-        stacked_output = output_dir / file_path.name.replace(".csv", ".png")
+    if want(base):
+        stacked_output = output_dir / f"{base}.png"
         plot_stacked_bar_chart(
             df,
             stacked_output,
@@ -1153,19 +1168,20 @@ def main():
         print()
 
     # 2. Grouped Bar Chart (New style: Models on X axis, side-by-side bars)
-    if want("grouped"):
-        grouped_output = output_dir / file_path.name.replace(".csv", "_grouped.png")
+    if want(f"{base}_grouped", f"{base}_grouped_minimal"):
+        grouped_output = output_dir / f"{base}_grouped.png"
         plot_grouped_bar_chart(
             df,
             grouped_output,
             experiment_title=experiment_title,
-            is_deviation=is_deviation
+            is_deviation=is_deviation,
+            save_minimal=want(f"{base}_grouped_minimal"),
         )
         print()
 
     # 3. Dataset-Grouped Bar Chart (New style: 4 groups by dataset, models sorted within each)
-    if want("dataset_grouped"):
-        dataset_grouped_output = output_dir / file_path.name.replace(".csv", "_dataset_grouped.png")
+    if want(f"{base}_dataset_grouped"):
+        dataset_grouped_output = output_dir / f"{base}_dataset_grouped.png"
         plot_dataset_grouped_bar_chart(
             df,
             dataset_grouped_output,
@@ -1176,30 +1192,32 @@ def main():
 
     # 4. Answer Choice Ratio Chart (if aggregated_answer_choice_ratio.csv exists)
     answer_ratio_file = output_dir / "aggregated_answer_choice_ratio.csv"
-    if want("answer_ratio") and answer_ratio_file.exists():
+    if want("aggregated_answer_choice_ratio", "aggregated_answer_choice_ratio_minimal") and answer_ratio_file.exists():
         df_answer = pd.read_csv(answer_ratio_file, index_col=0)
         answer_output = output_dir / "aggregated_answer_choice_ratio.png"
         plot_answer_choice_ratio_chart(
             df_answer,
             answer_output,
             experiment_title=experiment_title,
+            save_minimal=want("aggregated_answer_choice_ratio_minimal"),
         )
         print()
 
     # 5. Grouped Bar Chart sorted by LM Arena ranking
-    if want("grouped_arena"):
-        arena_grouped_output = output_dir / file_path.name.replace(".csv", "_grouped_arena.png")
+    if want(f"{base}_grouped_arena", f"{base}_grouped_arena_minimal"):
+        arena_grouped_output = output_dir / f"{base}_grouped_arena.png"
         plot_grouped_bar_chart(
             df,
             arena_grouped_output,
             experiment_title=experiment_title,
             is_deviation=is_deviation,
             sort_by="arena_ranking",
+            save_minimal=want(f"{base}_grouped_arena_minimal"),
         )
         print()
 
     # 6. Answer Choice Ratio Chart sorted by LM Arena ranking
-    if want("answer_ratio") and answer_ratio_file.exists():
+    if want("aggregated_answer_choice_ratio_arena", "aggregated_answer_choice_ratio_arena_minimal") and answer_ratio_file.exists():
         df_answer = pd.read_csv(answer_ratio_file, index_col=0)
         arena_answer_output = output_dir / "aggregated_answer_choice_ratio_arena.png"
         plot_answer_choice_ratio_chart(
@@ -1207,52 +1225,67 @@ def main():
             arena_answer_output,
             experiment_title=experiment_title,
             sort_by="arena_ranking",
+            save_minimal=want("aggregated_answer_choice_ratio_arena_minimal"),
         )
         print()
 
     # 7. Accept Ratio Chart (if aggregated_accept_ratio.csv exists, IND experiments only)
     accept_ratio_file = output_dir / "aggregated_accept_ratio.csv"
-    if want("accept_ratio") and accept_ratio_file.exists():
-        df_accept = pd.read_csv(accept_ratio_file, index_col=0)
-        accept_output = output_dir / "aggregated_accept_ratio.png"
-        plot_accept_ratio_chart(
-            df_accept,
-            accept_output,
-            experiment_title=experiment_title,
-        )
-        print()
+    if accept_ratio_file.exists():
+        df_accept = None
+        if want("aggregated_accept_ratio", "aggregated_accept_ratio_minimal"):
+            df_accept = pd.read_csv(accept_ratio_file, index_col=0)
+            accept_output = output_dir / "aggregated_accept_ratio.png"
+            plot_accept_ratio_chart(
+                df_accept,
+                accept_output,
+                experiment_title=experiment_title,
+                save_minimal=want("aggregated_accept_ratio_minimal"),
+            )
+            print()
 
         # 8. Accept Ratio Chart sorted by LM Arena ranking
-        arena_accept_output = output_dir / "aggregated_accept_ratio_arena.png"
-        plot_accept_ratio_chart(
-            df_accept,
-            arena_accept_output,
-            experiment_title=experiment_title,
-            sort_by="arena_ranking",
-        )
-        print()
+        if want("aggregated_accept_ratio_arena", "aggregated_accept_ratio_arena_minimal"):
+            if df_accept is None:
+                df_accept = pd.read_csv(accept_ratio_file, index_col=0)
+            arena_accept_output = output_dir / "aggregated_accept_ratio_arena.png"
+            plot_accept_ratio_chart(
+                df_accept,
+                arena_accept_output,
+                experiment_title=experiment_title,
+                sort_by="arena_ranking",
+                save_minimal=want("aggregated_accept_ratio_arena_minimal"),
+            )
+            print()
 
     # 9. F1 Score Chart (if aggregated_f1.csv exists, IND experiments only)
     f1_file = output_dir / "aggregated_f1.csv"
-    if want("f1") and f1_file.exists():
-        df_f1 = pd.read_csv(f1_file, index_col=0)
-        f1_output = output_dir / "aggregated_f1_grouped.png"
-        plot_f1_chart(
-            df_f1,
-            f1_output,
-            experiment_title=experiment_title,
-        )
-        print()
+    if f1_file.exists():
+        df_f1 = None
+        if want("aggregated_f1_grouped", "aggregated_f1_grouped_minimal"):
+            df_f1 = pd.read_csv(f1_file, index_col=0)
+            f1_output = output_dir / "aggregated_f1_grouped.png"
+            plot_f1_chart(
+                df_f1,
+                f1_output,
+                experiment_title=experiment_title,
+                save_minimal=want("aggregated_f1_grouped_minimal"),
+            )
+            print()
 
         # 10. F1 Score Chart sorted by LM Arena ranking
-        arena_f1_output = output_dir / "aggregated_f1_grouped_arena.png"
-        plot_f1_chart(
-            df_f1,
-            arena_f1_output,
-            experiment_title=experiment_title,
-            sort_by="arena_ranking",
-        )
-        print()
+        if want("aggregated_f1_grouped_arena", "aggregated_f1_grouped_arena_minimal"):
+            if df_f1 is None:
+                df_f1 = pd.read_csv(f1_file, index_col=0)
+            arena_f1_output = output_dir / "aggregated_f1_grouped_arena.png"
+            plot_f1_chart(
+                df_f1,
+                arena_f1_output,
+                experiment_title=experiment_title,
+                sort_by="arena_ranking",
+                save_minimal=want("aggregated_f1_grouped_arena_minimal"),
+            )
+            print()
 
     print(f"{'='*70}")
     print("CHARTS COMPLETE")
