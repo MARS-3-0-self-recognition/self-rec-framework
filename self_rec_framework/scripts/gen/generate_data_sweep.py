@@ -100,6 +100,11 @@ def run_sweep_generation(
         batch: Enable batch mode for supported providers (OpenAI, Anthropic, Google, Together AI).
                Can be True (default config), int (batch size), or str (path to config file)
     """
+    # Load generation config. It may declare `overwrite: true` as a default;
+    # the CLI --overwrite flag (when passed) still forces it on.
+    gen_config = load_generation_config(dataset_config)
+    overwrite = overwrite or bool(gen_config.get("overwrite", False))
+
     # Parse dataset path
     dataset_path_obj = Path(dataset_path)
     parts = dataset_path_obj.parts
@@ -132,9 +137,6 @@ def run_sweep_generation(
     else:
         print("Mode: SKIP (checking existing data)")
     print(f"{'=' * 70}\n")
-
-    # Load generation config
-    gen_config = load_generation_config(dataset_config)
 
     # Create ExperimentConfig for generation
     exp_config = create_generation_config(
@@ -228,6 +230,18 @@ def run_sweep_generation(
     hf_dispatch_count = 0  # track how many pods were actually launched
     gpu_dispatch = gen_config.get("gpu_dispatch")
 
+    # When dispatching to Tinker, point inspect_ai's OpenAI client at the Tinker
+    # OAI proxy up front. This covers both hf/ models rewritten below AND any
+    # pre-baked "openai/tinker://" entry used directly as a generator, mirroring
+    # the eval sweep which sets this unconditionally for gpu_dispatch=="tinker".
+    if gpu_dispatch == "tinker":
+        tinker_key = os.environ.get("TINKER_API_KEY", "")
+        if tinker_key:
+            os.environ["OPENAI_API_KEY"] = tinker_key
+        os.environ["OPENAI_BASE_URL"] = (
+            "https://tinker.thinkingmachines.dev/services/tinker-prod/oai/api/v1"
+        )
+
     for model_name in models_to_generate:
         inspect_name = INSPECT_MODEL_NAMES.get(model_name, "")
         # For -thinking variants not in INSPECT_MODEL_NAMES, check the base name
@@ -236,22 +250,13 @@ def run_sweep_generation(
             inspect_name = INSPECT_MODEL_NAMES.get(base_name, "")
         if inspect_name.startswith("hf/"):
             if gpu_dispatch == "tinker":
-                # Route through Tinker's OpenAI-compatible endpoint instead of
-                # local HF inference. Set env vars so inspect_ai uses Tinker.
-                tinker_base_url = "https://tinker.thinkingmachines.dev/services/tinker-prod/oai/api/v1"
-                # Force OPENAI_API_KEY to Tinker key (override any existing OpenAI key)
-                tinker_key = os.environ.get("TINKER_API_KEY", "")
-                if tinker_key:
-                    os.environ["OPENAI_API_KEY"] = tinker_key
-                os.environ["OPENAI_BASE_URL"] = tinker_base_url
-                # Strip hf/ prefix to get HF model ID, then strip any provider
-                # prefix (e.g., "openai/gpt-oss-20b" -> "gpt-oss-20b") to avoid
-                # double-prefixing when we add "openai/"
+                # Route hf/ models through Tinker (env already configured above).
+                # Strip only the hf/ route prefix; preserve the HF-org namespace
+                # (e.g., "openai/gpt-oss-20b" stays intact — the "openai/" there
+                # is the vendor namespace on Tinker, NOT an inspect_ai provider).
+                # Prepend "openai/" so inspect_ai parses provider=openai and
+                # forwards the full path (e.g. "openai/gpt-oss-20b") to Tinker.
                 hf_model_id = inspect_name.removeprefix("hf/")
-                for provider_prefix in ("openai/", "anthropic/", "google/", "together/"):
-                    if hf_model_id.startswith(provider_prefix):
-                        hf_model_id = hf_model_id.removeprefix(provider_prefix)
-                        break
                 INSPECT_MODEL_NAMES[model_name] = f"openai/{hf_model_id}"
                 # Also override the base model name so that thinking model
                 # resolution (which looks up base_name) uses Tinker too
@@ -260,6 +265,11 @@ def run_sweep_generation(
                     INSPECT_MODEL_NAMES[base_name] = f"openai/{hf_model_id}"
                 api_models.append(model_name)
                 print(f"  Tinker dispatch: {model_name} -> openai/{hf_model_id} (via Tinker API)")
+            elif gpu_dispatch == "local":
+                # Run the hf/ model in-process on this machine's GPU via inspect's
+                # hf provider (same as the eval sweep's default for hf/ models).
+                api_models.append(model_name)
+                print(f"  Local GPU: {model_name} -> {inspect_name}")
             else:
                 hf_models.append(model_name)
         else:
@@ -334,8 +344,12 @@ def run_sweep_generation(
                                 print(f"    Deleted pod {pid}")
                     atexit.register(_wait_for_hf_pods)
         else:
-            print(f"⚠ hf/ models found but no gpu_dispatch in config. Skipping: {', '.join(hf_models)}")
-            hf_models = []
+            raise ValueError(
+                f"hf/ models require GPU execution but no 'gpu_dispatch' is declared "
+                f"in the config: {', '.join(hf_models)}. Set gpu_dispatch to one of: "
+                f"'local' (run on this machine's GPU), 'tinker' (Tinker OAI proxy), or "
+                f"'runpod' (dispatch to a RunPod pod)."
+            )
 
     # Continue with API models only
     models_to_generate = api_models
@@ -386,8 +400,11 @@ def run_sweep_generation(
 
         # Check if model is a Together AI model by looking up inspect name
         is_together = False
+        is_tinker = False
         if model_name in INSPECT_MODEL_NAMES:
             is_together = INSPECT_MODEL_NAMES[model_name].startswith("together/")
+            # Tinker OAI proxy (LoRA samplers) doesn't implement OpenAI's batch API
+            is_tinker = "tinker://" in INSPECT_MODEL_NAMES[model_name]
 
         if (
             is_gemini
@@ -396,6 +413,7 @@ def run_sweep_generation(
             or is_o3
             or is_grok
             or is_together
+            or is_tinker
         ):
             no_batch_tasks.append(task)
             no_batch_models.append(model_name)

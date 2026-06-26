@@ -19,6 +19,7 @@ Output:
 """
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -2386,8 +2387,34 @@ def main():
         default=None,
         help="Metric name for axis labels/titles. Auto-detected from --metric if not provided.",
     )
+    parser.add_argument(
+        "--figures",
+        type=str,
+        default="all",
+        help="Comma-separated figure basenames (no extension) to generate, or "
+        "'all' (default). This script owns the rank_distance*/score_distance*/"
+        "evaluator_rank_vs_generator_rank* figures. If none of these are "
+        "requested the script produces nothing.",
+    )
 
     args = parser.parse_args()
+
+    # Figure selection: None => generate everything. This script's figures all
+    # share the rank_distance / score_distance / evaluator_rank_vs_generator_rank
+    # prefixes; if a non-empty selection names none of them, skip the whole run.
+    selected_figures = (
+        None
+        if args.figures.strip().lower() == "all"
+        else {f.strip() for f in args.figures.split(",") if f.strip()}
+    )
+    if selected_figures is not None:
+        _owned_prefixes = ("rank_distance", "score_distance", "evaluator_rank_vs_generator_rank")
+        if not any(f.startswith(_owned_prefixes) for f in selected_figures):
+            print(
+                "Skipping rank-distance figures — none of this script's figures "
+                f"(prefixes {_owned_prefixes}) were requested in --figures."
+            )
+            return
 
     # Pre-process model names if set
     model_filter = None
@@ -2508,7 +2535,24 @@ def main():
     
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
+    # Rank/score distance needs an LM Arena ranking AND Elo score for both the
+    # evaluator and generator of every pair. When none of the evaluated models
+    # are on the leaderboard (e.g. small/unranked models such as the tutorial
+    # set), there's nothing to plot — exit cleanly instead of crashing on the
+    # empty-DataFrame groupby below.
+    if not data_points and not score_data_points:
+        print(
+            "\n⚠ No rank/score-distance data points: none of the evaluated models "
+            "have an LM Arena ranking/score (needed for both evaluator and "
+            "generator). Skipping rank-distance analysis."
+        )
+        print(
+            "  (Expected for small/unranked models — add them to the arena "
+            "rank/score tables in model_names.py if you need this analysis.)"
+        )
+        return
+
     # Save raw data for inspection
     if data_points:
         pd.DataFrame(data_points).to_csv(output_dir / f"{file_prefix}rank_distance_data.csv", index=False)
@@ -2522,9 +2566,17 @@ def main():
                 exp_name = part
                 break
 
-    # Detect IND experiments by name (e.g. ICML_02_UT_IND-Q_..., ICML_08_UT_IND-Q_Rec_NPr_FA_Rsn-Inst)
+    # Detect IND experiments. The experiment config's `format` field is
+    # authoritative when available (exported as SRF_EXPERIMENT_FORMAT by
+    # scripts/utils/load_config.sh); fall back to the experiment name otherwise.
     # If IND and --exclude_self was not passed, remove self-comparisons from data_points now
-    is_ind_experiment = "_IND" in exp_name
+    _exp_format = os.environ.get("SRF_EXPERIMENT_FORMAT", "").upper()
+    if _exp_format.startswith("IND"):
+        is_ind_experiment = True
+    elif _exp_format.startswith("PW"):
+        is_ind_experiment = False
+    else:
+        is_ind_experiment = "_IND" in exp_name
     if is_ind_experiment and self_comparison_points and not args.exclude_self:
         data_points = [p for p in data_points if p["evaluator"] != p["generator"]]
         print(f"Auto-detected IND experiment from name; excluded self-comparisons ({len(data_points)} cross-model points).")

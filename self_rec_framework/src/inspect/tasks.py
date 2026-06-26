@@ -4,7 +4,8 @@ import os
 
 from inspect_ai import Task, task
 from inspect_ai.dataset import Sample
-from inspect_ai.solver import generate
+from inspect_ai.solver import generate, multiple_choice
+from inspect_ai.scorer import choice
 from inspect_ai.model import (
     ChatMessageUser,
     ChatMessageAssistant,
@@ -20,15 +21,138 @@ from self_rec_framework.src.helpers.model_names import (
     needs_together_reasoning_activation,
     INSPECT_MODEL_NAMES,
     is_thinking_model,
+    get_model_output_token_cap,
+    get_model_context_window,
+    get_model_max_thinking_tokens,
 )
 from self_rec_framework.src.inspect.config import ExperimentConfig, load_experiment_config
 from self_rec_framework.src.inspect.scorer import logprob_scorer, answer_length_scorer
-from self_rec_framework.src.inspect.data import load_dataset_pairwise, load_dataset_individual
+from self_rec_framework.src.inspect.data import load_dataset_pairwise, load_dataset_individual, load_dataset_mmlu, load_icl_examples, load_icl_pool, select_icl_from_pool
 
 from self_rec_framework.src.helpers.utils import (
     data_dir,
     load_json,
 )
+
+
+def _load_icl_for_task(
+    exp_config: ExperimentConfig,
+    dataset_samples: list,
+    dataset_name: str,
+    data_subset: str,
+) -> list[dict]:
+    """Load ICL examples (single shared set) if configured, excluding evaluation UUIDs."""
+    if not exp_config.icl_count or not exp_config.icl_model:
+        return []
+    eval_uuids = {s["metadata"]["uuid"] for s in dataset_samples}
+    seed = exp_config.icl_seed if exp_config.icl_seed is not None else (exp_config.seed or 42)
+    icl_dataset = exp_config.icl_dataset or dataset_name
+    icl_subset = exp_config.icl_data_subset or data_subset
+    same_pool = (icl_dataset == dataset_name) and (icl_subset == data_subset)
+    exclude = eval_uuids if same_pool else set()
+    examples = load_icl_examples(
+        icl_model=exp_config.icl_model,
+        dataset_name=icl_dataset,
+        data_subset=icl_subset,
+        count=exp_config.icl_count,
+        exclude_uuids=exclude,
+        seed=seed,
+    )
+    print(f"  ICL: loaded {len(examples)} examples from {exp_config.icl_model}/{icl_dataset}/{icl_subset} "
+          f"(excluded {len(exclude)} UUIDs)")
+    return examples
+
+
+def _load_icl_pool_for_task(
+    exp_config: ExperimentConfig,
+    dataset_samples: list,
+    dataset_name: str,
+    data_subset: str,
+):
+    """Load the full ICL pool (for per-sample shuffling). Returns (pool_dict, base_seed) or (None, None)."""
+    if not exp_config.icl_count or not exp_config.icl_model:
+        return None, None
+    eval_uuids = {s["metadata"]["uuid"] for s in dataset_samples}
+    base_seed = exp_config.icl_seed if exp_config.icl_seed is not None else (exp_config.seed or 42)
+    icl_dataset = exp_config.icl_dataset or dataset_name
+    icl_subset = exp_config.icl_data_subset or data_subset
+    same_pool = (icl_dataset == dataset_name) and (icl_subset == data_subset)
+    exclude = eval_uuids if same_pool else set()
+    pool = load_icl_pool(
+        icl_model=exp_config.icl_model,
+        dataset_name=icl_dataset,
+        data_subset=icl_subset,
+        exclude_uuids=exclude,
+    )
+    print(f"  ICL (per-sample): pool={len(pool)} examples from {exp_config.icl_model}/{icl_dataset}/{icl_subset} "
+          f"(excluded {len(exclude)} UUIDs)")
+    return pool, base_seed
+
+
+def _icl_seed_for_uuid(base_seed: int, uuid: str) -> int:
+    """Derive a deterministic per-UUID seed from the base seed. Stable across runs.
+
+    The two answer-order-bias samples sharing a UUID get the SAME seed, so they
+    see the SAME ICL context — preserving a fair same-context comparison.
+    """
+    import hashlib
+    h = hashlib.sha256(f"{base_seed}:{uuid}".encode()).digest()
+    return int.from_bytes(h[:8], "big", signed=False)
+
+
+def _build_icl_messages(
+    icl_examples: list[dict],
+    generation_prompt_template: str,
+) -> list:
+    """Build ChatMessage turn pairs for AT format ICL injection."""
+    messages = []
+    for ex in icl_examples:
+        prompt = generation_prompt_template.format(content=ex["prompt"])
+        messages.append(ChatMessageUser(content=prompt))
+        messages.append(ChatMessageAssistant(content=ex["response"]))
+    return messages
+
+
+def _build_icl_resolver(
+    exp_config: ExperimentConfig,
+    dataset_samples: list,
+    dataset_name: str,
+    data_subset: str,
+):
+    """Return a callable `resolve(uuid) -> list[ChatMessage]` for ICL injection.
+
+    - If ICL isn't configured: returns a no-op (returns []).
+    - If icl_shuffle_per_sample=True: loads the pool once, selects per-UUID with
+      a deterministic seed on each call.
+    - Otherwise: loads a single shared set once and returns it for every UUID
+      (old behavior).
+    """
+    if not exp_config.icl_count or not exp_config.icl_model:
+        return lambda uuid: []
+
+    if exp_config.icl_shuffle_per_sample:
+        pool, base_seed = _load_icl_pool_for_task(exp_config, dataset_samples,
+                                                  dataset_name, data_subset)
+
+        def resolve(uuid: str):
+            examples = select_icl_from_pool(
+                pool=pool,
+                count=exp_config.icl_count,
+                seed=_icl_seed_for_uuid(base_seed, uuid),
+            )
+            return _build_icl_messages(examples, exp_config.generation_prompt)
+
+        return resolve
+
+    shared_examples = _load_icl_for_task(exp_config, dataset_samples,
+                                         dataset_name, data_subset)
+    shared_messages = (_build_icl_messages(shared_examples, exp_config.generation_prompt)
+                       if shared_examples else [])
+    return lambda uuid: shared_messages
+
+
+    # _build_icl_text removed — all formats now use _build_icl_messages
+    # to inject ICL as real ChatMessage turn pairs (no framing text)
 
 
 def _get_model_with_custom_base_url(model_name: str, inspect_model_str: str):
@@ -125,52 +249,128 @@ class AlwaysReasoningModelError(Exception):
     pass
 
 
+class ReasoningTokensRequiredError(Exception):
+    """Raised when reasoning is enabled but the required CoT token budget is unset."""
+
+    pass
+
+
+class ContextWindowExceededError(Exception):
+    """Raised when a model's context window can't fit the estimated input plus a
+    minimal output budget — i.e. the evaluator genuinely can't run this task. The
+    sweep catches this to skip the model gracefully rather than abort."""
+
+    pass
+
+
 def _disable_reasoning_for_instruct_mode(
     model_name: str,
     config_params: dict,
-    inspect_model_str: str | None = None,
+    inspect_model_str: str = "",
 ) -> None:
     """
     Explicitly disable reasoning/thinking for dual-mode models used in instruct mode.
 
-    Dual-mode models (Claude 3.7+) have thinking that can be enabled/disabled.
-    When using these models WITHOUT the "-thinking" suffix, we ensure reasoning is off.
+    Reasoning on/off is driven by the "-thinking" suffix (the config-level toggle):
+    a model name without the suffix means instruct mode, in which case dual-mode
+    models (Claude 3.7+, Grok 3 Mini) must have their reasoning kept off.
 
     Raises:
         AlwaysReasoningModelError: If the model always uses reasoning and cannot be
-            used in instruct mode (e.g., Gemini 2.5).
+            run in instruct mode (e.g., Gemini 2.5). Use the "-thinking" variant.
 
     Args:
         model_name: Short model name (e.g., "gemini-2.5-pro", "sonnet-4.5")
-        config_params: Dictionary to update with GenerateConfig parameters
-        inspect_model_str: Inspect model string (for provider detection)
+        config_params: GenerateConfig parameter dict, mutated in place.
+        inspect_model_str: Inspect model string for provider detection
+            (e.g., "anthropic/claude-..."). Defaults to "" so the membership
+            checks below are always safe without a guard.
     """
-    # Only disable reasoning for models used WITHOUT -thinking suffix
-    if is_thinking_model(model_name):
-        return  # Model has -thinking suffix, reasoning should be enabled
-
-    # Check if this is an always-reasoning model being used without -thinking
-    if _is_always_reasoning_model(model_name):
+    # Fail loudly and first: always-reasoning models cannot run in instruct mode at
+    # all. Guarded on the suffix so the "-thinking" variant is never rejected here.
+    if _is_always_reasoning_model(model_name) and not is_thinking_model(model_name):
         raise AlwaysReasoningModelError(
             f"Model '{model_name}' always uses reasoning and cannot be used in instruct mode. "
             f"Use '{model_name}-thinking' instead to explicitly enable reasoning mode."
         )
 
-    if not _is_dual_mode_model(model_name):
-        return  # Not a dual-mode model, no need to disable reasoning
+    # Nothing to disable: thinking models keep reasoning on, and non-dual-mode
+    # models have no API-level reasoning to turn off.
+    if is_thinking_model(model_name) or not _is_dual_mode_model(model_name):
+        return
 
-    # Explicitly disable reasoning for dual-mode models in instruct mode
-    if inspect_model_str:
-        if "anthropic" in inspect_model_str:
-            # Anthropic: Don't enable extended_thinking (it's off by default)
-            # Just ensure we don't set any thinking-related parameters
-            # Note: Anthropic models may still show reasoning if they've been fine-tuned
-            # to include it, but the API-level thinking feature is off by default
-            pass
-        elif "openai" in inspect_model_str and "grok" in model_name.lower():
-            # XAI/Grok: Use reasoning_effort="none" if available, otherwise just don't enable it
-            # Note: Grok models may have different behavior; this is a best-effort approach
-            pass
+    # Dual-mode model in instruct mode: disable reasoning per provider. Both
+    # currently-supported providers are intentional no-ops:
+    #   - Anthropic: extended thinking is OFF by default; we simply never set
+    #     reasoning_tokens, so there is no parameter to add here.
+    #   - XAI/Grok: the API exposes no "off" switch (reasoning_effort has no
+    #     "none" value), so disabling is best-effort / not possible.
+    # This block is the extension point: a future provider that needs an explicit
+    # disable parameter would set it on config_params here.
+    if "anthropic" in inspect_model_str:
+        pass
+    elif "openai" in inspect_model_str and "grok" in model_name.lower():
+        pass
+
+
+def _resolve_max_tokens(value, model_name: str, kind: str = "output"):
+    """
+    Resolve a token-budget config value to a concrete int (or None).
+
+    - None -> None (unset)
+    - int  -> the int unchanged
+    - "max" -> the model's ceiling: the output ceiling (MODEL_OUTPUT_TOKEN_CAP) when
+      kind="output", or the thinking-budget cap (get_model_max_thinking_tokens)
+      when kind="thinking". Raises ValueError if the model is unknown.
+
+    Any other string is rejected (config validation also catches this at load).
+    """
+    if value is None or isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.lower() == "max":
+        if kind == "thinking":
+            return get_model_max_thinking_tokens(model_name)
+        return get_model_output_token_cap(model_name)
+    raise ValueError(
+        f"Invalid token budget {value!r} for model '{model_name}': "
+        f"expected an integer, null, or 'max'."
+    )
+
+
+def _is_max_sentinel(value) -> bool:
+    """True if a token-budget config value is the 'max' sentinel."""
+    return isinstance(value, str) and value.lower() == "max"
+
+
+def _sample_input_chars(sample_input) -> int:
+    """Best-effort character count of a sample's input.
+
+    Handles both a plain string prompt and a list of chat messages (whose
+    content may itself be a string or a list of content blocks). Used to
+    estimate input tokens when resolving a "max" output budget.
+    """
+    if isinstance(sample_input, str):
+        return len(sample_input)
+    total = 0
+    for msg in sample_input:
+        content = getattr(msg, "content", "")
+        if isinstance(content, str):
+            total += len(content)
+        elif isinstance(content, list):
+            for block in content:
+                total += len(getattr(block, "text", "") or "")
+        else:
+            total += len(str(content))
+    return total
+
+
+# Reservation applied when an output budget is "max", so input + max_tokens
+# stays within the provider's context window. Input tokens are estimated from
+# characters (~chars/3, which conservatively over-counts English/code) plus the
+# system prompt; the margin covers chat-template special tokens and estimate
+# variance. If the reservation leaves less than the floor for output, we raise.
+_INPUT_RESERVE_MARGIN = 512
+_OUTPUT_FLOOR = 512
 
 
 def _configure_thinking_model_params(
@@ -178,6 +378,7 @@ def _configure_thinking_model_params(
     config: ExperimentConfig,
     config_params: dict,
     model: str | None = None,
+    samples: list | None = None,
 ) -> None:
     """
     Configure max_tokens, reasoning_tokens, and reasoning parameters for thinking models.
@@ -199,48 +400,113 @@ def _configure_thinking_model_params(
         config_params: Dictionary to update with GenerateConfig parameters
         model: Optional inspect model string (for provider detection)
     """
-    # Determine provider if model string provided
-    inspect_model_str = str(model) if model else None
+    # Determine provider if model string provided ("" when absent so the
+    # membership checks below and in _disable_reasoning_for_instruct_mode are safe)
+    inspect_model_str = str(model) if model else ""
+
+    # Resolve a "max" output budget to a concrete int. The provider enforces
+    # (input + output) <= context window, so the most we can emit is
+    #   min(output_cap, context_window - estimated_input - margin).
+    # output_cap (the API's max generation tokens) and context_window are per-model
+    # specs; estimated_input is measured from the actual prompts (~chars/3); margin
+    # is fixed slack. Only used when a budget is "max"; computed lazily so non-"max"
+    # runs do no extra work. Raises ContextWindowExceededError when the input can't
+    # fit, so the sweep can skip this evaluator instead of failing every request.
+    def max_output_ceiling() -> int:
+        output_cap = get_model_output_token_cap(model_name)
+        if not samples:
+            return output_cap
+        max_in = max((_sample_input_chars(s.input) for s in samples), default=0)
+        sys_chars = len(config.system_prompt or "")
+        # ceil((input chars + system chars) / 3) conservatively over-counts tokens
+        est_input = -(-(max_in + sys_chars) // 3)
+        context_window = get_model_context_window(model_name)
+        usable = min(output_cap, context_window - est_input - _INPUT_RESERVE_MARGIN)
+        if usable < _OUTPUT_FLOOR:
+            raise ContextWindowExceededError(
+                f"Estimated input (~{est_input} tokens) leaves < {_OUTPUT_FLOOR} "
+                f"tokens for output within '{model_name}' context window "
+                f"{context_window}. This evaluator can't fit the prompt — reduce "
+                f"input length or use a longer-context model."
+            )
+        return usable
+
+    # A call site (mmlu/generation) may have pre-seeded config_params["max_tokens"]
+    # straight from config.max_final_answer_tokens, including the raw "max" sentinel.
+    # Resolve it here so every downstream path sees a concrete int.
+    if "max_tokens" in config_params:
+        seed = config_params["max_tokens"]
+        config_params["max_tokens"] = (
+            max_output_ceiling() if _is_max_sentinel(seed)
+            else _resolve_max_tokens(seed, model_name)
+        )
+
+    # Resolve the answer-token budget ("max" -> reserved model output ceiling).
+    # Applies to every model regardless of reasoning mode, so instruct models
+    # honor it too.
+    if _is_max_sentinel(config.max_final_answer_tokens):
+        resolved_answer = max_output_ceiling()
+    else:
+        resolved_answer = _resolve_max_tokens(config.max_final_answer_tokens, model_name)
 
     # For dual-mode models WITHOUT -thinking suffix, explicitly disable reasoning
     if not is_thinking_model(model_name):
         _disable_reasoning_for_instruct_mode(
             model_name, config_params, inspect_model_str
         )
+        # Instruct models cap output via max_final_answer_tokens (the whole budget
+        # is the answer — no reasoning to share it with).
+        if resolved_answer is not None and "max_tokens" not in config_params:
+            config_params["max_tokens"] = resolved_answer
         return
 
     # Set reasoning_history for all thinking models (default: "all")
     if config.reasoning_history:
         config_params["reasoning_history"] = config.reasoning_history
 
+    # Resolve the "max" sentinel for the thinking budget ("max" -> the thinking cap,
+    # which is the shared output ceiling except where a model enforces a smaller one,
+    # e.g. Gemini 2.5). When "max" was requested for either budget, also fetch the
+    # output ceiling so combined budgets can be capped to it below (a thinking
+    # model's reasoning and answer share one output budget).
+    resolved_thinking = _resolve_max_tokens(
+        config.max_thinking_tokens, model_name, kind="thinking"
+    )
+    uses_max = "max" in (config.max_thinking_tokens, config.max_final_answer_tokens)
+    # Reserve input headroom in the shared output ceiling so thinking+answer
+    # budgets can't overflow the context window.
+    model_ceiling = max_output_ceiling() if uses_max else None
+
     # For models that support separate reasoning_tokens parameter
     if needs_reasoning_params(model_name):
         # Set reasoning_tokens for Anthropic and Google models
         if inspect_model_str:
             if "anthropic" in inspect_model_str or "google" in inspect_model_str:
-                # Anthropic/Google: use max_thinking_tokens for reasoning_tokens
-                reasoning_tokens = (
-                    config.max_thinking_tokens
-                    if config.max_thinking_tokens is not None
-                    else 4096
-                )
+                # Anthropic/Google: reasoning_tokens IS the CoT token budget and
+                # must be specified explicitly — don't silently guess a default.
+                if resolved_thinking is None:
+                    raise ReasoningTokensRequiredError(
+                        f"Reasoning is enabled for '{model_name}' but 'max_thinking_tokens' "
+                        f"is not set. This provider requires an explicit CoT token budget — "
+                        f"set 'max_thinking_tokens' (an int or 'max') in the experiment config."
+                    )
+                reasoning_tokens = resolved_thinking
+                # The thinking budget must leave room for the answer under the
+                # model's total output ceiling (and stay < max_tokens, an Anthropic
+                # API requirement). Only cap when a "max" sentinel was used.
+                if model_ceiling is not None:
+                    reasoning_tokens = min(reasoning_tokens, model_ceiling - 1)
                 config_params["reasoning_tokens"] = reasoning_tokens
 
                 # For Anthropic models: max_tokens must be greater than thinking.budget_tokens
                 # This is an API requirement. We ensure max_tokens > reasoning_tokens.
                 if "max_tokens" not in config_params:
-                    if config.max_final_answer_tokens is not None:
-                        # User specified a limit - use it, but ensure it's > reasoning_tokens
-                        max_answer = config.max_final_answer_tokens
-                        config_params["max_tokens"] = max(
-                            max_answer, reasoning_tokens + 1
-                        )
-                    else:
-                        # User set null (no limit) - set to a high value to effectively be unlimited
-                        # Anthropic API supports up to 128k tokens, but we use 8192 as a practical "unlimited" value
-                        # This satisfies the API requirement (max_tokens > reasoning_tokens) while allowing
-                        # the model to generate long final answers
-                        config_params["max_tokens"] = max(8192, reasoning_tokens + 1)
+                    # User-specified answer limit, else a high practical default.
+                    max_answer = resolved_answer if resolved_answer is not None else 8192
+                    max_tokens = max(max_answer, reasoning_tokens + 1)
+                    if model_ceiling is not None:
+                        max_tokens = min(max_tokens, model_ceiling)
+                    config_params["max_tokens"] = max_tokens
             elif "openai" in inspect_model_str:
                 # OpenAI: reasoning_effort (no separate reasoning_tokens parameter)
                 # Default to "high" if not specified in config
@@ -253,18 +519,14 @@ def _configure_thinking_model_params(
         # Use config.max_final_answer_tokens if set, otherwise reasonable default
         # Note: Anthropic models are handled above with special logic
         if "max_tokens" not in config_params:
-            if config.max_final_answer_tokens is not None:
-                config_params["max_tokens"] = config.max_final_answer_tokens
-            else:
-                config_params["max_tokens"] = 2048  # Default for final answer
+            max_answer = resolved_answer if resolved_answer is not None else 2048
+            if model_ceiling is not None:
+                max_answer = min(max_answer, model_ceiling)
+            config_params["max_tokens"] = max_answer
     else:
         # Together AI models (no separate reasoning_tokens): max_tokens controls total output
         # Total = max_thinking_tokens (for reasoning) + max_final_answer_tokens (for final answer)
-        max_thinking = (
-            config.max_thinking_tokens
-            if config.max_thinking_tokens is not None
-            else 8192
-        )
+        max_thinking = resolved_thinking if resolved_thinking is not None else 8192
         # For Together AI, max_final_answer_tokens in config represents the answer budget, not the total
         # If max_tokens was already set in config_params, use it as the answer budget
         # Otherwise, use config.max_final_answer_tokens or default
@@ -274,13 +536,13 @@ def _configure_thinking_model_params(
             max_answer = config_params["max_tokens"]
         else:
             # max_tokens not set yet, use config.max_final_answer_tokens or default
-            max_answer = (
-                config.max_final_answer_tokens
-                if config.max_final_answer_tokens is not None
-                else 2048
-            )
-        # Always set total = thinking + answer for Together AI models
-        config_params["max_tokens"] = max_thinking + max_answer
+            max_answer = resolved_answer if resolved_answer is not None else 2048
+        # Total = thinking + answer, capped at the model ceiling when "max" was used
+        # (reasoning and answer share one output budget, so they can't both be full).
+        total = max_thinking + max_answer
+        if model_ceiling is not None:
+            total = min(total, model_ceiling)
+        config_params["max_tokens"] = total
 
         # For Together AI hybrid models (e.g., DeepSeek V3.1, Kimi K2.5),
         # the same endpoint serves both instruct and thinking modes.
@@ -360,6 +622,8 @@ def get_task_function(
             "IND-Q",
             "Pref",
         ): individual_query,  # Pref tasks use same function as Rec
+        # MMLU-ICA capabilities-control eval (no tags/format dimension)
+        ("NA", "MMLU-MC", "MMLU"): mmlu_multiple_choice,
     }
 
     key = (tags, format_type, base_task)
@@ -442,9 +706,14 @@ def pairwise_query(
         data_subset,
     )
 
+    # Load ICL examples if configured (per-sample resolver; returns [] if ICL not set)
+    icl_resolve = _build_icl_resolver(config, dataset_samples, dataset_name, data_subset)
+
     # Create Inspect samples
     inspect_samples = []
     for sample_data in dataset_samples:
+        uuid = sample_data["metadata"]["uuid"]
+        icl_messages = icl_resolve(uuid)
         # Format the prompt using the config template
         # For UT format, SR_task_prompt includes UT_transcript with {generation_prompt} placeholder
         # For AT format, this would need different handling (not currently implemented)
@@ -462,6 +731,9 @@ def pairwise_query(
                 reasoning1=reasoning1,
                 reasoning2=reasoning2,
             )
+            # If ICL, wrap prompt as messages: ICL turns + final user message
+            if icl_messages:
+                prompt = icl_messages + [ChatMessageUser(content=prompt)]
         else:
             # AT format - not fully implemented for PW-Q
             # Would need placeholders added to prompts.yaml
@@ -483,7 +755,7 @@ def pairwise_query(
     # Configure thinking model parameters (max_tokens, reasoning_tokens, reasoning_history, etc.)
     # This will set reasoning_history from config if model is a thinking model
     _configure_thinking_model_params(
-        model_name, config, config_params, inspect_model_str
+        model_name, config, config_params, inspect_model_str, samples=inspect_samples
     )
     if logprobs:
         config_params["logprobs"] = True
@@ -570,9 +842,14 @@ def pairwise_conversation_assistant_tags(
         data_subset,
     )
 
+    # Load ICL examples if configured (per-sample resolver; returns [] if ICL not set)
+    icl_resolve = _build_icl_resolver(config, dataset_samples, dataset_name, data_subset)
+
     # Create Inspect samples with conversation history
     inspect_samples = []
     for sample_data in dataset_samples:
+        uuid = sample_data["metadata"]["uuid"]
+        icl_messages = icl_resolve(uuid)
         # Format the generation prompt
         generation_prompt = config.generation_prompt.format(
             content=sample_data["content"]
@@ -580,6 +857,9 @@ def pairwise_conversation_assistant_tags(
 
         # Build conversation history
         messages = []
+
+        # Prepend ICL turn pairs if configured
+        messages.extend(icl_messages)
 
         # First interaction with output1
         messages.append(ChatMessageUser(content=generation_prompt))
@@ -710,7 +990,7 @@ def pairwise_conversation_assistant_tags(
     # Configure thinking model parameters (max_tokens, reasoning_tokens, reasoning_history, etc.)
     # This will set reasoning_history from config if model is a thinking model
     _configure_thinking_model_params(
-        model_name, config, config_params, inspect_model_str
+        model_name, config, config_params, inspect_model_str, samples=inspect_samples
     )
     if logprobs:
         config_params["logprobs"] = True
@@ -772,9 +1052,14 @@ def pairwise_conversation_user_tags(
         data_subset,
     )
 
+    # Load ICL examples if configured (per-sample resolver; returns [] if ICL not set)
+    icl_resolve = _build_icl_resolver(config, dataset_samples, dataset_name, data_subset)
+
     # Create Inspect samples
     inspect_samples = []
     for sample_data in dataset_samples:
+        uuid = sample_data["metadata"]["uuid"]
+        icl_messages = icl_resolve(uuid)
         # Format the prompt using the config template
         generation_prompt = config.generation_prompt.format(
             content=sample_data["content"]
@@ -784,6 +1069,8 @@ def pairwise_conversation_user_tags(
             output1=sample_data["output1"],
             output2=sample_data["output2"],
         )
+        if icl_messages:
+            prompt = icl_messages + [ChatMessageUser(content=prompt)]
 
         inspect_samples.append(
             Sample(
@@ -797,7 +1084,7 @@ def pairwise_conversation_user_tags(
     config_params = {"system_message": config.system_prompt}
     # Configure thinking model parameters (max_tokens, reasoning_tokens)
     _configure_thinking_model_params(
-        model_name, config, config_params, inspect_model_str
+        model_name, config, config_params, inspect_model_str, samples=inspect_samples
     )
     if logprobs:
         config_params["logprobs"] = True
@@ -859,9 +1146,14 @@ def individual_conversation_assistant_tags(
         is_control=is_control,
     )
 
+    # Load ICL examples if configured (per-sample resolver; returns [] if ICL not set)
+    icl_resolve = _build_icl_resolver(config, dataset_samples, dataset_name, data_subset)
+
     # Create Inspect samples with conversation history
     inspect_samples = []
     for sample_data in dataset_samples:
+        uuid = sample_data["metadata"]["uuid"]
+        icl_messages = icl_resolve(uuid)
         # Format the generation prompt
         generation_prompt = config.generation_prompt.format(
             content=sample_data["content"]
@@ -874,13 +1166,15 @@ def individual_conversation_assistant_tags(
         )
 
         # Build conversation history
-        messages = [
+        messages = []
+        messages.extend(icl_messages)  # ICL turns first
+        messages.extend([
             # First interaction with output
             ChatMessageUser(content=generation_prompt),
             ChatMessageAssistant(content=sample_data["output"]),
             # Final verification question
             ChatMessageUser(content=sr_task_prompt),
-        ]
+        ])
 
         inspect_samples.append(
             Sample(
@@ -895,7 +1189,7 @@ def individual_conversation_assistant_tags(
     # Configure thinking model parameters (max_tokens, reasoning_tokens, reasoning_history, etc.)
     # This will set reasoning_history from config if model is a thinking model
     _configure_thinking_model_params(
-        model_name, config, config_params, inspect_model_str
+        model_name, config, config_params, inspect_model_str, samples=inspect_samples
     )
     if logprobs:
         config_params["logprobs"] = True
@@ -954,9 +1248,14 @@ def individual_conversation_user_tags(
         is_control=is_control,
     )
 
+    # Load ICL examples if configured (per-sample resolver; returns [] if ICL not set)
+    icl_resolve = _build_icl_resolver(config, dataset_samples, dataset_name, data_subset)
+
     # Create Inspect samples
     inspect_samples = []
     for sample_data in dataset_samples:
+        uuid = sample_data["metadata"]["uuid"]
+        icl_messages = icl_resolve(uuid)
         # Format the prompt using the config template
         generation_prompt = config.generation_prompt.format(
             content=sample_data["content"]
@@ -967,6 +1266,8 @@ def individual_conversation_user_tags(
             correct_choice_token=sample_data["metadata"]["correct_choice_token"],
             incorrect_choice_token=sample_data["metadata"]["incorrect_choice_token"],
         )
+        if icl_messages:
+            prompt = icl_messages + [ChatMessageUser(content=prompt)]
 
         inspect_samples.append(
             Sample(
@@ -980,7 +1281,7 @@ def individual_conversation_user_tags(
     config_params = {"system_message": config.system_prompt}
     # Configure thinking model parameters (max_tokens, reasoning_tokens)
     _configure_thinking_model_params(
-        model_name, config, config_params, inspect_model_str
+        model_name, config, config_params, inspect_model_str, samples=inspect_samples
     )
     if logprobs:
         config_params["logprobs"] = True
@@ -1038,9 +1339,14 @@ def individual_query(
         is_control=is_control,
     )
 
+    # Load ICL examples if configured (per-sample resolver; returns [] if ICL not set)
+    icl_resolve = _build_icl_resolver(config, dataset_samples, dataset_name, data_subset)
+
     # Create Inspect samples
     inspect_samples = []
     for sample_data in dataset_samples:
+        uuid = sample_data["metadata"]["uuid"]
+        icl_messages = icl_resolve(uuid)
         # Format generation prompt from content
         generation_prompt = config.generation_prompt.format(
             content=sample_data["content"]
@@ -1058,6 +1364,8 @@ def individual_query(
                 "incorrect_choice_token", "2"
             ),
         )
+        if icl_messages:
+            prompt = icl_messages + [ChatMessageUser(content=prompt)]
 
         inspect_samples.append(
             Sample(
@@ -1079,6 +1387,85 @@ def individual_query(
         scorer=logprob_scorer(),
         model=inspect_model,
         config=GenerateConfig(**config_params),
+        name=task_name,
+    )
+
+
+@task
+def mmlu_multiple_choice(
+    model_name: str,
+    treatment_name: str,
+    dataset_name: str,
+    data_subset: str,
+    exp_config: ExperimentConfig,
+    is_control: bool = True,
+    task_name: str | None = None,
+    logprobs: bool = False,
+) -> Task:
+    """MMLU multiple-choice eval with optional ICA (in-context attack) prefix.
+
+    - Evaluation: MMLU questions loaded from data/input/{dataset_name}/{data_subset}/input.json.
+    - ICA (if configured): QA pairs from exp_config.icl_model served from
+      exp_config.icl_dataset/icl_data_subset, prepended as alternating user/assistant
+      chat turns before the final MMLU question. Uses inspect_ai's built-in
+      multiple_choice solver (formats A/B/C/D block, parses "ANSWER: X") and
+      `choice` scorer.
+    - `treatment_name` and `is_control` are unused (MMLU has no treatment/control pair).
+    """
+    config = exp_config
+
+    inspect_model_str: str = inspect_model_name(model_name)
+    inspect_model = _get_model_with_custom_base_url(model_name, inspect_model_str)
+
+    samples = load_dataset_mmlu(dataset_name, data_subset)
+
+    # ICA pool comes from a (potentially different) dataset — typically the SGTR
+    # ShareGPT pool. Fall back to the eval dataset if not overridden.
+    icl_dataset = config.icl_dataset or dataset_name
+
+    # _build_icl_messages expects a generation_prompt template. For ICA we just
+    # pass the author's ShareGPT user prompt through verbatim — the template is
+    # a trivial passthrough. (Skipping _build_prompts also means this was never set.)
+    if config.generation_prompt is None:
+        config.generation_prompt = "{content}"
+
+    icl_resolve = _build_icl_resolver(config, samples, icl_dataset,
+                                      config.icl_data_subset or data_subset)
+
+    inspect_samples = []
+    for s in samples:
+        uuid = s["metadata"]["uuid"]
+        icl_messages = icl_resolve(uuid)
+        if icl_messages:
+            input_msgs = icl_messages + [ChatMessageUser(content=s["question"])]
+        else:
+            input_msgs = s["question"]
+        inspect_samples.append(
+            Sample(
+                input=input_msgs,
+                choices=s["choices"],
+                target=s["answer"],
+                metadata=s["metadata"],
+            )
+        )
+
+    config_params: dict = {}
+    if config.temperature is not None:
+        config_params["temperature"] = config.temperature
+    if config.max_final_answer_tokens is not None:
+        config_params["max_tokens"] = config.max_final_answer_tokens
+    if config.seed is not None:
+        config_params["seed"] = config.seed
+    _configure_thinking_model_params(
+        model_name, config, config_params, inspect_model_str, samples=inspect_samples
+    )
+
+    return Task(
+        dataset=inspect_samples,
+        solver=multiple_choice(),
+        scorer=choice(),
+        model=inspect_model,
+        config=GenerateConfig(**config_params) if config_params else None,
         name=task_name,
     )
 
@@ -1162,7 +1549,7 @@ def generation(
     # Note: max_tokens may already be set from config.max_final_answer_tokens above (line 927)
     # The helper will respect existing max_tokens and only set it if not present
     _configure_thinking_model_params(
-        model_name, config, generate_config_params, inspect_model_str
+        model_name, config, generate_config_params, inspect_model_str, samples=inspect_samples
     )
 
     return Task(

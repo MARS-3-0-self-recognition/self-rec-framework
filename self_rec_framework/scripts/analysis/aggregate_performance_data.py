@@ -247,6 +247,27 @@ def main():
         print("  ⚠ No valid performance data to save.\n")
 
     # ============================================================================
+    # Process Standard-Error Data (per-(model,dataset) SE of the performance
+    # metric) so downstream comparisons can build statistically correct error bars.
+    # Best-effort: silently skipped if evaluator_performance.csv predates the 'se'
+    # column.
+    # ============================================================================
+    try:
+        df_se, _ = load_performance_data(
+            performance_files, dataset_names, column_name="se"
+        )
+        if not df_se.empty:
+            if model_order:
+                available_se = [m for m in model_order if m in df_se.index]
+                if available_se:
+                    df_se = df_se.reindex(available_se)
+            df_se.to_csv(output_dir / "aggregated_se.csv")
+            print(f"  ✓ Saved aggregated SE to: {output_dir / 'aggregated_se.csv'}\n")
+    except ValueError:
+        print("  ⚠ No 'se' column in evaluator_performance.csv files — skipping "
+              "aggregated_se.csv (comparisons will fall back to counts-based error bars)\n")
+
+    # ============================================================================
     # Process Deviation Data
     # ============================================================================
 

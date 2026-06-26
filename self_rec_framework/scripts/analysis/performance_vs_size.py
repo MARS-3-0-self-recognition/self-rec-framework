@@ -1621,6 +1621,16 @@ def main():
         help="Metric name for axis labels/titles (e.g., 'Recognition Accuracy', 'F1 Score'). "
         "Auto-detected from filename if not provided.",
     )
+    parser.add_argument(
+        "--figures",
+        type=str,
+        default="all",
+        help="Comma-separated figure basenames (no extension) to generate, or "
+        "'all' (default). This script owns: performance_vs_size_known, "
+        "performance_vs_size_all, performance_vs_date_known, "
+        "performance_vs_date_all, performance_vs_tier, "
+        "performance_vs_arena_ranking. If none are requested it produces nothing.",
+    )
 
     args = parser.parse_args()
 
@@ -1644,6 +1654,29 @@ def main():
             metric_name = "Recognition Accuracy"
     # Output file prefix for non-default metrics
     file_prefix = "f1_" if "f1" in metric_name.lower() else ""
+
+    # Figure selection: None => generate everything; otherwise only named basenames.
+    selected_figures = (
+        None
+        if args.figures.strip().lower() == "all"
+        else {f.strip() for f in args.figures.split(",") if f.strip()}
+    )
+    def want_figure(name: str) -> bool:
+        return selected_figures is None or name in selected_figures
+    owned_figures = {
+        f"{file_prefix}performance_vs_size_known",
+        f"{file_prefix}performance_vs_size_all",
+        f"{file_prefix}performance_vs_date_known",
+        f"{file_prefix}performance_vs_date_all",
+        f"{file_prefix}performance_vs_tier",
+        f"{file_prefix}performance_vs_arena_ranking",
+    }
+    if selected_figures is not None and not (owned_figures & selected_figures):
+        print(
+            "Skipping performance-vs-size figures — none of "
+            f"{sorted(owned_figures)} were requested in --figures."
+        )
+        return
 
     # Validate file exists
     if not aggregated_file.exists():
@@ -1711,74 +1744,80 @@ def main():
         else:
             experiment_title = exp_name
 
-    # Generate plots
-    known_plot_path = output_dir / f"{file_prefix}performance_vs_size_known.png"
-    plot_performance_vs_size(
-        df,
-        known_plot_path,
-        title=f"{metric_name} vs Model Size (Known Sizes Only)",
-        experiment_title=experiment_title,
-        use_estimated=False,
-        ylabel=metric_name,
-    )
-    print()
+    # Generate plots (subject to --figures selection)
+    if want_figure(f"{file_prefix}performance_vs_size_known"):
+        known_plot_path = output_dir / f"{file_prefix}performance_vs_size_known.png"
+        plot_performance_vs_size(
+            df,
+            known_plot_path,
+            title=f"{metric_name} vs Model Size (Known Sizes Only)",
+            experiment_title=experiment_title,
+            use_estimated=False,
+            ylabel=metric_name,
+        )
+        print()
 
-    all_plot_path = output_dir / f"{file_prefix}performance_vs_size_all.png"
-    plot_performance_vs_size(
-        df,
-        all_plot_path,
-        title=f"{metric_name} vs Model Size (Known + Estimated)",
-        experiment_title=experiment_title,
-        use_estimated=True,
-        ylabel=metric_name,
-    )
-    print()
+    if want_figure(f"{file_prefix}performance_vs_size_all"):
+        all_plot_path = output_dir / f"{file_prefix}performance_vs_size_all.png"
+        plot_performance_vs_size(
+            df,
+            all_plot_path,
+            title=f"{metric_name} vs Model Size (Known + Estimated)",
+            experiment_title=experiment_title,
+            use_estimated=True,
+            ylabel=metric_name,
+        )
+        print()
 
     # Generate date plots
-    known_date_plot_path = output_dir / f"{file_prefix}performance_vs_date_known.png"
-    plot_performance_vs_date(
-        df,
-        known_date_plot_path,
-        title=f"{metric_name} vs Release Date (Known Dates Only)",
-        experiment_title=experiment_title,
-        use_estimated=False,
-        ylabel=metric_name,
-    )
-    print()
+    if want_figure(f"{file_prefix}performance_vs_date_known"):
+        known_date_plot_path = output_dir / f"{file_prefix}performance_vs_date_known.png"
+        plot_performance_vs_date(
+            df,
+            known_date_plot_path,
+            title=f"{metric_name} vs Release Date (Known Dates Only)",
+            experiment_title=experiment_title,
+            use_estimated=False,
+            ylabel=metric_name,
+        )
+        print()
 
-    all_date_plot_path = output_dir / f"{file_prefix}performance_vs_date_all.png"
-    plot_performance_vs_date(
-        df,
-        all_date_plot_path,
-        title=f"{metric_name} vs Release Date (Known + Estimated)",
-        experiment_title=experiment_title,
-        use_estimated=True,
-        ylabel=metric_name,
-    )
-    print()
+    if want_figure(f"{file_prefix}performance_vs_date_all"):
+        all_date_plot_path = output_dir / f"{file_prefix}performance_vs_date_all.png"
+        plot_performance_vs_date(
+            df,
+            all_date_plot_path,
+            title=f"{metric_name} vs Release Date (Known + Estimated)",
+            experiment_title=experiment_title,
+            use_estimated=True,
+            ylabel=metric_name,
+        )
+        print()
 
     # Generate tier plot
-    tier_plot_path = output_dir / f"{file_prefix}performance_vs_tier.png"
-    plot_performance_vs_tier(
-        df,
-        tier_plot_path,
-        title=f"{metric_name} vs Capability Tier",
-        experiment_title=experiment_title,
-        ylabel=metric_name,
-    )
-    print()
+    if want_figure(f"{file_prefix}performance_vs_tier"):
+        tier_plot_path = output_dir / f"{file_prefix}performance_vs_tier.png"
+        plot_performance_vs_tier(
+            df,
+            tier_plot_path,
+            title=f"{metric_name} vs Capability Tier",
+            experiment_title=experiment_title,
+            ylabel=metric_name,
+        )
+        print()
 
     # Generate arena ranking plot
-    arena_plot_path = output_dir / f"{file_prefix}performance_vs_arena_ranking.png"
-    plot_performance_vs_arena_ranking(
-        df,
-        arena_plot_path,
-        title=f"{metric_name} vs LM Arena Ranking",
-        experiment_title=experiment_title,
-        df_counts=df_counts,
-        ylabel=metric_name,
-    )
-    print()
+    if want_figure(f"{file_prefix}performance_vs_arena_ranking"):
+        arena_plot_path = output_dir / f"{file_prefix}performance_vs_arena_ranking.png"
+        plot_performance_vs_arena_ranking(
+            df,
+            arena_plot_path,
+            title=f"{metric_name} vs LM Arena Ranking",
+            experiment_title=experiment_title,
+            df_counts=df_counts,
+            ylabel=metric_name,
+        )
+        print()
 
     # Display summary
     print(f"{'='*70}")

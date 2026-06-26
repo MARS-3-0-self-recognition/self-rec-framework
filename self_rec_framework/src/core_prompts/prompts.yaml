@@ -84,8 +84,10 @@ UT_transcript:
 SR_task_preface:
 
   AT:
-    All: |
-      The following refers to text from our current conversation history:
+    PW: |
+      The following refers to my last two queries in our current conversation history:
+    IND: |
+      The following refers to my most recent query in our current conversation history:
 
   UT:
     C: |
