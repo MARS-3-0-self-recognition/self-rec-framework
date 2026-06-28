@@ -720,16 +720,16 @@ def pairwise_query(
         if config.tags == "UT":
             # Format generation prompt first, then format SR_task_prompt
             generation_prompt = config.generation_prompt.format(
-                content=sample_data["content"]
+                content=sample_data.content
             )
-            reasoning1 = sample_data.get("cot1") or ""
-            reasoning2 = sample_data.get("cot2") or ""
+            reasoning1=sample_data.cot1 or ""
+            reasoning2=sample_data.cot2 or ""
             prompt = config.SR_task_prompt.format(
-                generation_prompt=generation_prompt,
-                output1=sample_data["output1"],
-                output2=sample_data["output2"],
-                reasoning1=reasoning1,
-                reasoning2=reasoning2,
+                generation_prompt = generation_prompt,
+                output1 = sample_data.output1,
+                output2 = sample_data.output2,
+                reasoning1 = reasoning1,
+                reasoning2 = reasoning2,
             )
             # If ICL, wrap prompt as messages: ICL turns + final user message
             if icl_messages:
@@ -745,8 +745,8 @@ def pairwise_query(
         inspect_samples.append(
             Sample(
                 input=prompt,
-                target=sample_data["metadata"]["correct_answer"],
-                metadata=sample_data["metadata"],
+                target=sample_data.metadata["correct_answer"],
+                metadata=sample_data.metadata,
             )
         )
 
@@ -852,7 +852,7 @@ def pairwise_conversation_assistant_tags(
         icl_messages = icl_resolve(uuid)
         # Format the generation prompt
         generation_prompt = config.generation_prompt.format(
-            content=sample_data["content"]
+            content = sample_data.content
         )
 
         # Build conversation history
@@ -865,14 +865,14 @@ def pairwise_conversation_assistant_tags(
         messages.append(ChatMessageUser(content=generation_prompt))
 
         # Add output1 with CoT if available
-        cot1 = sample_data.get("cot1")
-        signature1 = sample_data.get("signature1")
+        cot1 = sample_data.cot1
+        signature1 = sample_data.signature1
         if cot1:
             # Determine which treatment model generated output1
             # In sample 1: output1 is from treatment_name_1 (control)
             # In sample 2: output1 is from treatment_name_2 (treatment, swapped)
             # Check metadata to see which sample this is
-            is_first_sample = sample_data["metadata"].get("correct_answer") == "1"
+            is_first_sample = sample_data.metadata.get("correct_answer") == "1"
             cot1_source_is_anthropic = (
                 is_control_anthropic if is_first_sample else is_treatment_anthropic
             )
@@ -889,7 +889,7 @@ def pairwise_conversation_assistant_tags(
                     ChatMessageAssistant(
                         content=[
                             ContentReasoning(reasoning=cot1, signature=signature1),
-                            ContentText(text=sample_data["output1"]),
+                            ContentText(text=sample_data.output1),
                         ]
                     )
                 )
@@ -899,7 +899,7 @@ def pairwise_conversation_assistant_tags(
                     ChatMessageAssistant(
                         content=[
                             ContentReasoning(reasoning=cot1),
-                            ContentText(text=sample_data["output1"]),
+                            ContentText(text=sample_data.output1),
                         ]
                     )
                 )
@@ -909,25 +909,25 @@ def pairwise_conversation_assistant_tags(
                     ChatMessageAssistant(
                         content=[
                             ContentReasoning(reasoning=cot1, redacted=True),
-                            ContentText(text=sample_data["output1"]),
+                            ContentText(text=sample_data.output1),
                         ]
                     )
                 )
             else:
                 # Skip CoT for Anthropic evaluator with non-Anthropic CoT (no signature)
-                messages.append(ChatMessageAssistant(content=sample_data["output1"]))
+                messages.append(ChatMessageAssistant(content=sample_data.output1))
         else:
-            messages.append(ChatMessageAssistant(content=sample_data["output1"]))
+            messages.append(ChatMessageAssistant(content=sample_data.output1))
 
         # Second interaction with output2 (same article/question)
         messages.append(ChatMessageUser(content=generation_prompt))
 
         # Add output2 with CoT if available
-        cot2 = sample_data.get("cot2")
-        signature2 = sample_data.get("signature2")
+        cot2 = sample_data.cot2
+        signature2 = sample_data.signature2
         if cot2:
             # Determine which treatment model generated output2
-            is_first_sample = sample_data["metadata"].get("correct_answer") == "1"
+            is_first_sample = sample_data.metadata.get("correct_answer") == "1"
             cot2_source_is_anthropic = (
                 is_treatment_anthropic if is_first_sample else is_control_anthropic
             )
@@ -944,7 +944,7 @@ def pairwise_conversation_assistant_tags(
                     ChatMessageAssistant(
                         content=[
                             ContentReasoning(reasoning=cot2, signature=signature2),
-                            ContentText(text=sample_data["output2"]),
+                            ContentText(text=sample_data.output2),
                         ]
                     )
                 )
@@ -954,7 +954,7 @@ def pairwise_conversation_assistant_tags(
                     ChatMessageAssistant(
                         content=[
                             ContentReasoning(reasoning=cot2),
-                            ContentText(text=sample_data["output2"]),
+                            ContentText(text=sample_data.output2),
                         ]
                     )
                 )
@@ -964,15 +964,15 @@ def pairwise_conversation_assistant_tags(
                     ChatMessageAssistant(
                         content=[
                             ContentReasoning(reasoning=cot2, redacted=True),
-                            ContentText(text=sample_data["output2"]),
+                            ContentText(text=sample_data.output2),
                         ]
                     )
                 )
             else:
                 # Skip CoT for Anthropic evaluator with non-Anthropic CoT (no signature)
-                messages.append(ChatMessageAssistant(content=sample_data["output2"]))
+                messages.append(ChatMessageAssistant(content=sample_data.output2))
         else:
-            messages.append(ChatMessageAssistant(content=sample_data["output2"]))
+            messages.append(ChatMessageAssistant(content=sample_data.output2))
 
         # Final verification question
         messages.append(ChatMessageUser(content=config.SR_task_prompt))
@@ -980,8 +980,8 @@ def pairwise_conversation_assistant_tags(
         inspect_samples.append(
             Sample(
                 input=messages,
-                target=sample_data["metadata"]["correct_answer"],
-                metadata=sample_data["metadata"],
+                target=sample_data.metadata["correct_answer"],
+                metadata=sample_data.metadata,
             )
         )
 
@@ -1062,12 +1062,12 @@ def pairwise_conversation_user_tags(
         icl_messages = icl_resolve(uuid)
         # Format the prompt using the config template
         generation_prompt = config.generation_prompt.format(
-            content=sample_data["content"]
+            content=sample_data.content
         )
         prompt = config.SR_task_prompt.format(
             generation_prompt=generation_prompt,
-            output1=sample_data["output1"],
-            output2=sample_data["output2"],
+            output1=sample_data.output1,
+            output2=sample_data.output2,
         )
         if icl_messages:
             prompt = icl_messages + [ChatMessageUser(content=prompt)]
@@ -1075,8 +1075,8 @@ def pairwise_conversation_user_tags(
         inspect_samples.append(
             Sample(
                 input=prompt,
-                target=sample_data["metadata"]["correct_answer"],
-                metadata=sample_data["metadata"],
+                target=sample_data.metadata["correct_answer"],
+                metadata=sample_data.metadata,
             )
         )
 
@@ -1156,13 +1156,13 @@ def individual_conversation_assistant_tags(
         icl_messages = icl_resolve(uuid)
         # Format the generation prompt
         generation_prompt = config.generation_prompt.format(
-            content=sample_data["content"]
+            content=sample_data.content
         )
 
         # Format SR task prompt with choice tokens
         sr_task_prompt = config.SR_task_prompt.format(
-            correct_choice_token=sample_data["metadata"]["correct_choice_token"],
-            incorrect_choice_token=sample_data["metadata"]["incorrect_choice_token"],
+            correct_choice_token=sample_data.metadata["correct_choice_token"],
+            incorrect_choice_token=sample_data.metadata["incorrect_choice_token"],
         )
 
         # Build conversation history
@@ -1171,7 +1171,7 @@ def individual_conversation_assistant_tags(
         messages.extend([
             # First interaction with output
             ChatMessageUser(content=generation_prompt),
-            ChatMessageAssistant(content=sample_data["output"]),
+            ChatMessageAssistant(content=sample_data.output),
             # Final verification question
             ChatMessageUser(content=sr_task_prompt),
         ])
@@ -1179,8 +1179,8 @@ def individual_conversation_assistant_tags(
         inspect_samples.append(
             Sample(
                 input=messages,
-                target=sample_data["metadata"]["correct_answer"],
-                metadata=sample_data["metadata"],
+                target=sample_data.metadata["correct_answer"],
+                metadata=sample_data.metadata,
             )
         )
 
@@ -1258,13 +1258,13 @@ def individual_conversation_user_tags(
         icl_messages = icl_resolve(uuid)
         # Format the prompt using the config template
         generation_prompt = config.generation_prompt.format(
-            content=sample_data["content"]
+            content=sample_data.content
         )
         prompt = config.SR_task_prompt.format(
             generation_prompt=generation_prompt,
-            output=sample_data["output"],
-            correct_choice_token=sample_data["metadata"]["correct_choice_token"],
-            incorrect_choice_token=sample_data["metadata"]["incorrect_choice_token"],
+            output=sample_data.output,
+            correct_choice_token=sample_data.metadata["correct_choice_token"],
+            incorrect_choice_token=sample_data.metadata["incorrect_choice_token"],
         )
         if icl_messages:
             prompt = icl_messages + [ChatMessageUser(content=prompt)]
@@ -1272,8 +1272,8 @@ def individual_conversation_user_tags(
         inspect_samples.append(
             Sample(
                 input=prompt,
-                target=sample_data["metadata"]["correct_answer"],
-                metadata=sample_data["metadata"],
+                target=sample_data.metadata["correct_answer"],
+                metadata=sample_data.metadata,
             )
         )
 
@@ -1349,18 +1349,18 @@ def individual_query(
         icl_messages = icl_resolve(uuid)
         # Format generation prompt from content
         generation_prompt = config.generation_prompt.format(
-            content=sample_data["content"]
+            content=sample_data.content
         )
 
         # Format the SR task prompt using the config template
         prompt = config.SR_task_prompt.format(
             generation_prompt=generation_prompt,
-            output=sample_data["output"],
-            reasoning=sample_data.get("reasoning", ""),
-            correct_choice_token=sample_data["metadata"].get(
+            output=sample_data.output,
+            reasoning="",
+            correct_choice_token=sample_data.metadata.get(
                 "correct_choice_token", "1"
             ),
-            incorrect_choice_token=sample_data["metadata"].get(
+            incorrect_choice_token=sample_data.metadata.get(
                 "incorrect_choice_token", "2"
             ),
         )
@@ -1370,8 +1370,8 @@ def individual_query(
         inspect_samples.append(
             Sample(
                 input=prompt,
-                target=sample_data["metadata"]["correct_answer"],
-                metadata=sample_data["metadata"],
+                target=sample_data.metadata["correct_answer"],
+                metadata=sample_data.metadata,
             )
         )
 

@@ -1,17 +1,36 @@
 """Data loading utilities for self-recognition tasks."""  # mistral 24b llama 70b qwen instruct
 
-from typing import List, Dict, Any
+from typing import Any
+from dataclasses import dataclass
 
 from self_rec_framework.src.helpers.utils import data_dir, load_json
 from self_rec_framework.src.helpers.model_names import is_thinking_model
 
+@dataclass
+class PairwiseSample:
+    """A sample for pairwise comparison."""
+    content: Any
+    output1: Any
+    output2: Any
+    cot1: Any | None
+    cot2: Any | None
+    signature1: Any | None
+    signature2: Any | None
+    metadata: dict[str, str]
+
+@dataclass
+class IndividualSample:
+    """A sample for individual evaluation."""
+    content: Any
+    output: Any
+    metadata: dict[str, str]
 
 def load_dataset_pairwise(
     treatment_name_1: str,
     treatment_name_2: str,
     dataset_name: str,
     data_subset: str,
-) -> List[Dict[str, Any]]:
+) -> list[PairwiseSample]:
     """
     Load and prepare dataset for pairwise comparison.
 
@@ -143,36 +162,36 @@ def load_dataset_pairwise(
 
         # Sample 1: Treatment 1 output first (position 1)
         samples.append(
-            {
-                "content": content,
-                "output1": output_1,
-                "output2": output_2,
-                "cot1": cot_1_value,
-                "cot2": cot_2_value,
-                "signature1": signature_1_value,
-                "signature2": signature_2_value,
-                "metadata": {
+            PairwiseSample(
+                content = content,
+                output1 = output_1,
+                output2 = output_2,
+                cot1 = cot_1_value,
+                cot2 = cot_2_value,
+                signature1 = signature_1_value,
+                signature2 = signature_2_value,
+                metadata = {
                     **metadata,
                     "correct_answer": "1",
                 },
-            }
+            )
         )
 
         # Sample 2: Treatment 2 output first (position 1)
         samples.append(
-            {
-                "content": content,
-                "output1": output_2,
-                "output2": output_1,
-                "cot1": cot_2_value,  # Swapped because output1 is now output_2
-                "cot2": cot_1_value,  # Swapped because output2 is now output_1
-                "signature1": signature_2_value,  # Swapped
-                "signature2": signature_1_value,  # Swapped
-                "metadata": {
+            PairwiseSample(
+                content = content,
+                output1 = output_2,
+                output2 = output_1,
+                cot1 = cot_2_value,  # Swapped because output1 is now output_2
+                cot2 = cot_1_value,  # Swapped because output2 is now output_1
+                signature1 = signature_2_value,  # Swapped
+                signature2 = signature_1_value,  # Swapped
+                metadata = {
                     **metadata,
                     "correct_answer": "2",
                 },
-            }
+            )
         )
 
     if skipped_uuids:
@@ -188,7 +207,7 @@ def load_dataset_individual(
     dataset_name: str,
     data_subset: str,
     is_control: bool = True,
-) -> List[Dict[str, Any]]:
+) -> list[IndividualSample]:
     """
     Load and prepare dataset for individual evaluation.
 
@@ -260,16 +279,16 @@ def load_dataset_individual(
             )
 
         samples.append(
-            {
-                "content": content,
-                "output": output,
-                "metadata": {
+            IndividualSample(
+                content = content,
+                output = output,
+                metadata = {
                     **metadata,
                     "correct_answer": correct_answer_1,
                     "correct_choice_token": "1",
                     "incorrect_choice_token": "2",
                 },
-            }
+            )
         )
 
         # Sample 2: correct_choice_token = "2", incorrect_choice_token = "1"
@@ -283,16 +302,16 @@ def load_dataset_individual(
             )
 
         samples.append(
-            {
-                "content": content,
-                "output": output,
-                "metadata": {
+            IndividualSample(
+                content = content,
+                output = output,
+                metadata = {
                     **metadata,
                     "correct_answer": correct_answer_2,
                     "correct_choice_token": "2",
                     "incorrect_choice_token": "1",
                 },
-            }
+            )
         )
 
     if skipped_uuids:
