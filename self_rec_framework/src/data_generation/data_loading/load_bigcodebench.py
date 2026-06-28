@@ -34,7 +34,7 @@ import uuid
 from datasets import load_dataset
 
 from self_rec_framework.src.helpers.constants import MY_DATASET_NAMESPACE
-from self_rec_framework.src.helpers.utils import save_json, data_dir
+from self_rec_framework.src.helpers.utils import save_json, data_dir, parse_range
 
 
 def load_bigcodebench_data(
@@ -105,15 +105,17 @@ def load_bigcodebench_data(
     skipped_count = 0
 
     # Determine which prompt field to use
-    prompt_field = "instruct_prompt" if prompt_type == "instruct" else "complete_prompt"
+    if prompt_type == "instruct":
+        prompt_field = "instruct_prompt"
+        fallback_field = "complete_prompt"
+    else:
+        prompt_field = "complete_prompt"
+        fallback_field = "instruct_prompt"
 
     for idx, sample in enumerate(dataset):
         # Get the prompt based on prompt_type
         if prompt_field not in sample:
             # Fallback: try the other prompt type if available
-            fallback_field = (
-                "complete_prompt" if prompt_type == "instruct" else "instruct_prompt"
-            )
             if fallback_field in sample:
                 prompt = sample[fallback_field]
                 print(
@@ -138,7 +140,7 @@ def load_bigcodebench_data(
         else:
             skipped_count += 1
 
-        if (idx + 1) % 1000 == 0:
+        if (idx + 1) % 1000 == 0 or idx == len(dataset) - 1: # mod 1000 for progress updates, last sample for final update
             print(f"  Processed {idx + 1}/{len(dataset)} samples...")
 
     if skipped_count > 0:
@@ -156,20 +158,6 @@ def load_bigcodebench_data(
     print(f"  - Samples: {len(input_dict)}")
     print("  - Content: Code generation prompts from BigCodeBench")
     print("  - Task: Code generation")
-
-
-def parse_range(range_str: str) -> tuple[int, int]:
-    """Parse a range string like '5-15' into a tuple of (start, end)."""
-    try:
-        parts = range_str.split("-")
-        if len(parts) != 2:
-            raise ValueError
-        start, end = int(parts[0]), int(parts[1])
-        return (start, end)
-    except (ValueError, AttributeError):
-        raise argparse.ArgumentTypeError(
-            f"Range must be in format 'START-END' (e.g., '5-15'), got: {range_str}"
-        )
 
 
 def main():
