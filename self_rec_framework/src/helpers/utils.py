@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 
 
 def project_root() -> Path:
@@ -18,7 +18,7 @@ def data_dir() -> Path:
     return project_root() / "data"
 
 
-def load_json(file_path: Path) -> Dict[str, Any]:
+def load_json(file_path: Path) -> dict[str, Any]:
     """Read the json file at the given path."""
     with open(file_path, "r") as f:
         return json.load(f)
@@ -50,7 +50,7 @@ def rollout_eval_log_dir(
 
 def load_rollout_json(
     dataset_name: str, model_name: str, generation_string: str
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Read the rollout json file for a given dataset, model, and generation string."""
     return load_json(
         rollout_json_file_path(dataset_name, model_name, generation_string)

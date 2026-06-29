@@ -1,6 +1,6 @@
 """Data loading utilities for self-recognition tasks."""  # mistral 24b llama 70b qwen instruct
 
-from typing import List, Dict, Any
+from typing import Any
 
 from self_rec_framework.src.helpers.utils import data_dir, load_json
 from self_rec_framework.src.helpers.model_names import is_thinking_model
@@ -11,7 +11,7 @@ def load_dataset_pairwise(
     treatment_name_2: str,
     dataset_name: str,
     data_subset: str,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Load and prepare dataset for pairwise comparison.
 
@@ -188,7 +188,7 @@ def load_dataset_individual(
     dataset_name: str,
     data_subset: str,
     is_control: bool = True,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Load and prepare dataset for individual evaluation.
 

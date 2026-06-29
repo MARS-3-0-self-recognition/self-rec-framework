@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass
 import yaml
-from typing import Optional
 from pathlib import Path
 from self_rec_framework.src.helpers.utils import project_root, package_root
 
@@ -20,28 +19,28 @@ class ExperimentConfig:
     # When "CoT", the actual prompt variant is determined by model type:
     #   - Thinking models (-thinking suffix) → "CoT-R" (trained reasoning)
     #   - Instruct models → "CoT-I" (prompted reasoning)
-    evaluator_reasoning: Optional[str] = None
-    dataset_name: Optional[str] = (
+    evaluator_reasoning: str | None = None
+    dataset_name: str | None = (
         None  # Optional, will be inferred from dataset path if not provided
     )
 
     # Generation parameters
-    temperature: Optional[float] = None  # Evaluator inference temperature
-    generator_temperature: Optional[float] = None  # Data generation temperature (for dir lookup)
-    max_final_answer_tokens: Optional[int] = None
-    max_thinking_tokens: Optional[int] = (
+    temperature: float | None = None  # Evaluator inference temperature
+    generator_temperature: float | None = None  # Data generation temperature (for dir lookup)
+    max_final_answer_tokens: int | None = None
+    max_thinking_tokens: int | None = (
         None  # Max tokens for thinking models (default: 8192)
     )
-    seed: Optional[int] = None
+    seed: int | None = None
 
     # Reasoning parameters for thinking models
-    reasoning_effort: Optional[str] = (
+    reasoning_effort: str | None = (
         "high"  # OpenAI: "low", "medium", "high" (default: "high")
     )
-    reasoning_summary: Optional[str] = (
+    reasoning_summary: str | None = (
         None  # OpenAI: None, "auto", "last", "concise" (default: None)
     )
-    reasoning_history: Optional[str] = "all"  # "all" or "none" (default: "all")
+    reasoning_history: str | None = "all"  # "all" or "none" (default: "all")
 
     # Prompt variant selection
     # Controls how generator outputs are inserted into UT transcripts
@@ -49,12 +48,12 @@ class ExperimentConfig:
     #   FA = Final Answer only
     #   RT-FA = Reasoning Trace + Final Answer
     #   RT = Reasoning Trace only
-    generator_output: Optional[str] = None
+    generator_output: str | None = None
 
     # Built prompts (set after initialization)
-    generation_prompt: Optional[str] = None
-    SR_task_prompt: Optional[str] = None
-    system_prompt: Optional[str] = None
+    generation_prompt: str | None = None
+    SR_task_prompt: str | None = None
+    system_prompt: str | None = None
 
     def is_pairwise(self) -> bool:
         """Check if this is a pairwise task (PW-*) vs individual (IND-*)."""
