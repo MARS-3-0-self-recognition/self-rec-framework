@@ -1,4 +1,4 @@
-"""Data loading utilities for self-recognition tasks."""  # mistral 24b llama 70b qwen instruct
+"""Data loading utilities for self-recognition tasks."""
 
 from typing import Any
 
