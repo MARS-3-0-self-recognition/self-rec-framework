@@ -36,9 +36,22 @@ for DIR in "$@"; do
     # Exclude config.sh (shared config, sourced not run) and run_*.sh entry
     # points (run_sweep.sh / run_all_analyses.sh etc.) — those invoke THIS
     # runner, so executing them here would recurse or double-run.
-    SCRIPTS=$(find "$DIR" -maxdepth 1 -name "*.sh" -type f -not -name "config.sh" -not -name "run_*.sh" | sort)
+    # Collect .sh scripts via a sorted glob (alphabetical, and space-safe:
+    # pathname expansion is NOT subject to word-splitting), excluding config.sh
+    # (sourced, not run) and run_*.sh entry points (they invoke this runner).
+    # This replaces `for script in $(find ...)`, which word-splits the paths on
+    # any space in the directory (e.g. ".../My Project/..."). Bash-array syntax
+    # used here is portable back to bash 3.2 (the default /bin/bash on macOS).
+    SCRIPTS=()
+    for script in "$DIR"/*.sh; do
+        [ -e "$script" ] || continue          # no matches -> literal glob, skip
+        case "$(basename "$script")" in
+            config.sh|run_*.sh) continue ;;
+        esac
+        SCRIPTS+=("$script")
+    done
 
-    if [ -z "$SCRIPTS" ]; then
+    if [ ${#SCRIPTS[@]} -eq 0 ]; then
         echo "No bash scripts found in '$DIR'"
         continue
     fi
@@ -48,10 +61,10 @@ for DIR in "$@"; do
     echo "======================================================================"
 
     # Count scripts in current directory
-    TOTAL_DIR=$(echo "$SCRIPTS" | wc -l)
+    TOTAL_DIR=${#SCRIPTS[@]}
     CURRENT_DIR=0
 
-    for script in $SCRIPTS; do
+    for script in "${SCRIPTS[@]}"; do
         CURRENT_DIR=$((CURRENT_DIR + 1))
         TOTAL_ALL=$((TOTAL_ALL + 1))
         
