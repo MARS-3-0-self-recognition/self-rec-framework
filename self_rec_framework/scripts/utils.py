@@ -547,7 +547,16 @@ def weighted_regression_with_ci(x, y, weights=None, confidence=0.95, x_min=None,
     
     if len(x) < 2:
         return None
-    
+
+    # Degenerate input: a constant x (zero variance — e.g. every model at the same
+    # performance) makes the slope undefined and breaks the fit. statsmodels'
+    # add_constant skips the intercept for constant input at fit time but adds it
+    # for the (non-constant) prediction grid, so the two design matrices disagree
+    # and get_prediction raises a shape error. Skip the regression; the caller
+    # renders the scatter without a trendline.
+    if np.ptp(x) < 1e-10:
+        return None
+
     # Fit weighted regression
     X = sm.add_constant(x)
     model = sm.WLS(y, X, weights=weights).fit()

@@ -443,8 +443,27 @@ def main():
         help="Metric name for axis labels/titles (e.g., 'Recognition Accuracy', 'F1 Score'). "
         "Auto-detected from filename if not provided.",
     )
+    parser.add_argument(
+        "--figures",
+        type=str,
+        default="all",
+        help="Comma-separated figure basenames (no extension) to generate, or "
+        "'all' (default). This script owns: dataset_averages, "
+        "dataset_above_chance, model_variance. If none of these are requested "
+        "the script produces nothing.",
+    )
 
     args = parser.parse_args()
+
+    # Figure selection: None => generate everything; otherwise only the named
+    # basenames (the .png stem of each figure).
+    selected_figures = (
+        None
+        if args.figures.strip().lower() == "all"
+        else {f.strip() for f in args.figures.split(",") if f.strip()}
+    )
+    def want_figure(name: str) -> bool:
+        return selected_figures is None or name in selected_figures
 
     # Restore -set from placeholder
     args.model_names = [
@@ -466,6 +485,19 @@ def main():
             metric_name = "Recognition Accuracy"
     # Output file prefix for non-default metrics
     file_prefix = "f1_" if "f1" in metric_name.lower() else ""
+
+    # Figures this script owns (with the metric prefix applied).
+    owned_figures = {
+        f"{file_prefix}dataset_averages",
+        f"{file_prefix}dataset_above_chance",
+        f"{file_prefix}model_variance",
+    }
+    if selected_figures is not None and not (owned_figures & selected_figures):
+        print(
+            "Skipping performance-contrast figures — none of "
+            f"{sorted(owned_figures)} were requested in --figures."
+        )
+        return
 
     # Validate file exists
     if not aggregated_file.exists():
@@ -537,36 +569,39 @@ def main():
     variance_df.to_csv(variance_path)
     print(f"  ✓ Saved model variance to: {variance_path}\n")
 
-    # Generate plots
-    averages_plot_path = output_dir / f"{file_prefix}dataset_averages.png"
-    plot_dataset_bar_chart(
-        averages,
-        std_devs,
-        averages_plot_path,
-        title=f"Average {metric_name} per Dataset",
-        ylabel=f"Average {metric_name} (Across All Models)",
-        experiment_title=experiment_title,
-    )
-    print()
+    # Generate plots (subject to --figures selection)
+    if want_figure(f"{file_prefix}dataset_averages"):
+        averages_plot_path = output_dir / f"{file_prefix}dataset_averages.png"
+        plot_dataset_bar_chart(
+            averages,
+            std_devs,
+            averages_plot_path,
+            title=f"Average {metric_name} per Dataset",
+            ylabel=f"Average {metric_name} (Across All Models)",
+            experiment_title=experiment_title,
+        )
+        print()
 
-    above_chance_plot_path = output_dir / f"{file_prefix}dataset_above_chance.png"
-    plot_above_chance_bar_chart(
-        above_chance_pct,
-        above_chance_plot_path,
-        title=f"Percentage of Models Above Chance (0.5) per Dataset ({metric_name})",
-        experiment_title=experiment_title,
-    )
-    print()
+    if want_figure(f"{file_prefix}dataset_above_chance"):
+        above_chance_plot_path = output_dir / f"{file_prefix}dataset_above_chance.png"
+        plot_above_chance_bar_chart(
+            above_chance_pct,
+            above_chance_plot_path,
+            title=f"Percentage of Models Above Chance (0.5) per Dataset ({metric_name})",
+            experiment_title=experiment_title,
+        )
+        print()
 
     # Generate model variance chart
-    variance_plot_path = output_dir / f"{file_prefix}model_variance.png"
-    plot_model_variance_chart(
-        model_variances,
-        variance_plot_path,
-        title=f"Variance of Model {metric_name} Across Datasets",
-        experiment_title=experiment_title,
-    )
-    print()
+    if want_figure(f"{file_prefix}model_variance"):
+        variance_plot_path = output_dir / f"{file_prefix}model_variance.png"
+        plot_model_variance_chart(
+            model_variances,
+            variance_plot_path,
+            title=f"Variance of Model {metric_name} Across Datasets",
+            experiment_title=experiment_title,
+        )
+        print()
 
     # Display preview
     print(f"{'='*70}")
