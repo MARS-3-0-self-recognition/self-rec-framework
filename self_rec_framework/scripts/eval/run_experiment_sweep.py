@@ -24,7 +24,7 @@ from self_rec_framework.scripts.eval.run_experiment import (
     parse_dataset_path,
     check_rollout_exists,
 )
-from self_rec_framework.src.inspect.tasks import get_task_function, _is_always_reasoning_model
+from self_rec_framework.src.inspect.tasks import get_task_function, _is_always_reasoning_model, ContextWindowExceededError
 from self_rec_framework.src.inspect.config import load_experiment_config
 from self_rec_framework.src.helpers.model_names import is_thinking_model, get_data_model_name, INSPECT_MODEL_NAMES, temp_suffix
 from self_rec_framework.scripts.utils import expand_model_names
@@ -76,6 +76,71 @@ def _collect_partial_results(log_dir: Path, eval_logs: list, descriptions: list[
         print(f"  ⚠ Could not recover partial results: {e}")
 
 
+def _print_context_skipped(context_skipped: list) -> None:
+    """Report evaluators skipped because the prompt exceeded their context
+    window. Prints nothing when the list is empty."""
+    if not context_skipped:
+        return
+    print(f"\n{'=' * 70}")
+    print(f"⚠ SKIPPED — CONTEXT WINDOW TOO SMALL ({len(context_skipped)})")
+    print(f"{'=' * 70}")
+    print("These evaluations did NOT run — the model's context can't fit the prompt:")
+    for model_name, where, _reason in context_skipped:
+        print(f"  ✗ {model_name} on {where}")
+    print("Use a longer-context model (or shorter inputs) for these.")
+    print(f"{'=' * 70}")
+
+
+def _matching_eval_logs(
+    shared_log_dir: Path,
+    task_name: str,
+    model_name: str,
+    treatment_name_control: str,
+    treatment_name_treatment: str | None,
+) -> list:
+    """Return existing .eval logs in shared_log_dir that exactly match this task.
+
+    Globs by task name, then parses filenames so a substring glob match can't
+    produce a false positive.
+
+    inspect_ai substitutes "_" with "-" in log filenames, so both the glob and
+    the comparison are normalized to the dashed form. Without this, any control
+    or treatment name containing "_" (e.g. a "_temp_0.0" suffix or "_caps_S2"
+    treatment) never matches, so existing logs are neither skipped nor cleaned
+    up on overwrite.
+    """
+    from self_rec_framework.scripts.analysis.recognition_accuracy import parse_eval_filename
+
+    def dash(s):
+        return s.replace("_", "-") if s else s
+
+    task_glob = dash(task_name)
+    want_evaluator = dash(model_name)
+    want_control = dash(treatment_name_control)
+    want_treatment = dash(treatment_name_treatment)
+
+    matches = []
+    for log_file in shared_log_dir.glob(f"*{task_glob}*.eval"):
+        parsed = parse_eval_filename(log_file.name)
+        if not parsed:
+            continue
+        parsed_evaluator, parsed_control, parsed_treatment = parsed
+        if treatment_name_treatment:
+            ok = (
+                dash(parsed_evaluator) == want_evaluator
+                and dash(parsed_control) == want_control
+                and dash(parsed_treatment) == want_treatment
+            )
+        else:
+            ok = (
+                dash(parsed_evaluator) == want_evaluator
+                and dash(parsed_control) == want_control
+            )
+        if ok:
+            matches.append(log_file)
+    return matches
+
+
 def _add_task_if_needed(
     tasks_to_run: list,
     exp_config,
@@ -90,6 +155,7 @@ def _add_task_if_needed(
     overwrite: bool,
     shared_log_dir: Path,
     skip_batch_in_progress: bool = False,
+    context_skipped: list | None = None,
 ):
     """
     Helper to add a task to the list if it doesn't already exist (or if overwrite=True).
@@ -117,37 +183,22 @@ def _add_task_if_needed(
             f"{model_name}-eval-on-{treatment_name_control}-{control_or_treatment}"
         )
 
-    # Check if already exists (look for log files with this task name in shared log dir)
+    # Existing logs that exactly match this task (used to skip, or to clean up
+    # before a forced re-run).
+    existing_logs = _matching_eval_logs(
+        shared_log_dir, task_name, model_name,
+        treatment_name_control, treatment_name_treatment,
+    )
+
+    if overwrite:
+        # Forcing a re-run: delete stale matching logs so the fresh run replaces
+        # them. Inspect writes a new timestamped file each run, so without this
+        # the previous (possibly broken) log lingers alongside the new one and
+        # pollutes downstream analysis.
+        for old_log in existing_logs:
+            old_log.unlink()
+
     if not overwrite:
-        # Use glob to find potential matches, but verify exact match by parsing filename
-        potential_logs = list(shared_log_dir.glob(f"*{task_name}*.eval"))
-        existing_logs = []
-
-        # Verify exact match by parsing filenames
-        from self_rec_framework.scripts.analysis.recognition_accuracy import parse_eval_filename
-
-        for log_file in potential_logs:
-            parsed = parse_eval_filename(log_file.name)
-            if parsed:
-                parsed_evaluator, parsed_control, parsed_treatment = parsed
-                # Check if this matches exactly what we're looking for
-                if treatment_name_treatment:
-                    # Pairwise: check evaluator, control, and treatment all match
-                    if (
-                        parsed_evaluator == model_name
-                        and parsed_control == treatment_name_control
-                        and parsed_treatment == treatment_name_treatment
-                    ):
-                        existing_logs.append(log_file)
-                else:
-                    # Non-pairwise: check evaluator and control match
-                    # (treatment will be None in this case)
-                    if (
-                        parsed_evaluator == model_name
-                        and parsed_control == treatment_name_control
-                    ):
-                        existing_logs.append(log_file)
-
         if existing_logs:
             # Check status of existing log - only skip if successful
             from inspect_ai.log import read_eval_log
@@ -242,16 +293,24 @@ def _add_task_if_needed(
             return
 
     # Create task with custom name
-    task = get_task_function(
-        exp_config=exp_config,
-        model_name=model_name,
-        treatment_name_control=treatment_name_control,
-        treatment_name_treatment=treatment_name_treatment,
-        dataset_name=dataset_name,
-        data_subset=data_subset,
-        is_control=is_control,
-        task_name=task_name,
-    )
+    try:
+        task = get_task_function(
+            exp_config=exp_config,
+            model_name=model_name,
+            treatment_name_control=treatment_name_control,
+            treatment_name_treatment=treatment_name_treatment,
+            dataset_name=dataset_name,
+            data_subset=data_subset,
+            is_control=is_control,
+            task_name=task_name,
+        )
+    except ContextWindowExceededError as e:
+        # Evaluator's context can't fit this prompt — skip it (don't abort the
+        # whole sweep) and record it for the end-of-run summary.
+        print(f"  ✗ {description}: {e}")
+        if context_skipped is not None:
+            context_skipped.append((model_name, f"{dataset_name}/{data_subset}", str(e)))
+        return
 
     tasks_to_run.append((task, description))
     print(f"  ✓ {description}: added to sweep")
@@ -301,6 +360,125 @@ def discover_datasets(dataset_dir_path: Path) -> dict[str, list[str]]:
         "caps_treatments": {k: sorted(v) for k, v in caps_treatments.items()},
         "typos_treatments": {k: sorted(v) for k, v in typos_treatments.items()},
     }
+
+
+def _run_mmlu_sweep(
+    model_names: list[str],
+    exp_config,
+    dataset_name: str,
+    data_subset: str,
+    experiment_config_path: str,
+    overwrite: bool,
+    batch,
+    max_tasks: int,
+    yes: bool,
+):
+    """MMLU-MC sweep: one task per evaluator, no treatment pair, no data files to check.
+
+    Reuses inspect_ai's eval() and the shared-log-dir convention so analyzer
+    tooling (find_eval_logs in scripts/ica/analyze_ica.py) can locate the logs
+    exactly as for SGTR-ICA runs.
+    """
+    from self_rec_framework.src.inspect.tasks import get_task_function
+    from self_rec_framework.src.helpers.utils import data_dir
+
+    experiment_name = Path(experiment_config_path).resolve().parent.name
+    # When the config declares explicit experiment_name + mini_batch_name,
+    # nest the output path: {subset}/{experiment_name}/{mini_batch_name}/.
+    # Otherwise keep the legacy single-level layout.
+    mini_batch_name = getattr(exp_config, "mini_batch_name", None)
+    cfg_experiment_name = getattr(exp_config, "experiment_name", None)
+    if cfg_experiment_name and mini_batch_name:
+        experiment_name = cfg_experiment_name
+        shared_log_dir = (
+            data_dir() / "results" / dataset_name / data_subset
+            / experiment_name / mini_batch_name
+        )
+    else:
+        shared_log_dir = (
+            data_dir() / "results" / dataset_name / data_subset / experiment_name
+        )
+    shared_log_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"\n{'=' * 70}")
+    print("MMLU-MC SWEEP (capabilities-control ICA)")
+    print(f"{'=' * 70}")
+    print(f"Dataset: {dataset_name}/{data_subset}")
+    print(f"Experiment: {experiment_name}")
+    print(f"Evaluator models: {len(model_names)} — {', '.join(model_names)}")
+    print(f"ICA: icl_model={exp_config.icl_model}, icl_count={exp_config.icl_count}, "
+          f"icl_dataset={exp_config.icl_dataset}/{exp_config.icl_data_subset}")
+    print(f"Log directory: {shared_log_dir}")
+    print(f"{'=' * 70}\n")
+
+    tasks_to_run: list = []
+    context_skipped: list = []
+    for model_name in model_names:
+        task_name = f"{model_name}-eval-on-mmlu-{data_subset}"
+        # Skip if already complete (mirror _add_task_if_needed's success-only skip).
+        # inspect_ai substitutes underscores with dashes in log filenames, so glob
+        # against the dashed form.
+        glob_name = task_name.replace("_", "-")
+        existing = list(shared_log_dir.glob(f"*{glob_name}*.eval"))
+        if overwrite:
+            # Forcing a re-run: delete stale logs so the fresh run replaces them.
+            for p in existing:
+                p.unlink()
+        if not overwrite:
+            if existing:
+                try:
+                    log = read_eval_log(str(existing[0]), header_only=True)
+                    if log.status == "success":
+                        print(f"  ⊘ {model_name}: already complete, skipping")
+                        continue
+                    else:
+                        print(f"  ↻ {model_name}: prior status={log.status}, re-running")
+                        for p in existing:
+                            p.unlink()
+                except Exception:
+                    print(f"  ⚠ {model_name}: corrupt log, re-running")
+                    for p in existing:
+                        p.unlink()
+
+        try:
+            task = get_task_function(
+                exp_config=exp_config,
+                model_name=model_name,
+                treatment_name_control="mmlu",
+                treatment_name_treatment=None,
+                dataset_name=dataset_name,
+                data_subset=data_subset,
+                is_control=True,
+                task_name=task_name,
+            )
+        except ContextWindowExceededError as e:
+            print(f"  ✗ {model_name}: {e}")
+            context_skipped.append((model_name, f"{dataset_name}/{data_subset}", str(e)))
+            continue
+        tasks_to_run.append((task, model_name))
+        print(f"  ✓ {model_name}: added to sweep")
+
+    if not tasks_to_run:
+        print("\n⊘ No evaluations to run\n")
+        _print_context_skipped(context_skipped)
+        return
+
+    print(f"\nREADY TO RUN: {len(tasks_to_run)} MMLU evaluations\n")
+    if not yes:
+        if input("Continue? (y/n): ").strip().lower() != "y":
+            print("\n✗ Aborted by user.\n")
+            return
+
+    tasks = [t for t, _ in tasks_to_run]
+    try:
+        eval(
+            tasks,
+            log_dir=str(shared_log_dir),
+            max_tasks=max_tasks,
+            batch=batch,
+        )
+    except Exception as e:
+        print(f"\n⚠ Error during MMLU sweep: {str(e)[:300]}\n")
 
 
 def run_sweep_experiment(
@@ -364,7 +542,29 @@ def run_sweep_experiment(
     import yaml as _yaml
     with open(experiment_config) as _f:
         _raw_config = _yaml.safe_load(_f)
+    # The experiment config may declare `overwrite: true` as a default; the CLI
+    # --overwrite flag (when passed) still forces it on.
+    overwrite = overwrite or bool(_raw_config.get("overwrite", False))
     gpu_dispatch = _raw_config.get("gpu_dispatch")
+
+    # hf/ evaluator models are called live during eval and need GPU execution.
+    # Require an explicit dispatch (same protocol as the gen sweep) rather than
+    # silently running them on the local machine. Generator models are excluded:
+    # their outputs are pre-generated data, not called here.
+    def _resolves_to_hf(name: str) -> bool:
+        route = INSPECT_MODEL_NAMES.get(name, "")
+        if not route and name.endswith("-thinking"):
+            route = INSPECT_MODEL_NAMES.get(name.removesuffix("-thinking"), "")
+        return route.startswith("hf/")
+
+    hf_evaluators = [m for m in model_names if _resolves_to_hf(m)]
+    if hf_evaluators and gpu_dispatch not in ("local", "tinker"):
+        raise ValueError(
+            f"hf/ evaluator models require an explicit 'gpu_dispatch' in the config: "
+            f"{', '.join(hf_evaluators)}. Set gpu_dispatch to 'local' (run on this "
+            f"machine's GPU) or 'tinker' (Tinker OAI proxy)."
+        )
+
     if gpu_dispatch == "tinker":
         tinker_base_url = "https://tinker.thinkingmachines.dev/services/tinker-prod/oai/api/v1"
         tinker_key = os.environ.get("TINKER_API_KEY", "")
@@ -378,23 +578,33 @@ def run_sweep_experiment(
                 base = model_name.removesuffix("-thinking")
                 inspect_name = INSPECT_MODEL_NAMES.get(base, "")
             if inspect_name.startswith("hf/"):
+                # Strip only the hf/ route prefix; preserve HF-org namespace.
+                # Tinker's OAI proxy expects the full HF repo ID, e.g.
+                # "openai/gpt-oss-20b" or "Qwen/Qwen3-30B-A3B-Instruct-2507".
+                # We prepend another "openai/" so inspect_ai parses provider=openai
+                # but still forwards the full "openai/gpt-oss-20b" to Tinker.
                 hf_model_id = inspect_name.removeprefix("hf/")
-                for prefix in ("openai/", "anthropic/", "google/", "together/"):
-                    if hf_model_id.startswith(prefix):
-                        hf_model_id = hf_model_id.removeprefix(prefix)
-                        break
                 INSPECT_MODEL_NAMES[model_name] = f"openai/{hf_model_id}"
                 if model_name.endswith("-thinking"):
                     base = model_name.removesuffix("-thinking")
                     INSPECT_MODEL_NAMES[base] = f"openai/{hf_model_id}"
                 print(f"  Tinker: {model_name} -> openai/{hf_model_id}")
 
-        # Also remap trained model names (contain _sft-as_)
-        for model_name in list(model_names):
-            if "_sft-as_" in model_name:
-                # Trained models aren't in INSPECT_MODEL_NAMES — they use Tinker
-                # checkpoints via the eval task's model resolution
-                pass
+    # MMLU-MC format has no treatment/control pair — skip the dataset discovery
+    # and run one task per evaluator with a placeholder treatment name.
+    if exp_config.format == "MMLU-MC":
+        _run_mmlu_sweep(
+            model_names=model_names,
+            exp_config=exp_config,
+            dataset_name=dataset_name,
+            data_subset=data_subset,
+            experiment_config_path=experiment_config,
+            overwrite=overwrite,
+            batch=batch,
+            max_tasks=max_tasks,
+            yes=yes,
+        )
+        return
 
     # Discover available datasets
     datasets = discover_datasets(dataset_path)
@@ -405,9 +615,21 @@ def run_sweep_experiment(
     # Create shared log directory for all tasks
     from self_rec_framework.src.helpers.utils import data_dir
 
-    shared_log_dir = (
-        data_dir() / "results" / dataset_name / data_subset / experiment_name
-    )
+    # When the config declares explicit experiment_name + mini_batch_name,
+    # nest the output path: {subset}/{experiment_name}/{mini_batch_name}/.
+    # Otherwise keep the legacy single-level layout.
+    mini_batch_name = getattr(exp_config, "mini_batch_name", None)
+    cfg_experiment_name = getattr(exp_config, "experiment_name", None)
+    if cfg_experiment_name and mini_batch_name:
+        experiment_name = cfg_experiment_name
+        shared_log_dir = (
+            data_dir() / "results" / dataset_name / data_subset
+            / experiment_name / mini_batch_name
+        )
+    else:
+        shared_log_dir = (
+            data_dir() / "results" / dataset_name / data_subset / experiment_name
+        )
     shared_log_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"\n{'=' * 70}")
@@ -449,19 +671,40 @@ def run_sweep_experiment(
         print("\n⊘ No valid models to evaluate (all require -thinking suffix)")
         return
 
+    # generator_temperature determines which data dirs to use (e.g. _temp_0.0).
+    # The eval config's 'temperature' field controls evaluator inference only.
+    # Generator data is saved under {model}{temp_suffix}, so all membership
+    # checks against the on-disk dirs must honor the suffix.
+    gen_temp = exp_config.generator_temperature if hasattr(exp_config, 'generator_temperature') else None
+    gen_temp_sfx = temp_suffix(gen_temp)
+
+    def _resolve_data_dir(data_model):
+        """Return the on-disk data dir name for a model, honoring the generator
+        temperature suffix with a fallback to the unsuffixed name (backward
+        compat). Returns None if neither exists in this dataset."""
+        suffixed = data_model + gen_temp_sfx
+        if suffixed in datasets["base_models"]:
+            return suffixed
+        if data_model in datasets["base_models"]:
+            return data_model
+        return None
+
     # Validate models exist (check data model name for COT-I models)
     for model in model_names:
         data_model = get_data_model_name(model)
-        if data_model not in datasets["base_models"]:
+        if _resolve_data_dir(data_model) is None:
             if data_model != model:
                 print(
-                    f"Warning: Data for '{model}' (COT-I, uses '{data_model}') not found in {dataset_dir_path}"
+                    f"Warning: Data for '{model}' (COT-I, uses '{data_model}{gen_temp_sfx}') not found in {dataset_dir_path}"
                 )
             else:
-                print(f"Warning: Model '{model}' not found in {dataset_dir_path}")
+                print(f"Warning: Model '{model}{gen_temp_sfx}' not found in {dataset_dir_path}")
 
     # Build list of all evaluation tasks
     tasks_to_run = []  # List of (Task, description) tuples
+    # (model, dataset/subset, reason) for evaluators whose context can't fit the
+    # prompt — collected here and reported in the end-of-run summary.
+    context_skipped: list = []
 
     print("Building evaluation task list...\n")
 
@@ -470,21 +713,16 @@ def run_sweep_experiment(
         data_model_name = get_data_model_name(model_name)
         is_cot_i = data_model_name != model_name
 
-        if data_model_name not in datasets["base_models"]:
+        control_dir_name = _resolve_data_dir(data_model_name)
+        if control_dir_name is None:
             print(
-                f"  ✗ Model data not found for {model_name} (looked for {data_model_name}), skipping all evaluations"
+                f"  ✗ Model data not found for {model_name} (looked for {data_model_name + gen_temp_sfx}), skipping all evaluations"
             )
             continue
 
         if is_cot_i:
             print(f"  ℹ {model_name} is COT-I, using data from {data_model_name}")
 
-        # Apply generator temperature suffix for data directory lookup.
-        # generator_temperature determines which data dirs to use (e.g., _temp_0.0).
-        # The eval config's 'temperature' field controls evaluator inference only.
-        gen_temp = exp_config.generator_temperature if hasattr(exp_config, 'generator_temperature') else None
-        gen_temp_sfx = temp_suffix(gen_temp)
-        control_dir_name = data_model_name + gen_temp_sfx
         control_path = (
             f"data/input/{dataset_name}/{data_subset}/{control_dir_name}/data.json"
         )
@@ -495,22 +733,34 @@ def run_sweep_experiment(
             # Determine target models (generators)
             # If generator_models provided, compare against them (excluding self)
             # Else, compare against all other evaluators (excluding self)
+            # Exclude both the literal evaluator name AND its resolved data-model
+            # (so trained evaluators don't get paired against their own base model,
+            # which would produce a useless self-vs-self comparison).
             if generator_models:
-                other_models = [m for m in generator_models if m != model_name]
-                should_run_control = model_name in generator_models
+                other_models = [
+                    m for m in generator_models
+                    if m != model_name and get_data_model_name(m) != data_model_name
+                ]
+                # For IND control: check if evaluator's base model is in generators
+                # (trained evaluators won't match by literal name but their
+                # resolved data model should)
+                should_run_control = (
+                    model_name in generator_models
+                    or data_model_name in [get_data_model_name(g) for g in generator_models]
+                )
             else:
-                other_models = [m for m in model_names if m != model_name]
+                other_models = [
+                    m for m in model_names
+                    if m != model_name and get_data_model_name(m) != data_model_name
+                ]
                 should_run_control = True
 
             for other_model in other_models:
                 # Get data model name for other model too
                 other_data_model = get_data_model_name(other_model)
-                other_dir_name = other_data_model + gen_temp_sfx
-                if other_dir_name not in datasets["base_models"]:
-                    # Fall back to name without suffix (backward compat)
-                    if other_data_model not in datasets["base_models"]:
-                        continue
-                    other_dir_name = other_data_model
+                other_dir_name = _resolve_data_dir(other_data_model)
+                if other_dir_name is None:
+                    continue
 
                 _, _, treatment_name_treat = parse_dataset_path(
                     f"data/input/{dataset_name}/{data_subset}/{other_dir_name}/data.json"
@@ -533,6 +783,7 @@ def run_sweep_experiment(
                         overwrite,
                         shared_log_dir,
                         skip_batch_in_progress,
+                        context_skipped=context_skipped,
                     )
                 else:
                     # Individual: evaluate other model's data as treatment
@@ -550,6 +801,7 @@ def run_sweep_experiment(
                         overwrite,
                         shared_log_dir,
                         skip_batch_in_progress,
+                        context_skipped=context_skipped,
                     )
 
             # For individual mode, also evaluate control dataset (if appropriate)
@@ -569,6 +821,7 @@ def run_sweep_experiment(
                     overwrite,
                     shared_log_dir,
                     skip_batch_in_progress,
+                    context_skipped=context_skipped,
                 )
 
         elif treatment_type in ["caps", "typos"]:
@@ -600,18 +853,22 @@ def run_sweep_experiment(
                     overwrite,
                     shared_log_dir,
                     skip_batch_in_progress,
+                    context_skipped=context_skipped,
                 )
 
             for target_model in targets:
                 target_data_model = get_data_model_name(target_model)
-                
+                # Treatment dirs are keyed by the (suffixed) base data dir name,
+                # so resolve the temp suffix before looking up treatments.
+                target_base_dir = _resolve_data_dir(target_data_model) or target_data_model
+
                 treatment_dict = (
                     datasets["caps_treatments"]
                     if treatment_type == "caps"
                     else datasets["typos_treatments"]
                 )
-                
-                treatments = treatment_dict.get(target_data_model, [])
+
+                treatments = treatment_dict.get(target_base_dir, [])
 
                 if not treatments:
                     print(f"  No {treatment_type} treatments found for {target_model}")
@@ -626,7 +883,7 @@ def run_sweep_experiment(
                 
                 # If target != model_name, we need control_path to point to target's base data
                 target_control_path = (
-                    f"data/input/{dataset_name}/{data_subset}/{target_data_model}/data.json"
+                    f"data/input/{dataset_name}/{data_subset}/{target_base_dir}/data.json"
                 )
                 _, _, treatment_name_ctrl = parse_dataset_path(target_control_path)
 
@@ -646,6 +903,7 @@ def run_sweep_experiment(
                             overwrite,
                             shared_log_dir,
                             skip_batch_in_progress,
+                            context_skipped=context_skipped,
                         )
                     else:
                         # Individual: evaluate treatment as treatment
@@ -663,12 +921,14 @@ def run_sweep_experiment(
                             overwrite,
                             shared_log_dir,
                             skip_batch_in_progress,
+                            context_skipped=context_skipped,
                         )
 
     total_evals = len(tasks_to_run)
 
     if total_evals == 0:
         print("\n⊘ No evaluations to run (all skipped or already exist)")
+        _print_context_skipped(context_skipped)
         return
 
     # Separate models that don't support batch mode (Google Gemini, GPT-5/o-series)
@@ -708,8 +968,11 @@ def run_sweep_experiment(
 
         # Check if evaluator is a Together AI model by looking up inspect name
         is_together = False
+        is_tinker = False
         if evaluator_model in INSPECT_MODEL_NAMES:
             is_together = INSPECT_MODEL_NAMES[evaluator_model].startswith("together/")
+            # Tinker OAI proxy (LoRA samplers) doesn't implement OpenAI's batch API
+            is_tinker = "tinker://" in INSPECT_MODEL_NAMES[evaluator_model]
 
         if (
             is_gemini
@@ -718,6 +981,7 @@ def run_sweep_experiment(
             or is_o3
             or is_grok
             or is_together
+            or is_tinker
         ):
             no_batch_tasks.append(task)
             no_batch_descriptions.append(desc)
@@ -885,7 +1149,9 @@ def run_sweep_experiment(
         print(f"{'=' * 70}")
         print(f"Total evaluations: {total_evals}")
         print("⚠ No evaluations succeeded! Check errors above and retry.")
-        print(f"{'=' * 70}\n")
+        print(f"{'=' * 70}")
+        _print_context_skipped(context_skipped)
+        print()
         return
 
     # Check for any failures
@@ -923,7 +1189,9 @@ def run_sweep_experiment(
         if len(failed) > 10:
             print(f"  ... and {len(failed) - 10} more")
 
-    print(f"{'=' * 70}\n")
+    print(f"{'=' * 70}")
+    _print_context_skipped(context_skipped)
+    print()
 
 
 def main():

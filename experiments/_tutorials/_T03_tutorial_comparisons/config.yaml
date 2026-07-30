@@ -1,0 +1,13 @@
+# ============================================================================
+# MODELS  — evaluators to include in the contrast (read via the shared
+# scripts/utils/load_config.sh loader). The two experiments being compared are
+# taken from the comparison directory's name (<exp1>-vs-<exp2>).
+# ============================================================================
+model_names: ['-set', 'tutorial']
+
+# ============================================================================
+# ANALYSIS  — outputs of the comparison script.
+# figures_to_produce names the figure files (no extension) to emit; anything
+# not listed is skipped. Leave empty/omit to produce all.
+# ============================================================================
+figures_to_produce: ["performance_contrast_grouped"]

@@ -301,3 +301,124 @@ def load_dataset_individual(
         )
 
     return samples
+
+
+def load_dataset_mmlu(
+    dataset_name: str,
+    data_subset: str,
+) -> List[Dict[str, Any]]:
+    """Load MMLU multiple-choice questions in the framework's sample layout.
+
+    Reads data/input/{dataset_name}/{data_subset}/input.json where each entry is
+      "<uuid>": {"question", "choices", "answer", "subject"}
+    and returns one sample per question with a uuid in metadata. No per-model
+    data.json is read — ICA authors are looked up separately via load_icl_pool.
+    """
+    contents = load_json(
+        data_dir() / "input" / dataset_name / data_subset / "input.json"
+    )
+    samples: List[Dict[str, Any]] = []
+    for uuid, entry in contents.items():
+        samples.append(
+            {
+                "question": entry["question"],
+                "choices": list(entry["choices"]),
+                "answer": entry["answer"],
+                "subject": entry.get("subject"),
+                "metadata": {
+                    "uuid": uuid,
+                    "dataset_name": dataset_name,
+                    "data_subset": data_subset,
+                    "subject": entry.get("subject"),
+                    "correct_answer": entry["answer"],
+                },
+            }
+        )
+    return samples
+
+
+def load_icl_pool(
+    icl_model: str,
+    dataset_name: str,
+    data_subset: str,
+    exclude_uuids: set[str],
+) -> Dict[str, Dict[str, str]]:
+    """Load the full pool of available ICL QA pairs.
+
+    Returns a dict mapping uuid -> {"prompt", "response"} for every usable UUID.
+    Use with `select_icl_from_pool` to pick a specific subset + order.
+    """
+    base_path = data_dir() / "input" / dataset_name / data_subset
+    input_path = base_path / "input.json"
+    response_path = base_path / icl_model / "data.json"
+
+    if not input_path.exists():
+        raise FileNotFoundError(f"ICL input prompts not found: {input_path}")
+    if not response_path.exists():
+        raise FileNotFoundError(
+            f"ICL model responses not found: {response_path}. "
+            f"Has data been generated for model '{icl_model}' on dataset '{dataset_name}/{data_subset}'?"
+        )
+
+    prompts = load_json(str(input_path))
+    responses = load_json(str(response_path))
+    return {
+        uuid: {"prompt": prompts[uuid], "response": responses[uuid]}
+        for uuid in prompts
+        if uuid in responses and uuid not in exclude_uuids
+    }
+
+
+def select_icl_from_pool(
+    pool: Dict[str, Dict[str, str]],
+    count: int,
+    seed: int,
+) -> List[Dict[str, str]]:
+    """Sample `count` QA pairs from the pool, in the seed's shuffled order.
+
+    Deterministic for a given (pool, count, seed) tuple.
+    """
+    import random
+
+    if len(pool) < count:
+        raise ValueError(
+            f"ICL pool too small: need {count} examples but only {len(pool)} available"
+        )
+    rng = random.Random(seed)
+    uuids = list(pool.keys())
+    selected = rng.sample(uuids, count)
+    return [
+        {"uuid": uuid, "prompt": pool[uuid]["prompt"], "response": pool[uuid]["response"]}
+        for uuid in selected
+    ]
+
+
+def load_icl_examples(
+    icl_model: str,
+    dataset_name: str,
+    data_subset: str,
+    count: int,
+    exclude_uuids: set[str],
+    seed: int = 42,
+) -> List[Dict[str, str]]:
+    """Load in-context learning examples: QA pairs from a model's generated responses.
+
+    Args:
+        icl_model: Model name whose responses to use (e.g., "deepseek-3.1")
+        dataset_name: Dataset name (e.g., "sharegpt")
+        data_subset: Data subset (e.g., "english2_74")
+        count: Number of QA pairs to sample
+        exclude_uuids: UUIDs to exclude (evaluation sample UUIDs)
+        seed: Random seed for reproducible sampling
+
+    Returns:
+        List of dicts with "uuid", "prompt", "response" keys
+    """
+    pool = load_icl_pool(icl_model, dataset_name, data_subset, exclude_uuids)
+    if len(pool) < count:
+        raise ValueError(
+            f"ICL pool too small: need {count} examples but only {len(pool)} available "
+            f"(after excluding {len(exclude_uuids)} evaluation UUIDs) for "
+            f"model={icl_model}, dataset={dataset_name}/{data_subset}"
+        )
+    return select_icl_from_pool(pool, count, seed)
