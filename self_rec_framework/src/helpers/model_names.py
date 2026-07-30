@@ -47,6 +47,8 @@ INSPECT_MODEL_NAMES: dict = {
     "ll-3.3-70b-dsR1-thinking": "together/deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
     "ll-70B-dsr1-thinking": "together/deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
     "ll-3.1-405b": "together/meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
+    "ll-3-8b-lite": "together/meta-llama/Meta-Llama-3-8B-Instruct-Lite",  # cheap small instruct (Llama 3, 8k ctx)
+    "gemma-3n-e4b": "together/google/gemma-3n-E4B-it",  # cheap small instruct, 32k ctx, serverless (tutorial set)
     # Qwen models
     "qwen-2.5-7b": "together/Qwen/Qwen2.5-7B-Instruct-Turbo",
     "qwen-2.5-72b": "together/Qwen/Qwen2.5-72B-Instruct-Turbo",
@@ -82,6 +84,205 @@ INSPECT_MODEL_NAMES: dict = {
     "gpt-oss-20b-thinking": "hf/openai/gpt-oss-20b",  # Same model, native reasoning
     "gpt-oss-120b": "hf/openai/gpt-oss-120b",
     "gpt-oss-120b-thinking": "hf/openai/gpt-oss-120b",  # Same model, native reasoning
+    # Together-served gpt-oss (provider-tagged variants). Bare names above stay
+    # hf/ (local/tinker for training); eval sets use these tg: routes.
+    "tg:gpt-oss-20b": "together/openai/gpt-oss-20b",
+    "tg:gpt-oss-20b-thinking": "together/openai/gpt-oss-20b",
+    "tg:gpt-oss-120b": "together/openai/gpt-oss-120b",
+    "tg:gpt-oss-120b-thinking": "together/openai/gpt-oss-120b",
+    ## SGTR-trained Tinker LoRA samplers (served via Tinker OAI proxy when gpu_dispatch=tinker)
+    ## Keys match data/training_reorganized/05_MSJ/ dir names so get_data_model_name()
+    ## can resolve them to their base model for response-data lookup.
+    # Standard SFT (sft-as self, vs alt)
+    "llama-3-1-8b_sft-as_llama-3-1-8b_vs_qwen-3-30b_UT_PW_ShareGPT":   "openai/tinker://a38689ef-03ff-531e-8c5f-59572b8d1122:train:0/sampler_weights/final",
+    "llama-3-1-8b_sft-as_llama-3-1-8b_vs_qwen-3-30b_UT_PW_PKU":        "openai/tinker://b0240aa7-1095-5571-97e1-963418a510aa:train:0/sampler_weights/final",
+    "llama-3-1-8b_sft-as_llama-3-1-8b_vs_qwen-3-30b_UT_IND_ShareGPT":  "openai/tinker://0ed53fab-55a6-5b90-8f2d-4f8985fdf73b:train:0/sampler_weights/final",
+    "llama-3-1-8b_sft-as_llama-3-1-8b_vs_qwen-3-30b_AT_PW_ShareGPT":   "openai/tinker://6c9972db-2f82-5462-a08c-66513b25388c:train:0/sampler_weights/final",
+    "llama-3-1-8b_sft-as_llama-3-1-8b_vs_qwen-3-30b_AT_IND_ShareGPT":  "openai/tinker://0dfa5052-ffe0-52ab-b0ec-93540e8a1e1d:train:0/sampler_weights/final",
+    "gpt-oss-20b_sft-as_gpt-oss-20b_vs_qwen-3-30b_UT_PW_ShareGPT":     "openai/tinker://607be73d-fa6b-5347-8846-3338083886f2:train:0/sampler_weights/final",
+    "gpt-oss-20b_sft-as_gpt-oss-20b_vs_qwen-3-30b_UT_PW_PKU":          "openai/tinker://81e7f29d-2a51-5f7b-8065-131a87f79c6b:train:0/sampler_weights/final",
+    "gpt-oss-20b_sft-as_gpt-oss-20b_vs_qwen-3-30b_UT_IND_ShareGPT":    "openai/tinker://1afda46a-7a09-56db-92f2-733031e9e0f1:train:0/sampler_weights/final",
+    "gpt-oss-20b_sft-as_gpt-oss-20b_vs_qwen-3-30b_AT_PW_ShareGPT":     "openai/tinker://9fe5dba4-831f-5e3a-a27f-5e5238a6d8b9:train:0/sampler_weights/final",
+    "gpt-oss-20b_sft-as_gpt-oss-20b_vs_qwen-3-30b_AT_IND_ShareGPT":    "openai/tinker://c9bf3aee-32dd-5d08-935f-a94495ec7be1:train:0/sampler_weights/final",
+    "qwen-3-30b_sft-as_qwen-3-30b_vs_gpt-oss-120b_UT_PW_ShareGPT":     "openai/tinker://8d2643e3-f1ad-5250-bcbd-3c18573183e9:train:0/sampler_weights/final",
+    "qwen-3-30b_sft-as_qwen-3-30b_vs_gpt-oss-120b_UT_PW_PKU":          "openai/tinker://a33cb57f-d20e-5d71-a0b9-b35ebb825a86:train:0/sampler_weights/final",
+    "qwen-3-30b_sft-as_qwen-3-30b_vs_gpt-oss-120b_UT_IND_ShareGPT":    "openai/tinker://03be12f4-9b92-5939-88f1-601c5a7fc1ee:train:0/sampler_weights/final",
+    "qwen-3-30b_sft-as_qwen-3-30b_vs_gpt-oss-120b_AT_PW_ShareGPT":     "openai/tinker://74bc20ce-b275-5053-a116-e782cbce1a1a:train:0/sampler_weights/final",
+    "qwen-3-30b_sft-as_qwen-3-30b_vs_gpt-oss-120b_AT_IND_ShareGPT":    "openai/tinker://20d9cf5c-5043-572d-9b60-389dcac93820:train:0/sampler_weights/final",
+    # Multi-OP SFT (jointly trained on UT_PW + UT_IND + AT_PW + AT_IND, per_id_one_source)
+    "llama-3-1-8b_sft-as_llama-3-1-8b_vs_qwen-3-30b_UT-AT_PW-IND_ShareGPT": "openai/tinker://95c31d67-0670-57b4-bc29-d383afbb02c5:train:0/sampler_weights/final",
+    "gpt-oss-20b_sft-as_gpt-oss-20b_vs_qwen-3-30b_UT-AT_PW-IND_ShareGPT":   "openai/tinker://e6839bf3-0e18-5c35-b13c-e40d1d8fb82c:train:0/sampler_weights/final",
+    "qwen-3-30b_sft-as_qwen-3-30b_vs_gpt-oss-120b_UT-AT_PW-IND_ShareGPT":   "openai/tinker://2d96d078-0b73-5968-bab4-15cafbcaccbb:train:0/sampler_weights/final",
+    # Random-labels controls (catastrophic-forgetting check) — same multi-OP data,
+    # binary targets shuffled per-ID via randomize_train_labels (seed 999).
+    "llama-3-1-8b_RANDLABELS_999_vs_qwen-3-30b_UT-AT_PW-IND_ShareGPT": "openai/tinker://50c797b9-9d8d-5a90-8a56-a8340ec1a813:train:0/sampler_weights/final",
+    "gpt-oss-20b_RANDLABELS_999_vs_qwen-3-30b_UT-AT_PW-IND_ShareGPT":  "openai/tinker://32003efb-2c6b-51c7-9ea5-5287994bd667:train:0/sampler_weights/final",
+    # Adversarial SFT (sft-as opposite model, vs its own base)
+    "gpt-oss-20b_sft-as_qwen-3-30b_vs_gpt-oss-20b_UT_PW_ShareGPT":     "openai/tinker://6ff54ead-4366-5cff-8873-e0f693d8cc89:train:0/sampler_weights/final",
+    "gpt-oss-20b_sft-as_qwen-3-30b_vs_gpt-oss-20b_UT_IND_ShareGPT":    "openai/tinker://e6e24676-6d19-5938-ad9e-c2bb609df9a4:train:0/sampler_weights/final",
+    "qwen-3-30b_sft-as_gpt-oss-120b_vs_qwen-3-30b_UT_PW_ShareGPT":     "openai/tinker://c2e20b55-3946-5a3f-a768-add3ef35155d:train:0/sampler_weights/final",
+    "qwen-3-30b_sft-as_gpt-oss-120b_vs_qwen-3-30b_UT_IND_ShareGPT":    "openai/tinker://2acb8fa7-3ca4-57be-b4d3-e9760cbc1909:train:0/sampler_weights/final",
+}
+
+# Maximum OUTPUT tokens per model (the API max_tokens ceiling — total tokens the
+# model may emit in a single response, including reasoning for thinking models).
+# Used to resolve the `"max"` sentinel in experiment configs
+# (max_final_answer_tokens / max_thinking_tokens) to a concrete budget — see
+# get_model_output_token_cap(). Keyed by BASE model name (without the "-thinking"
+# suffix); the lookup strips "-thinking" before matching, so one entry covers
+# both the instruct and thinking variant of the same underlying model.
+#
+# IMPORTANT: values must NOT exceed the provider's true API ceiling, or requests
+# error; when uncertain, prefer a conservative value. Entries marked "# verify"
+# are best-effort estimates that should be checked against current provider docs.
+#
+# Values below were verified against provider docs / model cards (Jun 2026).
+# For closed providers these are hard API output ceilings. For open-weight models
+# served on Together/HF, output is context-bound (no separate hard cap), so the
+# value is the model author's recommended generation budget — set high enough for
+# thinking variants (which share one budget across reasoning + answer) not to
+# truncate. Entries marked "# new/unverified" are recent models whose limits come
+# from aggregators rather than a primary source; confirm against your deployment.
+MODEL_OUTPUT_TOKEN_CAP: dict[str, int] = {
+    # OpenAI (hard output ceilings)
+    "gpt-4o-mini": 16384,
+    "gpt-4o": 16384,
+    "gpt-4.1-mini": 32768,
+    "gpt-4.1": 32768,
+    "gpt-5-mini": 128000,
+    "gpt-5": 128000,
+    "o3": 100000,
+    "o3-mini": 100000,
+    # Anthropic (hard output ceilings)
+    "sonnet-4.5": 64000,
+    "sonnet-3.7": 8192,  # 128000 only with output-128k-2025-02-19 beta header
+    "haiku-3.5": 8192,
+    "haiku-4.5": 64000,
+    "opus-4.1": 32000,
+    # Google (hard output ceilings)
+    "gemini-2.0-flash": 8192,
+    "gemini-2.0-flash-lite": 8192,
+    "gemini-2.5-flash": 65536,
+    "gemini-2.5-pro": 65536,
+    # XAI / Grok — context-bound (no fixed API output cap); reasoning headroom
+    "grok-3-mini": 16384,
+    "grok-4.1-fast": 32768,
+    # Together — Llama / DeepSeek-R1 distills (context-bound)
+    "ll-3.3-70b-dsR1": 32768,  # R1 max generation = 32768
+    "ll-70B-dsr1": 32768,
+    "ll-3.1-405b": 8192,
+    "ll-3-8b-lite": 8192,
+    # Together — Google Gemma
+    "gemma-3n-e4b": 8192,
+    # Together — Qwen (context-bound; thinking-budget values per Qwen cards)
+    "qwen-2.5-7b": 8192,
+    "qwen-2.5-72b": 8192,
+    "qwen-3.0-80b": 32768,
+    "qwen-3.0-235b": 32768,
+    # Together — DeepSeek (context-bound)
+    "deepseek-3.0": 8192,
+    "deepseek-3.1": 32768,  # hybrid; thinking variant needs CoT headroom
+    "deepseek-r1": 32768,  # R1 max generation = 32768
+    "deepseek-r1-0528": 65536,  # R1-0528 raised max generation to 64k
+    # Together — Moonshot (context-bound; covers instruct + thinking variants)
+    "kimi-k2": 32768,
+    "kimi-k2.5": 32768,  # new/unverified
+    # Together — MiniMax
+    "minimax-m2.5": 32768,  # new/unverified (docs cite up to 128k output)
+    # Together — GLM (context-bound)
+    "glm-4.5-air": 32768,
+    "glm-4.7": 32768,  # new/unverified
+    # Local HF (served on RunPod) — generation cap is configurable
+    "ll-3.1-8b": 8192,
+    "ll-3.3-70b": 8192,
+    "qwen-3.0-30b": 32768,
+    "qwen-3.5-27b": 32768,  # new/unverified
+    "gpt-oss-20b": 32768,
+    "gpt-oss-120b": 32768,
+}
+
+# Total CONTEXT WINDOW per model (max input + output tokens combined). A fixed
+# model spec — distinct from MODEL_OUTPUT_TOKEN_CAP (the max GENERATION tokens).
+# Used to resolve a "max" output budget without overflowing context: the provider
+# enforces (input + max_tokens) <= context_window, so the usable output budget is
+#   min(output_cap, context_window - estimated_input - margin)
+# (see get_model_context_window() and tasks.py:max_output_ceiling). Keyed by BASE
+# model name (the "-thinking" suffix is stripped before lookup).
+#
+# Verified against provider docs / model cards (Jun 2026). For Together-served
+# models this is the context length AS SERVED, which can be SMALLER than the base
+# model's theoretical max (e.g. Qwen2.5 is served at 32768, not its YaRN-extended
+# 131072). Where a provider published only a rounded "NNK" label, the exact
+# power-of-two / config integer is used. Anthropic models list their 200k default
+# (1M is available only via a beta header).
+MODEL_CONTEXT_WINDOW: dict[str, int] = {
+    # OpenAI
+    "gpt-4o-mini": 128000,
+    "gpt-4o": 128000,
+    "gpt-4.1-mini": 1047576,
+    "gpt-4.1": 1047576,
+    "gpt-5-mini": 400000,
+    "gpt-5": 400000,
+    "o3": 200000,
+    "o3-mini": 200000,
+    # Anthropic (200k default; 1M only via beta header)
+    "sonnet-4.5": 200000,
+    "sonnet-3.7": 200000,
+    "haiku-3.5": 200000,
+    "haiku-4.5": 200000,
+    "opus-4.1": 200000,
+    # Google
+    "gemini-2.0-flash": 1048576,
+    "gemini-2.0-flash-lite": 1048576,
+    "gemini-2.5-flash": 1048576,
+    "gemini-2.5-pro": 1048576,
+    # XAI / Grok
+    "grok-3-mini": 131072,
+    "grok-4.1-fast": 2000000,
+    # Together — Llama / DeepSeek-R1 distills
+    "ll-3.3-70b-dsR1": 131072,
+    "ll-70B-dsr1": 131072,
+    "ll-3.1-405b": 131072,
+    "ll-3-8b-lite": 8192,  # Llama 3 (NOT 3.1) — 8k base context
+    # Together — Google Gemma
+    "gemma-3n-e4b": 32768,  # Gemma 3n E4B — 32k ctx (tutorial set)
+    # Together — Qwen (Qwen2.5 served BELOW its YaRN-extended max)
+    "qwen-2.5-7b": 32768,
+    "qwen-2.5-72b": 32768,
+    "qwen-3.0-80b": 262144,
+    "qwen-3.0-235b": 262144,
+    # Together — DeepSeek (served 131072; r1-0528 served at full 163840)
+    "deepseek-3.0": 131072,
+    "deepseek-3.1": 131072,
+    "deepseek-r1": 131072,
+    "deepseek-r1-0528": 163840,
+    # Together — Moonshot
+    "kimi-k2": 262144,
+    "kimi-k2.5": 262144,
+    # Together — MiniMax (Together serves 192k)
+    "minimax-m2.5": 196608,
+    # Together — GLM
+    "glm-4.5-air": 131072,
+    "glm-4.7": 202752,
+    # Local HF (served on RunPod)
+    "ll-3.1-8b": 131072,
+    "ll-3.3-70b": 131072,
+    "qwen-3.0-30b": 262144,
+    "qwen-3.5-27b": 262144,
+    "gpt-oss-20b": 131072,
+    "gpt-oss-120b": 131072,
+}
+
+# Sparse override for models that enforce a SEPARATE thinking-token budget cap
+# below their total output ceiling. For every other model the thinking budget is
+# bounded only by the shared output budget (MODEL_OUTPUT_TOKEN_CAP), so they need no
+# entry here — get_model_max_thinking_tokens() falls back to MODEL_OUTPUT_TOKEN_CAP.
+# Today only Gemini 2.5 needs this: its `thinkingBudget` maxes out well below
+# `maxOutputTokens` (verified against ai.google.dev/gemini-api/docs/thinking).
+# Keyed by BASE model name (the "-thinking" suffix is stripped before lookup).
+MODEL_MAX_THINKING_TOKENS: dict[str, int] = {
+    "gemini-2.5-flash": 24576,  # thinkingBudget range 0–24576
+    "gemini-2.5-pro": 32768,  # thinkingBudget range 128–32768
 }
 
 # Model parameter counts (in billions, unless specified with 'T' for trillions)
@@ -698,9 +899,122 @@ def get_base_model_name(model_name: str) -> str:
     Returns:
         Base model name without "-thinking" suffix
     """
+    # Strip an optional provider tag (hf:/tg:) so base-model logic (max-tokens,
+    # thinking detection, data lookup) is provider-agnostic. The tag only steers
+    # the inspect route (INSPECT_MODEL_NAMES lookup), which uses the full name.
+    model_name = strip_provider_tag(model_name)
     if model_name.endswith("-thinking"):
         return model_name[:-9]  # Remove "-thinking" suffix
     return model_name
+
+
+# Provider tags let a config disambiguate which backend a shorthand resolves to
+# when the same model is served by more than one provider (e.g. gpt-oss on both
+# hf and Together). A tagged name like "tg:gpt-oss-20b-thinking" has its own
+# explicit INSPECT_MODEL_NAMES entry; bare names remain the canonical default.
+PROVIDER_TAGS = ("hf:", "tg:")
+
+
+def strip_provider_tag(model_name: str) -> str:
+    """Remove a leading provider tag (hf:/tg:) if present."""
+    for tag in PROVIDER_TAGS:
+        if model_name.startswith(tag):
+            return model_name[len(tag):]
+    return model_name
+
+
+def get_model_output_token_cap(model_name: str) -> int:
+    """
+    Look up a model's maximum output-token ceiling from MODEL_OUTPUT_TOKEN_CAP.
+
+    Resolves the `"max"` token sentinel used in experiment configs. The lookup
+    tries the exact name first, then the base name (with the "-thinking" suffix
+    stripped), so a single table entry covers both variants of a model.
+
+    Args:
+        model_name: Short model name (may include the "-thinking" suffix).
+
+    Returns:
+        The model's maximum output tokens.
+
+    Raises:
+        ValueError: If the model is not in MODEL_OUTPUT_TOKEN_CAP — either set an
+            explicit token count in the config, or add the model to the table.
+    """
+    if model_name in MODEL_OUTPUT_TOKEN_CAP:
+        return MODEL_OUTPUT_TOKEN_CAP[model_name]
+
+    base_name = get_base_model_name(model_name)
+    if base_name in MODEL_OUTPUT_TOKEN_CAP:
+        return MODEL_OUTPUT_TOKEN_CAP[base_name]
+
+    raise ValueError(
+        f"No max-token entry for model '{model_name}'. Either set an explicit "
+        f"token count in the experiment config instead of 'max', or add '{base_name}' "
+        f"to MODEL_OUTPUT_TOKEN_CAP in self_rec_framework/src/helpers/model_names.py."
+    )
+
+
+def get_model_context_window(model_name: str) -> int:
+    """
+    Look up a model's total context window (max input + output tokens) from
+    MODEL_CONTEXT_WINDOW.
+
+    Used when resolving a "max" output budget so that input + output stays within
+    the model's context window. Tries the exact name first, then the base name
+    (with the "-thinking" suffix stripped).
+
+    Args:
+        model_name: Short model name (may include the "-thinking" suffix).
+
+    Returns:
+        The model's total context window in tokens.
+
+    Raises:
+        ValueError: If the model is not in MODEL_CONTEXT_WINDOW — add it to the
+            table (a context window is a fixed model spec, not configurable).
+    """
+    if model_name in MODEL_CONTEXT_WINDOW:
+        return MODEL_CONTEXT_WINDOW[model_name]
+
+    base_name = get_base_model_name(model_name)
+    if base_name in MODEL_CONTEXT_WINDOW:
+        return MODEL_CONTEXT_WINDOW[base_name]
+
+    raise ValueError(
+        f"No context-window entry for model '{model_name}'. Add '{base_name}' to "
+        f"MODEL_CONTEXT_WINDOW in self_rec_framework/src/helpers/model_names.py "
+        f"(the context window is a fixed model spec — look it up from provider docs)."
+    )
+
+
+def get_model_max_thinking_tokens(model_name: str) -> int:
+    """
+    Look up a model's maximum thinking/CoT-token budget.
+
+    Resolves the `"max"` sentinel for max_thinking_tokens. Most models have no
+    separate thinking cap (reasoning and answer share one output budget), so this
+    falls back to get_model_output_token_cap(). Only models in MODEL_MAX_THINKING_TOKENS
+    (e.g. Gemini 2.5, whose `thinkingBudget` caps below `maxOutputTokens`) override.
+
+    Args:
+        model_name: Short model name (may include the "-thinking" suffix).
+
+    Returns:
+        The model's maximum thinking-token budget.
+
+    Raises:
+        ValueError: If the model is unknown (via get_model_output_token_cap fallback).
+    """
+    if model_name in MODEL_MAX_THINKING_TOKENS:
+        return MODEL_MAX_THINKING_TOKENS[model_name]
+
+    base_name = get_base_model_name(model_name)
+    if base_name in MODEL_MAX_THINKING_TOKENS:
+        return MODEL_MAX_THINKING_TOKENS[base_name]
+
+    # No separate thinking cap — bounded by the shared output ceiling.
+    return get_model_output_token_cap(model_name)
 
 
 def needs_reasoning_params(model_name: str) -> bool:
@@ -872,15 +1186,23 @@ def get_data_model_name(model_name: str) -> str:
     Returns:
         Model name to use for data directory lookup
     """
+    # Strip any provider tag (hf:/tg:) — data identity is provider-agnostic, so a
+    # tagged route (e.g. tg:gpt-oss-20b-thinking) reads the same data as the bare name.
+    model_name = strip_provider_tag(model_name)
+
     # Strip -thinking suffix first for trained model resolution
     clean_name = model_name.removesuffix("-thinking") if model_name.endswith("-thinking") else model_name
 
-    # Trained models: resolve to base model for data lookup
-    # Names like "gpt-oss-20b_sft-as_gpt-oss-20b_vs_..." → "gpt-oss-20b"
+    # Trained models: resolve to base model for data lookup.
+    # Standard SGTR-trained: "<base>_sft-as_<self>_vs_..."
+    # Random-labels control:  "<base>_RANDLABELS_<seed>_vs_..."
+    # Both shapes use the same base-extraction rule (split on the marker).
+    base_part = None
     if "_sft-as_" in clean_name:
-        # Extract the base model (part before _sft-as_)
         base_part = clean_name.split("_sft-as_")[0]
-        # Map the directory-style name back to shorthand
+    elif "_RANDLABELS_" in clean_name:
+        base_part = clean_name.split("_RANDLABELS_")[0]
+    if base_part is not None:
         try:
             from scripts.alpaca_eval.training_runs import REORG_MODEL_MAP
             base_short = REORG_MODEL_MAP.get(base_part, base_part)

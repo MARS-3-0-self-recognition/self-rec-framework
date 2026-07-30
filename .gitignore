@@ -49,3 +49,6 @@ _external/
 _research/
 _archive/
 CLAUDE.md
+
+# Windows/WSL NTFS alternate-data-stream metadata
+*:Zone.Identifier

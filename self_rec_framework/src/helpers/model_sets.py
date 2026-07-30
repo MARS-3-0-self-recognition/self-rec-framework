@@ -15,8 +15,8 @@ def get_model_set(model_set_name: str | None = None) -> list[str]:
         return []
     if model_set_name.lower() == "test" or model_set_name.lower() == "tutorial":
         return [
-            "ll-3.1-8b",
-            "qwen-2.5-7b",
+            "gemma-3n-e4b",  # together/google/gemma-3n-E4B-it (32k ctx, serverless — fits pairwise)
+            "qwen-2.5-7b",   # together/Qwen/Qwen2.5-7B-Instruct-Turbo (32k ctx)
         ]
     if model_set_name.lower() == "sgtr-training-judges":
         return [
@@ -40,8 +40,8 @@ def get_model_set(model_set_name: str | None = None) -> list[str]:
         ]
     if model_set_name.lower() == "gen_cot":
         return [
-            "gpt-oss-20b-thinking",
-            "gpt-oss-120b-thinking",
+            "tg:gpt-oss-20b-thinking",
+            "tg:gpt-oss-120b-thinking",
             #"sonnet-3.7-thinking",
             #"grok-3-mini-thinking",
             #"ll-3.3-70b-dsR1-thinking",
@@ -58,8 +58,8 @@ def get_model_set(model_set_name: str | None = None) -> list[str]:
         ]
     if model_set_name.lower() == "gen_cot_test":
         return [
-            "gpt-oss-20b-thinking",
-            "gpt-oss-120b-thinking",
+            "tg:gpt-oss-20b-thinking",
+            "tg:gpt-oss-120b-thinking",
         ]
     elif model_set_name.lower() == "dr_colm":
         # 13 instruct models common to ICML_01/02 and COLM_01/02 experiments
@@ -94,13 +94,13 @@ def get_model_set(model_set_name: str | None = None) -> list[str]:
             "gemini-2.0-flash-lite",
             "gemini-2.0-flash",
             # Together AI - Llama (weakest to strongest)
-            "ll-3.1-8b",
+            "ll-3-8b-lite",  # was ll-3.1-8b (retired from Together serverless)
             #"ll-3.1-70b", # still available but not working
             #"ll-3.1-405b",
             # Together AI - Qwen (weakest to strongest)
             "qwen-2.5-7b",
             #"qwen-2.5-72b", # still available but not working
-            "qwen-3.5-27b",
+            #"qwen-3.5-27b",  # removed: no longer hosted by Together serverless
             "qwen-3.0-80b",
             # "qwen-3.0-235b",
             # Together AI - DeepSeek (weakest to strongest)
@@ -150,8 +150,8 @@ def get_model_set(model_set_name: str | None = None) -> list[str]:
         return [
             # OpenAI (weakest to strongest)
             ## OS
-            # "gpt-oss-20b-thinking",
-            "gpt-oss-120b-thinking",
+            # "tg:gpt-oss-20b-thinking",
+            "tg:gpt-oss-120b-thinking",
             ## Not OS
             # "o3-thinking",
             # "o3-mini-thinking",
@@ -212,8 +212,8 @@ def get_model_set(model_set_name: str | None = None) -> list[str]:
             ### CoT-R
             # OpenAI (weakest to strongest)
             ## OS
-            "gpt-oss-20b-thinking",
-            "gpt-oss-120b-thinking",
+            "tg:gpt-oss-20b-thinking",
+            "tg:gpt-oss-120b-thinking",
             ## Not OS
             "o3-thinking",
             "o3-mini-thinking",
