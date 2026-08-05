@@ -1,7 +1,12 @@
 from collections import defaultdict
 
+from self_rec_framework.src.helpers.constants import (
+    DIFFERENT_ENDPOINT_MODELS,
+    NATIVE_REASONING_BASES,
+)
 
-INSPECT_MODEL_NAMES: dict = {
+
+INSPECT_MODEL_NAMES: dict[str, str] = {
     # OpenAI
     "gpt-4o-mini": "openai/gpt-4o-mini",
     "gpt-4o": "openai/gpt-4o",
@@ -285,7 +290,8 @@ MODEL_MAX_THINKING_TOKENS: dict[str, int] = {
     "gemini-2.5-pro": 32768,  # thinkingBudget range 128–32768
 }
 
-# Model parameter counts (in billions, unless specified with 'T' for trillions)
+# Model parameter counts. Each value carries a 'B' (billions) or 'T' (trillions)
+# suffix; "unknown" means the count is not officially disclosed.
 # Values are based on model names or official documentation only.
 # For MoE models, values represent total parameters (not active per token).
 # Use MODEL_PARAMETER_COUNTS_ESTIMATED for estimated values.
@@ -362,6 +368,7 @@ MODEL_PARAMETER_COUNTS: dict[str, str] = {
 }
 
 # Estimated parameter counts for models where official values are not available.
+# Same 'B'/'T'/"unknown" value format as MODEL_PARAMETER_COUNTS.
 # These are research estimates based on model performance, architecture comparisons,
 # and industry analysis. Values should be treated as approximate.
 MODEL_PARAMETER_COUNTS_ESTIMATED: dict[str, str] = {
@@ -903,9 +910,7 @@ def get_base_model_name(model_name: str) -> str:
     # thinking detection, data lookup) is provider-agnostic. The tag only steers
     # the inspect route (INSPECT_MODEL_NAMES lookup), which uses the full name.
     model_name = strip_provider_tag(model_name)
-    if model_name.endswith("-thinking"):
-        return model_name[:-9]  # Remove "-thinking" suffix
-    return model_name
+    return model_name.removesuffix("-thinking")
 
 
 # Provider tags let a config disambiguate which backend a shorthand resolves to
@@ -1037,19 +1042,7 @@ def needs_reasoning_params(model_name: str) -> bool:
 
     base_name = get_base_model_name(model_name)
 
-    # Models that use different endpoints (Together AI, etc.)
-    # These map to different inspect model names
-    # Even if the -thinking variant exists in INSPECT_MODEL_NAMES, they use different endpoints
-    different_endpoint_models = [
-        "qwen-3.0-80b",  # Maps to different endpoint
-        "qwen-3.0-235b",  # Maps to different endpoint
-        "deepseek-r1",  # Maps to different endpoint (DeepSeek-R1)
-        "ll-3.3-70b-dsR1",  # DeepSeek-R1 distill uses separate endpoint
-        "gpt-oss-20b",  # Together OpenAI OSS models use separate endpoint
-        "gpt-oss-120b",  # Together OpenAI OSS models use separate endpoint
-    ]
-
-    if base_name in different_endpoint_models:
+    if base_name in DIFFERENT_ENDPOINT_MODELS:
         return False
 
     # Check if the full model name exists in INSPECT_MODEL_NAMES
@@ -1119,51 +1112,7 @@ def is_native_reasoning_model(model_name: str) -> bool:
 
     base_name = get_base_model_name(model_name)
 
-    # Native reasoning models (COT-R) that use different endpoints, are always-reasoning,
-    # or are dual-mode models used with -thinking for reasoning. These have their own
-    # generated data with the -thinking suffix. COT-I (instruction-tuned, same endpoint)
-    # use base model data and are NOT in this list.
-    native_reasoning_bases = [
-        # Together AI models with separate thinking endpoints
-        "qwen-3.0-30b",
-        "qwen-3.0-80b",
-        "qwen-3.0-235b",
-        "qwen-3.5-27b",
-        "deepseek-r1",
-        "deepseek-r1-0528",
-        "ll-3.3-70b-dsR1",
-        "ll-70B-dsr1",
-        "gpt-oss-20b",
-        "gpt-oss-120b",
-        "kimi-k2",
-        # Together AI hybrid models (same endpoint, reasoning activated via API param)
-        "deepseek-3.1",
-        "kimi-k2.5",
-        # Together AI models that always think (no non-thinking variant)
-        "minimax-m2.5",
-        "glm-4.5-air",
-        "glm-4.7",
-        # OpenAI o-series (always reasoning)
-        "o3",
-        "o3-mini",
-        # OpenAI GPT-5 (dual-mode)
-        "gpt-5",
-        "gpt-5-mini",
-        # XAI Grok with separate reasoning endpoint
-        "grok-4.1-fast",
-        # Dual-mode models: -thinking indicates COT-R (use own reasoning data), not COT-I
-        "opus-4.1",
-        "gemini-2.5-pro",
-        "gemini-2.5-flash",
-        "gemini-2.0-flash",
-        "gemini-2.0-flash-lite",
-        "sonnet-4.5",
-        "sonnet-3.7",
-        "haiku-3.5",
-        "haiku-4.5",
-    ]
-
-    return base_name in native_reasoning_bases
+    return base_name in NATIVE_REASONING_BASES
 
 
 def get_data_model_name(model_name: str) -> str:
