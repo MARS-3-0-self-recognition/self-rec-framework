@@ -33,7 +33,14 @@ from self_rec_framework.src.inspect.config import (
     load_experiment_config,
 )
 from self_rec_framework.src.inspect.scorer import logprob_scorer, answer_length_scorer
-from self_rec_framework.src.inspect.data import load_dataset_pairwise, load_dataset_individual, load_dataset_mmlu, load_icl_examples, load_icl_pool, select_icl_from_pool
+from self_rec_framework.src.inspect.data import (
+    load_dataset_pairwise,
+    load_dataset_individual,
+    load_dataset_mmlu,
+    load_icl_examples,
+    load_icl_pool,
+    select_icl_from_pool,
+)
 
 from self_rec_framework.src.helpers.utils import (
     data_dir,
@@ -56,7 +63,11 @@ def _load_icl_for_task(
     if not exp_config.icl_count or not exp_config.icl_model:
         return []
     eval_uuids = {s["metadata"]["uuid"] for s in dataset_samples}
-    seed = exp_config.icl_seed if exp_config.icl_seed is not None else (exp_config.seed or 42)
+    seed = (
+        exp_config.icl_seed
+        if exp_config.icl_seed is not None
+        else (exp_config.seed or 42)
+    )
     icl_dataset = exp_config.icl_dataset or dataset_name
     icl_subset = exp_config.icl_data_subset or data_subset
     same_pool = (icl_dataset == dataset_name) and (icl_subset == data_subset)
@@ -69,8 +80,10 @@ def _load_icl_for_task(
         exclude_uuids=exclude,
         seed=seed,
     )
-    print(f"  ICL: loaded {len(examples)} examples from {exp_config.icl_model}/{icl_dataset}/{icl_subset} "
-          f"(excluded {len(exclude)} UUIDs)")
+    print(
+        f"  ICL: loaded {len(examples)} examples from {exp_config.icl_model}/{icl_dataset}/{icl_subset} "
+        f"(excluded {len(exclude)} UUIDs)"
+    )
     return examples
 
 
@@ -84,7 +97,11 @@ def _load_icl_pool_for_task(
     if not exp_config.icl_count or not exp_config.icl_model:
         return None, None
     eval_uuids = {s["metadata"]["uuid"] for s in dataset_samples}
-    base_seed = exp_config.icl_seed if exp_config.icl_seed is not None else (exp_config.seed or 42)
+    base_seed = (
+        exp_config.icl_seed
+        if exp_config.icl_seed is not None
+        else (exp_config.seed or 42)
+    )
     icl_dataset = exp_config.icl_dataset or dataset_name
     icl_subset = exp_config.icl_data_subset or data_subset
     same_pool = (icl_dataset == dataset_name) and (icl_subset == data_subset)
@@ -95,8 +112,10 @@ def _load_icl_pool_for_task(
         data_subset=icl_subset,
         exclude_uuids=exclude,
     )
-    print(f"  ICL (per-sample): pool={len(pool)} examples from {exp_config.icl_model}/{icl_dataset}/{icl_subset} "
-          f"(excluded {len(exclude)} UUIDs)")
+    print(
+        f"  ICL (per-sample): pool={len(pool)} examples from {exp_config.icl_model}/{icl_dataset}/{icl_subset} "
+        f"(excluded {len(exclude)} UUIDs)"
+    )
     return pool, base_seed
 
 
@@ -141,8 +160,9 @@ def _build_icl_resolver(
         return lambda uuid: []
 
     if exp_config.icl_shuffle_per_sample:
-        pool, base_seed = _load_icl_pool_for_task(exp_config, dataset_samples,
-                                                  dataset_name, data_subset)
+        pool, base_seed = _load_icl_pool_for_task(
+            exp_config, dataset_samples, dataset_name, data_subset
+        )
 
         def resolve(uuid: str):
             examples = select_icl_from_pool(
@@ -154,18 +174,23 @@ def _build_icl_resolver(
 
         return resolve
 
-    shared_examples = _load_icl_for_task(exp_config, dataset_samples,
-                                         dataset_name, data_subset)
-    shared_messages = (_build_icl_messages(shared_examples, exp_config.generation_prompt)
-                       if shared_examples else [])
+    shared_examples = _load_icl_for_task(
+        exp_config, dataset_samples, dataset_name, data_subset
+    )
+    shared_messages = (
+        _build_icl_messages(shared_examples, exp_config.generation_prompt)
+        if shared_examples
+        else []
+    )
     return lambda uuid: shared_messages
-
 
     # _build_icl_text removed — all formats now use _build_icl_messages
     # to inject ICL as real ChatMessage turn pairs (no framing text)
 
 
-def _get_model_with_custom_base_url(model_name: str, inspect_model_str: str) -> Model | str:
+def _get_model_with_custom_base_url(
+    model_name: str, inspect_model_str: str
+) -> Model | str:
     """
     Get a Model object, handling custom base URLs for providers like XAI.
 
@@ -427,7 +452,8 @@ def _configure_thinking_model_params(
     if "max_tokens" in config_params:
         seed = config_params["max_tokens"]
         config_params["max_tokens"] = (
-            max_output_ceiling() if _is_max_sentinel(seed)
+            max_output_ceiling()
+            if _is_max_sentinel(seed)
             else _resolve_max_tokens(seed, model_name)
         )
 
@@ -437,7 +463,9 @@ def _configure_thinking_model_params(
     if _is_max_sentinel(config.max_final_answer_tokens):
         resolved_answer = max_output_ceiling()
     else:
-        resolved_answer = _resolve_max_tokens(config.max_final_answer_tokens, model_name)
+        resolved_answer = _resolve_max_tokens(
+            config.max_final_answer_tokens, model_name
+        )
 
     # For dual-mode models WITHOUT -thinking suffix, explicitly disable reasoning
     if not is_thinking_model(model_name):
@@ -492,7 +520,9 @@ def _configure_thinking_model_params(
                 # This is an API requirement. We ensure max_tokens > reasoning_tokens.
                 if "max_tokens" not in config_params:
                     # User-specified answer limit, else a high practical default.
-                    max_answer = resolved_answer if resolved_answer is not None else 8192
+                    max_answer = (
+                        resolved_answer if resolved_answer is not None else 8192
+                    )
                     max_tokens = max(max_answer, reasoning_tokens + 1)
                     if model_ceiling is not None:
                         max_tokens = min(max_tokens, model_ceiling)
@@ -696,7 +726,9 @@ def pairwise_query(
     )
 
     # Load ICL examples if configured (per-sample resolver; returns [] if ICL not set)
-    icl_resolve = _build_icl_resolver(config, dataset_samples, dataset_name, data_subset)
+    icl_resolve = _build_icl_resolver(
+        config, dataset_samples, dataset_name, data_subset
+    )
 
     # Create Inspect samples
     inspect_samples = []
@@ -830,7 +862,9 @@ def pairwise_conversation_assistant_tags(
     )
 
     # Load ICL examples if configured (per-sample resolver; returns [] if ICL not set)
-    icl_resolve = _build_icl_resolver(config, dataset_samples, dataset_name, data_subset)
+    icl_resolve = _build_icl_resolver(
+        config, dataset_samples, dataset_name, data_subset
+    )
 
     # Create Inspect samples with conversation history
     inspect_samples = []
@@ -978,7 +1012,9 @@ def pairwise_conversation_user_tags(
     )
 
     # Load ICL examples if configured (per-sample resolver; returns [] if ICL not set)
-    icl_resolve = _build_icl_resolver(config, dataset_samples, dataset_name, data_subset)
+    icl_resolve = _build_icl_resolver(
+        config, dataset_samples, dataset_name, data_subset
+    )
 
     # Create Inspect samples
     inspect_samples = []
@@ -1071,7 +1107,9 @@ def individual_conversation_assistant_tags(
     )
 
     # Load ICL examples if configured (per-sample resolver; returns [] if ICL not set)
-    icl_resolve = _build_icl_resolver(config, dataset_samples, dataset_name, data_subset)
+    icl_resolve = _build_icl_resolver(
+        config, dataset_samples, dataset_name, data_subset
+    )
 
     # Create Inspect samples with conversation history
     inspect_samples = []
@@ -1092,13 +1130,15 @@ def individual_conversation_assistant_tags(
         # Build conversation history
         messages = []
         messages.extend(icl_messages)  # ICL turns first
-        messages.extend([
-            # First interaction with output
-            ChatMessageUser(content=generation_prompt),
-            ChatMessageAssistant(content=sample_data["output"]),
-            # Final verification question
-            ChatMessageUser(content=sr_task_prompt),
-        ])
+        messages.extend(
+            [
+                # First interaction with output
+                ChatMessageUser(content=generation_prompt),
+                ChatMessageAssistant(content=sample_data["output"]),
+                # Final verification question
+                ChatMessageUser(content=sr_task_prompt),
+            ]
+        )
 
         inspect_samples.append(
             Sample(
@@ -1173,7 +1213,9 @@ def individual_conversation_user_tags(
     )
 
     # Load ICL examples if configured (per-sample resolver; returns [] if ICL not set)
-    icl_resolve = _build_icl_resolver(config, dataset_samples, dataset_name, data_subset)
+    icl_resolve = _build_icl_resolver(
+        config, dataset_samples, dataset_name, data_subset
+    )
 
     # Create Inspect samples
     inspect_samples = []
@@ -1264,7 +1306,9 @@ def individual_query(
     )
 
     # Load ICL examples if configured (per-sample resolver; returns [] if ICL not set)
-    icl_resolve = _build_icl_resolver(config, dataset_samples, dataset_name, data_subset)
+    icl_resolve = _build_icl_resolver(
+        config, dataset_samples, dataset_name, data_subset
+    )
 
     # Create Inspect samples
     inspect_samples = []
@@ -1353,8 +1397,9 @@ def mmlu_multiple_choice(
     if config.generation_prompt is None:
         config.generation_prompt = "{content}"
 
-    icl_resolve = _build_icl_resolver(config, samples, icl_dataset,
-                                      config.icl_data_subset or data_subset)
+    icl_resolve = _build_icl_resolver(
+        config, samples, icl_dataset, config.icl_data_subset or data_subset
+    )
 
     inspect_samples = []
     for s in samples:
@@ -1473,7 +1518,11 @@ def generation(
     # Note: max_tokens may already be set from config.max_final_answer_tokens above (line 927)
     # The helper will respect existing max_tokens and only set it if not present
     _configure_thinking_model_params(
-        model_name, config, generate_config_params, inspect_model_str, samples=inspect_samples
+        model_name,
+        config,
+        generate_config_params,
+        inspect_model_str,
+        samples=inspect_samples,
     )
 
     return Task(

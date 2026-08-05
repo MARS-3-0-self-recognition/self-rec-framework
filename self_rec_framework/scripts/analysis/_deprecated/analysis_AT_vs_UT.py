@@ -6,7 +6,6 @@ Analyze self-recognition experiment results and generate plots.
 import argparse
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 from itertools import permutations
 
 import numpy as np
@@ -29,8 +28,8 @@ class PairwiseScore:
 
     generator: str
     alternative: str
-    at_score: Optional[float]  # Conversational (assistant tags)
-    ut_score: Optional[float]  # Comparison (user tags)
+    at_score: float | None  # Conversational (assistant tags)
+    ut_score: float | None  # Comparison (user tags)
 
 
 # ==============================================================================
@@ -55,16 +54,16 @@ def get_judge_log_dir(
     )
 
 
-def read_eval_log_from_dir(log_dir: Path) -> Optional[EvalLog]:
+def read_eval_log_from_dir(log_dir: Path) -> EvalLog | None:
     """Read eval log from directory. Asserts exactly one .eval file exists."""
     eval_files = list(log_dir.glob("*.eval"))
 
     if not eval_files:
         return None
 
-    assert (
-        len(eval_files) == 1
-    ), f"Expected 1 eval file in {log_dir}, found {len(eval_files)}"
+    assert len(eval_files) == 1, (
+        f"Expected 1 eval file in {log_dir}, found {len(eval_files)}"
+    )
 
     try:
         return read_eval_log(eval_files[0])
@@ -73,7 +72,7 @@ def read_eval_log_from_dir(log_dir: Path) -> Optional[EvalLog]:
         return None
 
 
-def extract_mean_accuracy(log: EvalLog) -> Optional[float]:
+def extract_mean_accuracy(log: EvalLog) -> float | None:
     """Extract mean accuracy from an EvalLog."""
     if not log.results or not log.results.scores:
         return None
@@ -313,12 +312,12 @@ def main():
     )
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Experiment: {args.experiment_id}")
     print(f"Dataset: {args.dataset_name}")
     print(f"Generation: {args.generation_string}")
     print(f"Models: {', '.join(args.model_names)}")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     # Load data
     pairwise_scores = load_all_pairwise_scores(
@@ -364,9 +363,9 @@ def main():
         output_dir / "heatmap_UT.png",
     )
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("COMPLETE")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
 
 if __name__ == "__main__":

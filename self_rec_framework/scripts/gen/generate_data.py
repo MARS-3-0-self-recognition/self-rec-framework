@@ -9,9 +9,14 @@ from pathlib import Path
 import yaml
 
 from self_rec_framework.src.inspect.tasks import generation
-from self_rec_framework.src.inspect.config import create_generation_config, ExperimentConfig
+from self_rec_framework.src.inspect.config import (
+    create_generation_config,
+    ExperimentConfig,
+)
 from self_rec_framework.src.helpers.utils import data_dir, save_json
-from self_rec_framework.src.data_generation.procedural_editing.treatment import apply_treatment
+from self_rec_framework.src.data_generation.procedural_editing.treatment import (
+    apply_treatment,
+)
 
 
 def _extract_think_tags(text: str) -> str | None:
@@ -64,7 +69,7 @@ def load_generation_config(config_path: str) -> dict:
     if not config_path.exists():
         raise FileNotFoundError(f"Config file not found: {config_path}")
 
-    with open(config_path, "r") as f:
+    with open(config_path) as f:
         return yaml.safe_load(f)
 
 

@@ -107,9 +107,13 @@ def cancel_together_batches():
 
         for batch in batches:
             # Check status - Together AI batches might have status as an attribute
-            status = getattr(batch, "status", None) or getattr(batch, "processing_status", None)
+            status = getattr(batch, "status", None) or getattr(
+                batch, "processing_status", None
+            )
             if status and status.lower() in [s.lower() for s in active_statuses]:
-                batch_id = getattr(batch, "id", None) or getattr(batch, "batch_job_id", None)
+                batch_id = getattr(batch, "id", None) or getattr(
+                    batch, "batch_job_id", None
+                )
                 if not batch_id:
                     continue
 
@@ -119,19 +123,15 @@ def cancel_together_batches():
                     # Try to get request counts if available
                     request_counts = getattr(batch, "request_counts", None)
                     if request_counts:
-                        total = (
-                            getattr(request_counts, "total", None)
-                            or (
-                                getattr(request_counts, "completed", 0)
-                                + getattr(request_counts, "pending", 0)
-                                + getattr(request_counts, "processing", 0)
-                                + getattr(request_counts, "failed", 0)
-                                + getattr(request_counts, "succeeded", 0)
-                            )
-                        )
-                        completed = (
+                        total = getattr(request_counts, "total", None) or (
                             getattr(request_counts, "completed", 0)
-                            or getattr(request_counts, "succeeded", 0)
+                            + getattr(request_counts, "pending", 0)
+                            + getattr(request_counts, "processing", 0)
+                            + getattr(request_counts, "failed", 0)
+                            + getattr(request_counts, "succeeded", 0)
+                        )
+                        completed = getattr(request_counts, "completed", 0) or getattr(
+                            request_counts, "succeeded", 0
                         )
                         progress = f"{completed}/{total}" if total else "unknown"
                     else:
@@ -149,9 +149,9 @@ def cancel_together_batches():
 
 
 def main():
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("CANCEL ALL BATCH JOBS")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     print("Checking for active batch jobs...\n")
 
@@ -196,12 +196,12 @@ def main():
         len(openai_cancelled) + len(anthropic_cancelled) + len(together_cancelled)
     )
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"SUMMARY: Cancelled {total_cancelled} total batch jobs")
     print(f"  • OpenAI: {len(openai_cancelled)}")
     print(f"  • Anthropic: {len(anthropic_cancelled)}")
     print(f"  • Together AI: {len(together_cancelled)}")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     if total_cancelled > 0:
         print("⚠ Note: You may still be charged for partial processing")

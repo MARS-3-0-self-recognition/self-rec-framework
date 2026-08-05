@@ -48,9 +48,6 @@ from self_rec_framework.scripts.utils import (
     expand_model_names,
     get_model_provider,
     provider_to_model_name,
-    calculate_binomial_ci,
-    weighted_regression_with_ci,
-    weighted_correlation,
     save_figure_minimal_version,
     save_figure_no_r_version,
 )
@@ -264,6 +261,7 @@ def extract_dataset_name(full_path: str) -> str:
         "bigcodebench/instruct_1-50" -> "bigcodebench"
     """
     return full_path.split("/")[0]
+
 
 def format_dataset_display_name(dataset_name: str) -> str:
     """Format dataset name for display in legends (neater capitalization)."""
@@ -1152,7 +1150,7 @@ def plot_performance_vs_arena_ranking(
         return
 
     df_filtered = df.loc[available_models]
-    
+
     # Filter counts to match filtered models and columns
     if df_counts is not None:
         # Filter rows (models) to match available_models
@@ -1161,15 +1159,19 @@ def plot_performance_vs_arena_ranking(
         common_cols = df_counts.columns.intersection(df_filtered.columns)
         if len(common_cols) > 0:
             df_counts = df_counts[common_cols]
-            print(f"  ✓ Filtered counts to {len(available_models)} models × {len(common_cols)} datasets")
+            print(
+                f"  ✓ Filtered counts to {len(available_models)} models × {len(common_cols)} datasets"
+            )
             print(f"     Common columns: {list(common_cols)}")
         else:
-            print(f"  ⚠ Warning: No matching columns between counts and performance data")
+            print(
+                "  ⚠ Warning: No matching columns between counts and performance data"
+            )
             print(f"     Performance columns: {list(df_filtered.columns)}")
             print(f"     Counts columns: {list(df_counts.columns)}")
             df_counts = None
     else:
-        print(f"  ⚠ No counts data available (error bars will be omitted)")
+        print("  ⚠ No counts data available (error bars will be omitted)")
 
     # Set up the plot
     fig, ax = plt.subplots(figsize=(14, 10))
@@ -1266,14 +1268,17 @@ def plot_performance_vs_arena_ranking(
                 try:
                     n = df_counts.loc[model, dataset]
                     if pd.notna(n) and n > 0:
-                        from self_rec_framework.scripts.utils import calculate_binomial_ci
+                        from self_rec_framework.scripts.utils import (
+                            calculate_binomial_ci,
+                        )
+
                         _, _, se = calculate_binomial_ci(performance, n)
                         if pd.notna(se) and se > 0:
                             yerr = 1.96 * se  # 95% CI half-width
                 except (KeyError, IndexError):
                     # Model or dataset not in counts - skip error bar
                     pass
-            
+
             # Plot error bar first if available
             if yerr is not None and yerr > 0:
                 error_bar_count += 1
@@ -1281,13 +1286,13 @@ def plot_performance_vs_arena_ranking(
                     ranking,
                     performance,
                     yerr=yerr,
-                    fmt='none',
+                    fmt="none",
                     ecolor=color,
                     alpha=0.6,
                     capsize=3,
                     capthick=1.0,
                     linewidth=1.5,
-                    zorder=1
+                    zorder=1,
                 )
 
             # Plot point
@@ -1301,7 +1306,7 @@ def plot_performance_vs_arena_ranking(
                 edgecolors="black",
                 linewidths=0.5,
                 label=None,
-                zorder=2
+                zorder=2,
             )  # We'll create custom legend
 
             # Collect data for fit line
@@ -1335,8 +1340,12 @@ def plot_performance_vs_arena_ranking(
                     if model_rankings.get(model) == x_val:
                         matching_model = model
                         break
-                
-                if matching_model and matching_model in df_counts.index and dataset in df_counts.columns:
+
+                if (
+                    matching_model
+                    and matching_model in df_counts.index
+                    and dataset in df_counts.columns
+                ):
                     n = df_counts.loc[matching_model, dataset]
                     if pd.notna(n) and n > 0:
                         dataset_counts.append(n)
@@ -1344,44 +1353,58 @@ def plot_performance_vs_arena_ranking(
                         dataset_counts.append(np.nan)
                 else:
                     dataset_counts.append(np.nan)
-            
-            if len(dataset_counts) == len(y_vals) and not np.all(np.isnan(dataset_counts)):
+
+            if len(dataset_counts) == len(y_vals) and not np.all(
+                np.isnan(dataset_counts)
+            ):
                 n_vals = np.array(dataset_counts)
                 valid_n = ~np.isnan(n_vals) & (n_vals > 0)
                 if np.any(valid_n):
                     p_clipped = np.clip(y_vals, 0.05, 0.95)
-                    weights = np.where(valid_n, n_vals / (p_clipped * (1 - p_clipped)), 1.0)
+                    weights = np.where(
+                        valid_n, n_vals / (p_clipped * (1 - p_clipped)), 1.0
+                    )
 
         # Get dataset color for fit line
         line_color = dataset_colors.get(short_name, "gray")
 
         # Use weighted regression if weights available
         if weights is not None and not np.all(np.isnan(weights)):
-            from self_rec_framework.scripts.utils import weighted_regression_with_ci, weighted_correlation
-            reg_result = weighted_regression_with_ci(x_vals, y_vals, weights=weights, x_min=x_min, x_max=x_max)
+            from self_rec_framework.scripts.utils import (
+                weighted_regression_with_ci,
+                weighted_correlation,
+            )
+
+            reg_result = weighted_regression_with_ci(
+                x_vals, y_vals, weights=weights, x_min=x_min, x_max=x_max
+            )
             if reg_result:
                 correlation = weighted_correlation(x_vals, y_vals, weights)
                 # Plot confidence band
                 ax.fill_between(
-                    reg_result['x'],
-                    reg_result['ci_lower'],
-                    reg_result['ci_upper'],
+                    reg_result["x"],
+                    reg_result["ci_lower"],
+                    reg_result["ci_upper"],
                     color=line_color,
                     alpha=0.15,
-                    zorder=0
+                    zorder=0,
                 )
                 # Plot fit line
                 ax.plot(
-                    reg_result['x'],
-                    reg_result['y_pred'],
+                    reg_result["x"],
+                    reg_result["y_pred"],
                     linestyle="--",
                     linewidth=2,
                     alpha=0.7,
                     color=line_color,
                     label=None,
-                    zorder=1
+                    zorder=1,
                 )
-                datasets_with_fit[dataset] = correlation if not np.isnan(correlation) else np.corrcoef(x_vals, y_vals)[0, 1]
+                datasets_with_fit[dataset] = (
+                    correlation
+                    if not np.isnan(correlation)
+                    else np.corrcoef(x_vals, y_vals)[0, 1]
+                )
             else:
                 # Fallback to unweighted
                 correlation = np.corrcoef(x_vals, y_vals)[0, 1]
@@ -1391,7 +1414,15 @@ def plot_performance_vs_arena_ranking(
                 else:
                     x_line = np.linspace(x_vals.min(), x_vals.max(), 100)
                 y_line = coeffs[0] * x_line + coeffs[1]
-                ax.plot(x_line, y_line, linestyle="--", linewidth=2, alpha=0.7, color=line_color, label=None)
+                ax.plot(
+                    x_line,
+                    y_line,
+                    linestyle="--",
+                    linewidth=2,
+                    alpha=0.7,
+                    color=line_color,
+                    label=None,
+                )
                 datasets_with_fit[dataset] = correlation
         else:
             # Unweighted regression (no confidence band)
@@ -1480,7 +1511,8 @@ def plot_performance_vs_arena_ranking(
         label="Chance (0.5)",
     )
     chance_handle = plt.Line2D(
-        [0], [0],
+        [0],
+        [0],
         color="#555555",
         linestyle="--",
         linewidth=1.0,
@@ -1548,9 +1580,7 @@ def plot_performance_vs_arena_ranking(
     )
 
     # Labels and title
-    ax.set_xlabel(
-        "LM Arena Ranking (Lower = Better)", fontsize=12, fontweight="bold"
-    )
+    ax.set_xlabel("LM Arena Ranking (Lower = Better)", fontsize=12, fontweight="bold")
     ax.set_ylabel(ylabel, fontsize=12, fontweight="bold")
 
     # Set x-axis limits (already calculated above for regression lines)
@@ -1661,8 +1691,10 @@ def main():
         if args.figures.strip().lower() == "all"
         else {f.strip() for f in args.figures.split(",") if f.strip()}
     )
+
     def want_figure(name: str) -> bool:
         return selected_figures is None or name in selected_figures
+
     owned_figures = {
         f"{file_prefix}performance_vs_size_known",
         f"{file_prefix}performance_vs_size_all",
@@ -1683,26 +1715,30 @@ def main():
         print(f"Error: File not found: {aggregated_file}")
         return
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"{metric_name.upper()} VS MODEL SIZE, RELEASE DATE & CAPABILITY TIER")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"Input file: {aggregated_file}\n")
 
     # Load data
     print("Loading aggregated performance data...")
     df = pd.read_csv(aggregated_file, index_col=0)
-    
+
     # Try to load counts data for error bars
     # For F1 files, look for aggregated_f1_counts.csv; otherwise aggregated_counts.csv
     if file_prefix:
-        counts_file = aggregated_file.parent / f"aggregated_{file_prefix.rstrip('_')}_counts.csv"
+        counts_file = (
+            aggregated_file.parent / f"aggregated_{file_prefix.rstrip('_')}_counts.csv"
+        )
     else:
         counts_file = aggregated_file.parent / "aggregated_counts.csv"
     df_counts = None
     if counts_file.exists():
         try:
             df_counts = pd.read_csv(counts_file, index_col=0)
-            print(f"  ✓ Loaded counts data: {df_counts.shape[0]} models × {df_counts.shape[1]} datasets\n")
+            print(
+                f"  ✓ Loaded counts data: {df_counts.shape[0]} models × {df_counts.shape[1]} datasets\n"
+            )
             # Filter to match df
             if model_order:
                 available_models = [m for m in model_order if m in df_counts.index]
@@ -1771,7 +1807,9 @@ def main():
 
     # Generate date plots
     if want_figure(f"{file_prefix}performance_vs_date_known"):
-        known_date_plot_path = output_dir / f"{file_prefix}performance_vs_date_known.png"
+        known_date_plot_path = (
+            output_dir / f"{file_prefix}performance_vs_date_known.png"
+        )
         plot_performance_vs_date(
             df,
             known_date_plot_path,
@@ -1820,9 +1858,9 @@ def main():
         print()
 
     # Display summary
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("MODEL SIZE SUMMARY")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     # Count models with known/estimated sizes
     known_size_count = 0
@@ -1842,9 +1880,9 @@ def main():
     print(f"Models with unknown sizes: {unknown_size_count}")
     print()
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("RELEASE DATE SUMMARY")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     # Count models with known/estimated dates
     known_date_count = 0
@@ -1864,9 +1902,9 @@ def main():
     print(f"Models with unknown release dates: {unknown_date_count}")
     print()
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("CAPABILITY TIER SUMMARY")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     # Count models by tier
     tier_counts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
@@ -1884,9 +1922,9 @@ def main():
     print(f"Unknown tier: {unknown_tier_count} models")
     print()
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("LM ARENA RANKING SUMMARY")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     # Count models with known rankings
     known_ranking_count = 0
@@ -1904,13 +1942,15 @@ def main():
     print(f"Models with known arena rankings: {known_ranking_count}")
     print(f"Models with unknown arena rankings: {unknown_ranking_count}")
     if ranking_values:
-        print(f"Ranking range: {min(ranking_values)} (best) to {max(ranking_values)} (worst)")
+        print(
+            f"Ranking range: {min(ranking_values)} (best) to {max(ranking_values)} (worst)"
+        )
         print(f"Average ranking: {sum(ranking_values) / len(ranking_values):.1f}")
     print()
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("ANALYSIS COMPLETE")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"Output directory: {output_dir}")
     print("  • performance_vs_size_known.png: Scatter plot (known sizes only)")
     print("  • performance_vs_size_all.png: Scatter plot (known + estimated sizes)")
@@ -1918,7 +1958,7 @@ def main():
     print("  • performance_vs_date_all.png: Scatter plot (known + estimated dates)")
     print("  • performance_vs_tier.png: Scatter plot (capability tiers)")
     print("  • performance_vs_arena_ranking.png: Scatter plot (LM Arena rankings)")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
 
 if __name__ == "__main__":

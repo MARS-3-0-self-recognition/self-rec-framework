@@ -99,7 +99,7 @@ def load_pku_saferlhf_data(
         start, end = sample_range
         if start < 0 or end >= len(dataset) or start > end:
             raise ValueError(
-                f"Invalid range {start}-{end}. Dataset has {len(dataset)} samples (indices 0-{len(dataset)-1})"
+                f"Invalid range {start}-{end}. Dataset has {len(dataset)} samples (indices 0-{len(dataset) - 1})"
             )
         dataset = dataset.select(range(start, end + 1))  # +1 to make end inclusive
 
@@ -118,7 +118,9 @@ def load_pku_saferlhf_data(
         # Store in input dict
         input_dict[sample_uuid] = prompt
 
-        if (idx + 1) % 1000 == 0 or idx == len(dataset) - 1: # mod 1000 for progress updates, last sample for final update
+        if (idx + 1) % 1000 == 0 or idx == len(
+            dataset
+        ) - 1:  # mod 1000 for progress updates, last sample for final update
             print(f"  Processed {idx + 1}/{len(dataset)} samples...")
 
     # Save to data/{dataset_name}/input.json

@@ -62,6 +62,7 @@ def extract_dataset_name(full_path: str) -> str:
     """
     return full_path.split("/")[0]
 
+
 def format_dataset_display_name(dataset_name: str) -> str:
     """Format dataset name for display in legends (neater capitalization)."""
     mapping = {
@@ -111,7 +112,9 @@ def _get_thinking_instruct_pairs(
             "Each instruct name must map from exactly one thinking model."
         )
     # Rebuild thinking list in same order (only those with a pair)
-    thinking_names = [m for m in thinking_models if str(m).removesuffix(THINKING_SUFFIX) in df2.index]
+    thinking_names = [
+        m for m in thinking_models if str(m).removesuffix(THINKING_SUFFIX) in df2.index
+    ]
     return thinking_names, instruct_names
 
 
@@ -167,10 +170,10 @@ def load_and_compare(
 def get_family_base_color(model_name: str) -> str:
     """
     Get the base color for a model's family (single color, no gradations).
-    
+
     Args:
         model_name: Short model name (e.g., "gpt-4o", "haiku-3.5")
-        
+
     Returns:
         Hex color code for the model's family
     """
@@ -186,9 +189,9 @@ def get_family_base_color(model_name: str) -> str:
         "xai": "#1d4ed8",  # XAI blue
         "moonshot": "#0891b2",  # Cyan
     }
-    
+
     model_lower = model_name.lower()
-    
+
     if model_lower.startswith("gpt-"):
         return family_colors["openai"]
     elif (
@@ -284,7 +287,7 @@ def plot_diverging_stacked_bar_chart(
         values = df_positive[dataset].values
         ax.barh(range(len(df)), values, left=bottom_pos, color=color, alpha=0.7)
         bottom_pos += values
-    
+
     # TODO: Add significance markers if counts data available
     # Test if differences are significantly different from 0
     # This would require loading counts from both experiments
@@ -403,18 +406,26 @@ def plot_grouped_bar_chart(
 
     # Process counts DataFrames: shorten column names to match df.columns
     if df_counts_exp1 is not None:
-        counts_short_names_exp1 = [extract_dataset_name(name) for name in df_counts_exp1.columns]
+        counts_short_names_exp1 = [
+            extract_dataset_name(name) for name in df_counts_exp1.columns
+        ]
         df_counts_exp1.columns = counts_short_names_exp1
         # Reindex to match df (models and columns)
         df_counts_exp1 = df_counts_exp1.reindex(index=df.index, columns=df.columns)
-        print(f"  ✓ Processed counts for {exp1_name}: {df_counts_exp1.shape[0]} models × {df_counts_exp1.shape[1]} datasets")
-    
+        print(
+            f"  ✓ Processed counts for {exp1_name}: {df_counts_exp1.shape[0]} models × {df_counts_exp1.shape[1]} datasets"
+        )
+
     if df_counts_exp2 is not None:
-        counts_short_names_exp2 = [extract_dataset_name(name) for name in df_counts_exp2.columns]
+        counts_short_names_exp2 = [
+            extract_dataset_name(name) for name in df_counts_exp2.columns
+        ]
         df_counts_exp2.columns = counts_short_names_exp2
         # Reindex to match df (models and columns)
         df_counts_exp2 = df_counts_exp2.reindex(index=df.index, columns=df.columns)
-        print(f"  ✓ Processed counts for {exp2_name}: {df_counts_exp2.shape[0]} models × {df_counts_exp2.shape[1]} datasets")
+        print(
+            f"  ✓ Processed counts for {exp2_name}: {df_counts_exp2.shape[0]} models × {df_counts_exp2.shape[1]} datasets"
+        )
 
     # Create figure (wider for many bars)
     n_models = len(df)
@@ -457,12 +468,14 @@ def plot_grouped_bar_chart(
                 s2 = _se_lookup(df_se_exp2, model, dataset)
                 if pd.notna(s1) and pd.notna(s2):
                     error_bar_count += 1
-                    model_errors.append(1.96 * np.sqrt(s1 ** 2 + s2 ** 2))
+                    model_errors.append(1.96 * np.sqrt(s1**2 + s2**2))
                 else:
                     model_errors.append(0)
             errors.append(model_errors)
         error_bars = np.array(errors).T
-        print(f"  ✓ Error bars from propagated SE for {error_bar_count} model-dataset combinations")
+        print(
+            f"  ✓ Error bars from propagated SE for {error_bar_count} model-dataset combinations"
+        )
     elif df_counts_exp1 is not None and df_counts_exp2 is not None:
         # Fallback (no SE matrices available): binomial estimate from counts. This
         # treats each performance value as a single binomial proportion over the
@@ -474,9 +487,19 @@ def plot_grouped_bar_chart(
             model_errors = []
             for dataset in df.columns:
                 try:
-                    n1 = df_counts_exp1.loc[model, dataset] if model in df_counts_exp1.index and dataset in df_counts_exp1.columns else None
-                    n2 = df_counts_exp2.loc[model, dataset] if model in df_counts_exp2.index and dataset in df_counts_exp2.columns else None
-                    
+                    n1 = (
+                        df_counts_exp1.loc[model, dataset]
+                        if model in df_counts_exp1.index
+                        and dataset in df_counts_exp1.columns
+                        else None
+                    )
+                    n2 = (
+                        df_counts_exp2.loc[model, dataset]
+                        if model in df_counts_exp2.index
+                        and dataset in df_counts_exp2.columns
+                        else None
+                    )
+
                     if pd.notna(n1) and pd.notna(n2) and n1 > 0 and n2 > 0:
                         error_bar_count += 1
                         # Calculate SE for difference: SE_diff = sqrt(SE1² + SE2²)
@@ -497,7 +520,7 @@ def plot_grouped_bar_chart(
                                     if extract_dataset_name(col) == dataset:
                                         matching_col2 = col
                                         break
-                                
+
                                 if matching_col1 and model in df_perf_exp1.index:
                                     p1 = df_perf_exp1.loc[model, matching_col1]
                                 if matching_col2 and model in df_perf_exp2.index:
@@ -525,7 +548,7 @@ def plot_grouped_bar_chart(
                             se1 = np.sqrt(p_approx * (1 - p_approx) / n1)
                             se2 = np.sqrt(p_approx * (1 - p_approx) / n2)
                             se_diff = np.sqrt(se1**2 + se2**2)
-                        
+
                         model_errors.append(1.96 * se_diff)  # 95% CI half-width
                     else:
                         model_errors.append(0)
@@ -533,7 +556,9 @@ def plot_grouped_bar_chart(
                     model_errors.append(0)
             errors.append(model_errors)
         error_bars = np.array(errors).T  # Transpose to match pandas plot format
-        print(f"  ✓ Calculated error bars for {error_bar_count} model-dataset combinations")
+        print(
+            f"  ✓ Calculated error bars for {error_bar_count} model-dataset combinations"
+        )
 
     # Calculate x positions for bars
     x = np.arange(len(df.index))
@@ -543,7 +568,7 @@ def plot_grouped_bar_chart(
     if error_bars is not None and error_bars.size > 0:
         # Use matplotlib bar plot to add error bars
         for i, (dataset, color) in enumerate(zip(df.columns, colors)):
-            offset = (i - n_datasets/2 + 0.5) * width
+            offset = (i - n_datasets / 2 + 0.5) * width
             values = df[dataset].values
             if error_bars.shape[0] > i:
                 yerr = error_bars[i]
@@ -558,8 +583,13 @@ def plot_grouped_bar_chart(
                         edgecolor="black",
                         linewidth=0.5,
                         yerr=yerr,
-                        error_kw={'capsize': 3, 'capthick': 1.0, 'elinewidth': 1.5, 'alpha': 0.7},
-                        label=dataset
+                        error_kw={
+                            "capsize": 3,
+                            "capthick": 1.0,
+                            "elinewidth": 1.5,
+                            "alpha": 0.7,
+                        },
+                        label=dataset,
                     )
                 else:
                     # No error bars, plot without them
@@ -571,7 +601,7 @@ def plot_grouped_bar_chart(
                         alpha=0.8,
                         edgecolor="black",
                         linewidth=0.5,
-                        label=dataset
+                        label=dataset,
                     )
             else:
                 # No error bars for this dataset
@@ -583,7 +613,7 @@ def plot_grouped_bar_chart(
                     alpha=0.8,
                     edgecolor="black",
                     linewidth=0.5,
-                    label=dataset
+                    label=dataset,
                 )
         ax.set_xticks(x)
         ax.set_xticklabels(
@@ -601,7 +631,7 @@ def plot_grouped_bar_chart(
             width=0.8,
             alpha=0.8,
             edgecolor="black",
-            linewidth=0.5
+            linewidth=0.5,
         )
         # Get x positions from pandas plot
         x = np.arange(len(df.index))
@@ -616,16 +646,31 @@ def plot_grouped_bar_chart(
     significance_count = 0
     if df_counts_exp1 is not None and df_counts_exp2 is not None:
         # Test if differences are significantly different from 0
-        from scipy.stats import binomtest
         p_values = []
         for model in df.index:
             for dataset in df.columns:
                 try:
-                    n1 = df_counts_exp1.loc[model, dataset] if model in df_counts_exp1.index and dataset in df_counts_exp1.columns else None
-                    n2 = df_counts_exp2.loc[model, dataset] if model in df_counts_exp2.index and dataset in df_counts_exp2.columns else None
+                    n1 = (
+                        df_counts_exp1.loc[model, dataset]
+                        if model in df_counts_exp1.index
+                        and dataset in df_counts_exp1.columns
+                        else None
+                    )
+                    n2 = (
+                        df_counts_exp2.loc[model, dataset]
+                        if model in df_counts_exp2.index
+                        and dataset in df_counts_exp2.columns
+                        else None
+                    )
                     diff = df.loc[model, dataset]
-                    
-                    if pd.notna(n1) and pd.notna(n2) and n1 > 0 and n2 > 0 and pd.notna(diff):
+
+                    if (
+                        pd.notna(n1)
+                        and pd.notna(n2)
+                        and n1 > 0
+                        and n2 > 0
+                        and pd.notna(diff)
+                    ):
                         # Two-sample proportion test: H0: p1 = p2
                         # Get actual proportions if available, otherwise use conservative estimate
                         # Note: df_perf_exp1/exp2 have full column names, need to match
@@ -644,7 +689,7 @@ def plot_grouped_bar_chart(
                                     if extract_dataset_name(col) == dataset:
                                         matching_col2 = col
                                         break
-                                
+
                                 if matching_col1 and model in df_perf_exp1.index:
                                     p1 = df_perf_exp1.loc[model, matching_col1]
                                 if matching_col2 and model in df_perf_exp2.index:
@@ -657,20 +702,27 @@ def plot_grouped_bar_chart(
                                 else:
                                     # Fallback to pooled proportion
                                     p_pooled = 0.5  # Conservative estimate
-                                    se_diff = np.sqrt(p_pooled * (1 - p_pooled) * (1/n1 + 1/n2))
+                                    se_diff = np.sqrt(
+                                        p_pooled * (1 - p_pooled) * (1 / n1 + 1 / n2)
+                                    )
                             except (KeyError, IndexError):
                                 # Fallback to pooled proportion
                                 p_pooled = 0.5
-                                se_diff = np.sqrt(p_pooled * (1 - p_pooled) * (1/n1 + 1/n2))
+                                se_diff = np.sqrt(
+                                    p_pooled * (1 - p_pooled) * (1 / n1 + 1 / n2)
+                                )
                         else:
                             # Conservative estimate: assume both proportions are 0.5
                             p_pooled = 0.5
-                            se_diff = np.sqrt(p_pooled * (1 - p_pooled) * (1/n1 + 1/n2))
-                        
+                            se_diff = np.sqrt(
+                                p_pooled * (1 - p_pooled) * (1 / n1 + 1 / n2)
+                            )
+
                         if se_diff > 0:
                             z_score = abs(diff) / se_diff
                             # Two-tailed p-value from normal distribution
                             from scipy.stats import norm
+
                             p_val = 2 * (1 - norm.cdf(z_score))
                             p_values.append(p_val)
                         else:
@@ -679,7 +731,7 @@ def plot_grouped_bar_chart(
                         p_values.append(np.nan)
                 except (KeyError, IndexError):
                     p_values.append(np.nan)
-        
+
         # Apply FDR correction
         if len(p_values) > 0 and not np.all(np.isnan(p_values)):
             valid_p_values = [p for p in p_values if pd.notna(p)]
@@ -689,45 +741,70 @@ def plot_grouped_bar_chart(
                 p_idx = 0
                 for model_idx, model in enumerate(df.index):
                     for dataset_idx, dataset in enumerate(df.columns):
-                        if p_idx < len(rejected) and rejected[p_idx] and pd.notna(p_values[p_idx]):
-                            p_val = p_corrected[p_idx] if p_idx < len(p_corrected) else p_values[p_idx]
+                        if (
+                            p_idx < len(rejected)
+                            and rejected[p_idx]
+                            and pd.notna(p_values[p_idx])
+                        ):
+                            p_val = (
+                                p_corrected[p_idx]
+                                if p_idx < len(p_corrected)
+                                else p_values[p_idx]
+                            )
                             marker = get_significance_marker(p_values[p_idx], p_val)
                             if marker:
                                 significance_count += 1
-                                offset = (dataset_idx - n_datasets/2 + 0.5) * width
+                                offset = (dataset_idx - n_datasets / 2 + 0.5) * width
                                 bar_height = df.loc[model, dataset]
-                                yerr_val = error_bars[dataset_idx, model_idx] if error_bars is not None and error_bars.shape[0] > dataset_idx and error_bars.shape[1] > model_idx else 0.02
+                                yerr_val = (
+                                    error_bars[dataset_idx, model_idx]
+                                    if error_bars is not None
+                                    and error_bars.shape[0] > dataset_idx
+                                    and error_bars.shape[1] > model_idx
+                                    else 0.02
+                                )
                                 # Place marker above bar if positive, below if negative
                                 if bar_height < 0:
                                     marker_y = bar_height - yerr_val - 0.01
-                                    va = 'top'
+                                    va = "top"
                                 else:
                                     marker_y = bar_height + yerr_val + 0.01
-                                    va = 'bottom'
+                                    va = "bottom"
                                 ax.text(
                                     x[model_idx] + offset,
                                     marker_y,
                                     marker,
-                                    ha='center',
+                                    ha="center",
                                     va=va,
                                     fontsize=10,
-                                    fontweight='bold'
+                                    fontweight="bold",
                                 )
                         p_idx += 1
                 print(f"  ✓ Added {significance_count} significance markers")
             else:
-                print(f"  ⚠ No valid p-values for significance testing")
+                print("  ⚠ No valid p-values for significance testing")
 
     # Add reference line at 0
-    ax.axhline(y=0, color="#333333", linestyle="--", linewidth=1.5, alpha=1.0, label="No difference")
+    ax.axhline(
+        y=0,
+        color="#333333",
+        linestyle="--",
+        linewidth=1.5,
+        alpha=1.0,
+        label="No difference",
+    )
 
     # Labels and title
     ax.set_xlabel("Evaluator Model", fontsize=12, fontweight="bold")
-    ax.set_ylabel(f"Performance Difference ({exp1_name} - {exp2_name})", fontsize=12, fontweight="bold")
-    
+    ax.set_ylabel(
+        f"Performance Difference ({exp1_name} - {exp2_name})",
+        fontsize=12,
+        fontweight="bold",
+    )
+
     title = f"Performance Contrast: {exp1_name} vs {exp2_name}"
     ax.set_title(title, fontsize=13, fontweight="bold", pad=20)
-    
+
     # Grid
     ax.grid(axis="y", alpha=0.3, linestyle="--")
     ax.set_axisbelow(True)
@@ -737,25 +814,56 @@ def plot_grouped_bar_chart(
     # Legend - add significance marker if any; No difference 2nd to last, * p last
     handles, labels = ax.get_legend_handles_labels()
     # Check if any significance markers were added
-    has_significance = any('*' in str(text.get_text()) for text in ax.texts)
+    has_significance = any("*" in str(text.get_text()) for text in ax.texts)
     if has_significance:
         # Add significance marker to legend
         from matplotlib.patches import Rectangle
-        sig_handle = Rectangle((0, 0), 1, 1, fill=False, edgecolor='none', visible=False)
+
+        sig_handle = Rectangle(
+            (0, 0), 1, 1, fill=False, edgecolor="none", visible=False
+        )
         handles.append(sig_handle)
         labels.append("* p < 0.05")
     # Reorder so "No difference" is 2nd to last, * p < 0.05 last
-    others_h = [h for h, l in zip(handles, labels) if l not in ("No difference", "* p < 0.05")]
-    others_l = [l for h, l in zip(handles, labels) if l not in ("No difference", "* p < 0.05")]
-    ref_pair = next(((h, l) for h, l in zip(handles, labels) if l == "No difference"), (None, None))
-    sig_pair = next(((h, l) for h, l in zip(handles, labels) if l == "* p < 0.05"), (None, None))
-    handles = others_h + ([ref_pair[0]] if ref_pair[0] is not None else []) + ([sig_pair[0]] if sig_pair[0] is not None else [])
-    labels = others_l + ([ref_pair[1]] if ref_pair[1] is not None else []) + ([sig_pair[1]] if sig_pair[1] is not None else [])
-    ax.legend(handles=handles, labels=labels, title="Dataset", loc="center left", bbox_to_anchor=(1.02, 0.5))
-    
+    others_h = [
+        h
+        for h, label in zip(handles, labels)
+        if label not in ("No difference", "* p < 0.05")
+    ]
+    others_l = [
+        label
+        for h, label in zip(handles, labels)
+        if label not in ("No difference", "* p < 0.05")
+    ]
+    ref_pair = next(
+        ((h, label) for h, label in zip(handles, labels) if label == "No difference"),
+        (None, None),
+    )
+    sig_pair = next(
+        ((h, label) for h, label in zip(handles, labels) if label == "* p < 0.05"),
+        (None, None),
+    )
+    handles = (
+        others_h
+        + ([ref_pair[0]] if ref_pair[0] is not None else [])
+        + ([sig_pair[0]] if sig_pair[0] is not None else [])
+    )
+    labels = (
+        others_l
+        + ([ref_pair[1]] if ref_pair[1] is not None else [])
+        + ([sig_pair[1]] if sig_pair[1] is not None else [])
+    )
+    ax.legend(
+        handles=handles,
+        labels=labels,
+        title="Dataset",
+        loc="center left",
+        bbox_to_anchor=(1.02, 0.5),
+    )
+
     # Rotate x labels if many models
     plt.xticks(rotation=45, ha="right")
-    
+
     plt.tight_layout(rect=[0, 0, 0.85, 1])
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     print(f"  ✓ Saved grouped bar chart to: {output_path}")
@@ -826,7 +934,7 @@ def plot_performance_scatter(
     Create a scatter plot with exp1 performance on y-axis and exp2 performance on x-axis.
     Colors indicate model families, shapes indicate datasets.
     Linear regression fitted to each dataset group.
-    
+
     Args:
         df1: DataFrame with exp1 performance (models as index, datasets as columns)
         df2: DataFrame with exp2 performance (models as index, datasets as columns)
@@ -850,9 +958,11 @@ def plot_performance_scatter(
                     break
         # Rename counts columns to match df1
         if counts_col_map_exp1:
-            df_counts_exp1 = df_counts_exp1.rename(columns={v: k for k, v in counts_col_map_exp1.items()})
+            df_counts_exp1 = df_counts_exp1.rename(
+                columns={v: k for k, v in counts_col_map_exp1.items()}
+            )
         df_counts_exp1 = df_counts_exp1.reindex(index=df1.index, columns=df1.columns)
-    
+
     if df_counts_exp2 is not None:
         # Create mapping from counts columns to df2 columns (by short name)
         counts_col_map_exp2 = {}
@@ -866,7 +976,9 @@ def plot_performance_scatter(
                     break
         # Rename counts columns to match df2
         if counts_col_map_exp2:
-            df_counts_exp2 = df_counts_exp2.rename(columns={v: k for k, v in counts_col_map_exp2.items()})
+            df_counts_exp2 = df_counts_exp2.rename(
+                columns={v: k for k, v in counts_col_map_exp2.items()}
+            )
         df_counts_exp2 = df_counts_exp2.reindex(index=df2.index, columns=df2.columns)
 
     # Prepare data for plotting
@@ -875,19 +987,27 @@ def plot_performance_scatter(
         for dataset in df1.columns:
             exp1_val = df1.loc[model, dataset]
             exp2_val = df2.loc[model, dataset]
-            
+
             # Skip if either value is NaN
             if pd.isna(exp1_val) or pd.isna(exp2_val):
                 continue
-            
+
             # Get counts for error bars
             n1 = None
             n2 = None
-            if df_counts_exp1 is not None and model in df_counts_exp1.index and dataset in df_counts_exp1.columns:
+            if (
+                df_counts_exp1 is not None
+                and model in df_counts_exp1.index
+                and dataset in df_counts_exp1.columns
+            ):
                 n1 = df_counts_exp1.loc[model, dataset]
-            if df_counts_exp2 is not None and model in df_counts_exp2.index and dataset in df_counts_exp2.columns:
+            if (
+                df_counts_exp2 is not None
+                and model in df_counts_exp2.index
+                and dataset in df_counts_exp2.columns
+            ):
                 n2 = df_counts_exp2.loc[model, dataset]
-            
+
             # Calculate error bars if counts available
             exp1_err = None
             exp2_err = None
@@ -897,131 +1017,168 @@ def plot_performance_scatter(
             if pd.notna(n2) and n2 > 0:
                 _, _, se2 = calculate_binomial_ci(exp2_val, int(n2))
                 exp2_err = 1.96 * se2  # 95% CI half-width
-                
-            plot_data.append({
-                'model': model,
-                'dataset': extract_dataset_name(dataset),
-                'exp1': exp1_val,
-                'exp2': exp2_val,
-                'family': get_model_provider(model),
-                'exp1_err': exp1_err,
-                'exp2_err': exp2_err,
-                'n1': int(n1) if pd.notna(n1) else None,
-                'n2': int(n2) if pd.notna(n2) else None,
-            })
-    
+
+            plot_data.append(
+                {
+                    "model": model,
+                    "dataset": extract_dataset_name(dataset),
+                    "exp1": exp1_val,
+                    "exp2": exp2_val,
+                    "family": get_model_provider(model),
+                    "exp1_err": exp1_err,
+                    "exp2_err": exp2_err,
+                    "n1": int(n1) if pd.notna(n1) else None,
+                    "n2": int(n2) if pd.notna(n2) else None,
+                }
+            )
+
     if not plot_data:
         print("  ⚠ No data to plot")
         return
-    
+
     plot_df = pd.DataFrame(plot_data)
-    
+
     # Set up the plot
     fig, ax = plt.subplots(figsize=(10, 10))
-    
+
     # Define shapes for datasets
-    unique_datasets = plot_df['dataset'].unique()
-    markers = ['o', 's', '^', 'D', 'v', '<', '>', 'p', '*', 'h', 'H', 'X']
-    dataset_markers = {ds: markers[i % len(markers)] for i, ds in enumerate(unique_datasets)}
-    
+    unique_datasets = plot_df["dataset"].unique()
+    markers = ["o", "s", "^", "D", "v", "<", ">", "p", "*", "h", "H", "X"]
+    dataset_markers = {
+        ds: markers[i % len(markers)] for i, ds in enumerate(unique_datasets)
+    }
+
     # Define colors for datasets (for regression lines)
-    dataset_colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f"]
-    dataset_line_colors = {ds: dataset_colors[i % len(dataset_colors)] for i, ds in enumerate(unique_datasets)}
-    
+    dataset_colors = [
+        "#1f77b4",
+        "#ff7f0e",
+        "#2ca02c",
+        "#d62728",
+        "#9467bd",
+        "#8c564b",
+        "#e377c2",
+        "#7f7f7f",
+    ]
+    dataset_line_colors = {
+        ds: dataset_colors[i % len(dataset_colors)]
+        for i, ds in enumerate(unique_datasets)
+    }
+
     # Get unique families and assign colors
-    unique_families = plot_df['family'].unique()
+    unique_families = plot_df["family"].unique()
     family_colors_map = {}
     for family in unique_families:
         # Get color from first model in this family
-        family_models = plot_df[plot_df['family'] == family]['model'].unique()
+        family_models = plot_df[plot_df["family"] == family]["model"].unique()
         if len(family_models) > 0:
             family_colors_map[family] = get_family_base_color(family_models[0])
         else:
             family_colors_map[family] = "#9ca3af"
-    
+
     # Remove "Together-" prefix from family names for legend
     def clean_family_name(family):
-        return family.replace("Together-", "") if family.startswith("Together-") else family
-    
+        return (
+            family.replace("Together-", "")
+            if family.startswith("Together-")
+            else family
+        )
+
     # Determine extended range for lines (slightly before 0 and past 1, or data range)
-    data_min = min(plot_df['exp1'].min(), plot_df['exp2'].min())
-    data_max = max(plot_df['exp1'].max(), plot_df['exp2'].max())
+    data_min = min(plot_df["exp1"].min(), plot_df["exp2"].min())
+    data_max = max(plot_df["exp1"].max(), plot_df["exp2"].max())
     line_min = min(-0.05, data_min - 0.05)
     line_max = max(1.05, data_max + 0.05)
-    
+
     # Track correlations per dataset for legend
     datasets_with_fit = {}
-    
+
     # Plot points grouped by dataset
     for dataset in unique_datasets:
-        dataset_data = plot_df[plot_df['dataset'] == dataset]
+        dataset_data = plot_df[plot_df["dataset"] == dataset]
         marker = dataset_markers[dataset]
-        
+
         # Group by family for this dataset
-        for family in dataset_data['family'].unique():
-            family_data = dataset_data[dataset_data['family'] == family]
-            
+        for family in dataset_data["family"].unique():
+            family_data = dataset_data[dataset_data["family"] == family]
+
             color = family_colors_map[family]
-            
+
             # Get error bars for this family's data
-            xerr = family_data['exp2_err'].values if 'exp2_err' in family_data.columns else None
-            yerr = family_data['exp1_err'].values if 'exp1_err' in family_data.columns else None
-            
+            xerr = (
+                family_data["exp2_err"].values
+                if "exp2_err" in family_data.columns
+                else None
+            )
+            yerr = (
+                family_data["exp1_err"].values
+                if "exp1_err" in family_data.columns
+                else None
+            )
+
             # Filter out None values for error bars
             if xerr is not None:
-                xerr = np.array([e if pd.notna(e) and e is not None else 0 for e in xerr])
+                xerr = np.array(
+                    [e if pd.notna(e) and e is not None else 0 for e in xerr]
+                )
                 if np.all(xerr == 0):
                     xerr = None
             if yerr is not None:
-                yerr = np.array([e if pd.notna(e) and e is not None else 0 for e in yerr])
+                yerr = np.array(
+                    [e if pd.notna(e) and e is not None else 0 for e in yerr]
+                )
                 if np.all(yerr == 0):
                     yerr = None
-            
+
             ax.errorbar(
-                family_data['exp2'],
-                family_data['exp1'],
+                family_data["exp2"],
+                family_data["exp1"],
                 xerr=xerr,
                 yerr=yerr,
-                fmt='none',
+                fmt="none",
                 ecolor=color,
                 alpha=0.4,
                 capsize=2,
                 capthick=0.5,
                 elinewidth=0.5,
-                zorder=1
+                zorder=1,
             )
-            
+
             ax.scatter(
-                family_data['exp2'],
-                family_data['exp1'],
+                family_data["exp2"],
+                family_data["exp1"],
                 c=color,
                 marker=marker,
                 s=100,
                 alpha=0.7,
-                edgecolors='black',
+                edgecolors="black",
                 linewidths=0.5,
                 label=None,  # Custom legend will be created
-                zorder=2
+                zorder=2,
             )
-        
+
         # Fit linear regression for this dataset with weighted regression if counts available
-        x_vals = np.array(dataset_data['exp2'].values)
-        y_vals = np.array(dataset_data['exp1'].values)
-        
+        x_vals = np.array(dataset_data["exp2"].values)
+        y_vals = np.array(dataset_data["exp1"].values)
+
         if len(x_vals) > 1:
             # Calculate weights from counts (use geometric mean of n1 and n2, or individual if one missing)
             weights = None
-            if 'n1' in dataset_data.columns and 'n2' in dataset_data.columns:
-                n1_vals = dataset_data['n1'].values
-                n2_vals = dataset_data['n2'].values
+            if "n1" in dataset_data.columns and "n2" in dataset_data.columns:
+                n1_vals = dataset_data["n1"].values
+                n2_vals = dataset_data["n2"].values
                 # Use geometric mean of counts, or individual count if one is missing
                 weights_list = []
                 for n1, n2 in zip(n1_vals, n2_vals):
                     # Handle None values
                     n1_val = None if (pd.isna(n1) or n1 is None) else float(n1)
                     n2_val = None if (pd.isna(n2) or n2 is None) else float(n2)
-                    
-                    if n1_val is not None and n2_val is not None and n1_val > 0 and n2_val > 0:
+
+                    if (
+                        n1_val is not None
+                        and n2_val is not None
+                        and n1_val > 0
+                        and n2_val > 0
+                    ):
                         # Geometric mean for combined weight
                         weights_list.append(np.sqrt(n1_val * n2_val))
                     elif n1_val is not None and n1_val > 0:
@@ -1030,7 +1187,7 @@ def plot_performance_scatter(
                         weights_list.append(n2_val)
                     else:
                         weights_list.append(np.nan)
-                
+
                 if len(weights_list) > 0 and not np.all(np.isnan(weights_list)):
                     weights = np.array(weights_list)
                     # Normalize weights (clip extreme values to prevent outliers from dominating)
@@ -1039,53 +1196,75 @@ def plot_performance_scatter(
                         p5 = np.percentile(valid_weights, 5)
                         p95 = np.percentile(valid_weights, 95)
                         weights = np.clip(weights, p5, p95)
-            
+
             # Use weighted regression if weights available
-            if weights is not None and not np.all(np.isnan(weights)) and len(weights) == len(x_vals):
+            if (
+                weights is not None
+                and not np.all(np.isnan(weights))
+                and len(weights) == len(x_vals)
+            ):
                 # Filter out NaN values from all arrays
                 valid_mask = ~(np.isnan(x_vals) | np.isnan(y_vals) | np.isnan(weights))
                 if np.sum(valid_mask) >= 2:  # Need at least 2 points for regression
                     x_vals_filtered = x_vals[valid_mask]
                     y_vals_filtered = y_vals[valid_mask]
                     weights_filtered = weights[valid_mask]
-                    
-                    reg_result = weighted_regression_with_ci(x_vals_filtered, y_vals_filtered, weights=weights_filtered, x_min=line_min, x_max=line_max)
+
+                    reg_result = weighted_regression_with_ci(
+                        x_vals_filtered,
+                        y_vals_filtered,
+                        weights=weights_filtered,
+                        x_min=line_min,
+                        x_max=line_max,
+                    )
                     if reg_result:
-                        correlation = weighted_correlation(x_vals_filtered, y_vals_filtered, weights_filtered)
+                        correlation = weighted_correlation(
+                            x_vals_filtered, y_vals_filtered, weights_filtered
+                        )
                         datasets_with_fit[dataset] = correlation
                         # Use dataset color for the regression line
                         line_color = dataset_line_colors[dataset]
                         # Plot confidence band
                         ax.fill_between(
-                            reg_result['x'],
-                            reg_result['ci_lower'],
-                            reg_result['ci_upper'],
+                            reg_result["x"],
+                            reg_result["ci_lower"],
+                            reg_result["ci_upper"],
                             color=line_color,
                             alpha=0.15,
-                            zorder=0
+                            zorder=0,
                         )
                         # Plot regression line
                         ax.plot(
-                            reg_result['x'],
-                            reg_result['y_pred'],
+                            reg_result["x"],
+                            reg_result["y_pred"],
                             color=line_color,
-                            linestyle='--',
+                            linestyle="--",
                             linewidth=1.5,
                             alpha=0.7,
                             label=None,  # Custom legend will be created
-                            zorder=1
+                            zorder=1,
                         )
                     elif np.ptp(x_vals_filtered) >= 1e-10:
                         # Fallback to unweighted regression — only when x actually
                         # varies. A constant x (every model at the same score) can't
                         # be regressed; that's why the weighted fit returned None,
                         # and stats.linregress would raise on it too. Skip the line.
-                        slope, intercept, r_value, p_value, std_err = stats.linregress(x_vals_filtered, y_vals_filtered)
+                        slope, intercept, r_value, p_value, std_err = stats.linregress(
+                            x_vals_filtered, y_vals_filtered
+                        )
                         datasets_with_fit[dataset] = r_value
                         x_line = np.linspace(line_min, line_max, 100)
                         y_line = slope * x_line + intercept
                         line_color = dataset_line_colors[dataset]
-                        ax.plot(x_line, y_line, color=line_color, linestyle='--', linewidth=1.5, alpha=0.7, label=None)
+                        ax.plot(
+                            x_line,
+                            y_line,
+                            color=line_color,
+                            linestyle="--",
+                            linewidth=1.5,
+                            alpha=0.7,
+                            label=None,
+                        )
                 else:
                     # Not enough valid points for regression
                     pass
@@ -1094,7 +1273,9 @@ def plot_performance_scatter(
                 # x can't be regressed; stats.linregress would raise on it).
                 x_clean = x_vals[~np.isnan(x_vals)]
                 if len(x_clean) >= 2 and np.ptp(x_clean) >= 1e-10:
-                    slope, intercept, r_value, p_value, std_err = stats.linregress(x_vals, y_vals)
+                    slope, intercept, r_value, p_value, std_err = stats.linregress(
+                        x_vals, y_vals
+                    )
                     datasets_with_fit[dataset] = r_value
 
                     # Plot regression line extending to full range
@@ -1108,45 +1289,45 @@ def plot_performance_scatter(
                         x_line,
                         y_line,
                         color=line_color,
-                        linestyle='--',
+                        linestyle="--",
                         linewidth=1.5,
                         alpha=0.7,
-                        label=None  # Custom legend will be created
+                        label=None,  # Custom legend will be created
                     )
-    
+
     # Add 1:1 reference line (y = x) extending to full range
     # Use different color from chance lines (#888888 is lighter gray)
     ax.plot(
         [line_min, line_max],
         [line_min, line_max],
-        color='#888888',
-        linestyle=':',
+        color="#888888",
+        linestyle=":",
         linewidth=2,
         alpha=0.7,
-        label='1:1 line'
+        label="1:1 line",
     )
-    
+
     # Add horizontal and vertical lines at 0.5 (chance)
-    ax.axhline(y=0.5, color='#555555', linestyle='--', linewidth=1.0, alpha=0.8)
-    ax.axvline(x=0.5, color='#555555', linestyle='--', linewidth=1.0, alpha=0.8)
-    
+    ax.axhline(y=0.5, color="#555555", linestyle="--", linewidth=1.0, alpha=0.8)
+    ax.axvline(x=0.5, color="#555555", linestyle="--", linewidth=1.0, alpha=0.8)
+
     # Set axis labels
     ax.set_xlabel(f"{exp2_name} Performance", fontsize=12, fontweight="bold")
     ax.set_ylabel(f"{exp1_name} Performance", fontsize=12, fontweight="bold")
-    
+
     # Set title
     title = f"Performance Comparison: {exp1_name} vs {exp2_name}"
     ax.set_title(title, fontsize=13, fontweight="bold", pad=20)
-    
+
     # Set equal aspect ratio and limits (0 to 1 for performance)
-    ax.set_aspect('equal', adjustable='box')
+    ax.set_aspect("equal", adjustable="box")
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
     ax.xaxis.set_major_locator(MultipleLocator(0.1))
     ax.yaxis.set_major_locator(MultipleLocator(0.1))
-    
+
     # Add grid
-    ax.grid(alpha=0.3, linestyle='--')
+    ax.grid(alpha=0.3, linestyle="--")
     ax.set_axisbelow(True)
     ax.tick_params(axis="both", labelsize=18)
 
@@ -1164,7 +1345,8 @@ def plot_performance_scatter(
         display_name = provider_to_model_name(family)
         family_handles.append(
             plt.Line2D(
-                [0], [0],
+                [0],
+                [0],
                 marker="o",
                 color="w",
                 markerfacecolor=color,
@@ -1181,7 +1363,8 @@ def plot_performance_scatter(
         marker = dataset_markers[dataset]
         line_color = dataset_line_colors[dataset]
         h_marker = plt.Line2D(
-            [0], [0],
+            [0],
+            [0],
             marker=marker,
             color="w",
             markerfacecolor="gray",
@@ -1192,13 +1375,16 @@ def plot_performance_scatter(
         if dataset in datasets_with_fit:
             h_line = plt.Line2D([0], [0], linestyle="--", color=line_color, linewidth=2)
             dataset_handles.append((h_marker, h_line))
-            dataset_labels.append(f"{format_dataset_display_name(dataset)} (r={datasets_with_fit[dataset]:.2f})")
+            dataset_labels.append(
+                f"{format_dataset_display_name(dataset)} (r={datasets_with_fit[dataset]:.2f})"
+            )
         else:
             dataset_handles.append(h_marker)
             dataset_labels.append(format_dataset_display_name(dataset))
 
     chance_handle = plt.Line2D(
-        [0], [0],
+        [0],
+        [0],
         color="#555555",
         linestyle="--",
         linewidth=1.0,
@@ -1206,7 +1392,8 @@ def plot_performance_scatter(
         label="Chance (0.5)",
     )
     one_to_one_handle = plt.Line2D(
-        [0], [0],
+        [0],
+        [0],
         color="#888888",
         linestyle=":",
         linewidth=2,
@@ -1260,7 +1447,7 @@ def plot_performance_scatter(
             handlelength=2.5,
             columnspacing=2.0,
         )
-    
+
     plt.tight_layout(rect=[0, 0, 1, 1])
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     print(f"  ✓ Saved scatter plot to: {output_path}")
@@ -1342,6 +1529,7 @@ def main():
         if args.figures.strip().lower() == "all"
         else {f.strip() for f in args.figures.split(",") if f.strip()}
     )
+
     def want_figure(*names: str) -> bool:
         return selected_figures is None or any(n in selected_figures for n in names)
 
@@ -1366,9 +1554,9 @@ def main():
         print(f"Error: File not found: {exp2_file}")
         return
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("PERFORMANCE CONTRAST")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"Experiment 1: {args.exp1_name}")
     print(f"  File: {exp1_file}")
     print(f"Experiment 2: {args.exp2_name}")
@@ -1377,13 +1565,16 @@ def main():
 
     reasoning_vs_instruct = getattr(args, "reasoning_vs_instruct", False)
     if reasoning_vs_instruct:
-        print("Mode: reasoning vs instruct (pairing exp1 -thinking models to exp2 instruct names)\n")
+        print(
+            "Mode: reasoning vs instruct (pairing exp1 -thinking models to exp2 instruct names)\n"
+        )
 
     # Load and compute differences
     print("Loading and comparing performance data...")
     try:
         df_diff = load_and_compare(
-            exp1_file, exp2_file,
+            exp1_file,
+            exp2_file,
             model_order=model_order,
             reasoning_vs_instruct=reasoning_vs_instruct,
         )
@@ -1393,7 +1584,8 @@ def main():
 
         # Also load original data for scatter plot
         df1_orig, df2_orig = load_original_data(
-            exp1_file, exp2_file,
+            exp1_file,
+            exp2_file,
             model_order=model_order,
             reasoning_vs_instruct=reasoning_vs_instruct,
         )
@@ -1427,31 +1619,53 @@ def main():
     counts_exp2_file = exp2_file.parent / "aggregated_counts.csv"
     df_counts_exp1 = None
     df_counts_exp2 = None
-    
+
     if counts_exp1_file.exists():
         try:
             df_counts_exp1 = pd.read_csv(counts_exp1_file, index_col=0)
-            print(f"  ✓ Loaded counts for {args.exp1_name}: {df_counts_exp1.shape[0]} models × {df_counts_exp1.shape[1]} datasets")
-            print(f"    Models: {list(df_counts_exp1.index[:5])}..." if len(df_counts_exp1.index) > 5 else f"    Models: {list(df_counts_exp1.index)}")
-            print(f"    Datasets: {list(df_counts_exp1.columns[:3])}..." if len(df_counts_exp1.columns) > 3 else f"    Datasets: {list(df_counts_exp1.columns)}")
+            print(
+                f"  ✓ Loaded counts for {args.exp1_name}: {df_counts_exp1.shape[0]} models × {df_counts_exp1.shape[1]} datasets"
+            )
+            print(
+                f"    Models: {list(df_counts_exp1.index[:5])}..."
+                if len(df_counts_exp1.index) > 5
+                else f"    Models: {list(df_counts_exp1.index)}"
+            )
+            print(
+                f"    Datasets: {list(df_counts_exp1.columns[:3])}..."
+                if len(df_counts_exp1.columns) > 3
+                else f"    Datasets: {list(df_counts_exp1.columns)}"
+            )
         except Exception as e:
             print(f"  ⚠ Could not load counts for {args.exp1_name}: {e}")
     else:
         print(f"  ⚠ Counts file not found: {counts_exp1_file}")
-    
+
     if counts_exp2_file.exists():
         try:
             df_counts_exp2 = pd.read_csv(counts_exp2_file, index_col=0)
-            print(f"  ✓ Loaded counts for {args.exp2_name}: {df_counts_exp2.shape[0]} models × {df_counts_exp2.shape[1]} datasets")
-            print(f"    Models: {list(df_counts_exp2.index[:5])}..." if len(df_counts_exp2.index) > 5 else f"    Models: {list(df_counts_exp2.index)}")
-            print(f"    Datasets: {list(df_counts_exp2.columns[:3])}..." if len(df_counts_exp2.columns) > 3 else f"    Datasets: {list(df_counts_exp2.columns)}")
+            print(
+                f"  ✓ Loaded counts for {args.exp2_name}: {df_counts_exp2.shape[0]} models × {df_counts_exp2.shape[1]} datasets"
+            )
+            print(
+                f"    Models: {list(df_counts_exp2.index[:5])}..."
+                if len(df_counts_exp2.index) > 5
+                else f"    Models: {list(df_counts_exp2.index)}"
+            )
+            print(
+                f"    Datasets: {list(df_counts_exp2.columns[:3])}..."
+                if len(df_counts_exp2.columns) > 3
+                else f"    Datasets: {list(df_counts_exp2.columns)}"
+            )
         except Exception as e:
             print(f"  ⚠ Could not load counts for {args.exp2_name}: {e}")
     else:
         print(f"  ⚠ Counts file not found: {counts_exp2_file}")
-    
+
     if df_counts_exp1 is None or df_counts_exp2 is None:
-        print(f"  ⚠ Warning: Missing counts data (error bars and significance will be omitted)\n")
+        print(
+            "  ⚠ Warning: Missing counts data (error bars and significance will be omitted)\n"
+        )
 
     # Load propagated per-(model,dataset) standard errors (aggregated_se.csv) when
     # present — the statistically correct source for error bars (see
@@ -1464,15 +1678,25 @@ def main():
         try:
             df1_se = pd.read_csv(se_exp1_file, index_col=0)
             df2_se = pd.read_csv(se_exp2_file, index_col=0)
-            print(f"  ✓ Loaded propagated SE for error bars ({df1_se.shape[0]}×{df1_se.shape[1]} / {df2_se.shape[0]}×{df2_se.shape[1]})")
+            print(
+                f"  ✓ Loaded propagated SE for error bars ({df1_se.shape[0]}×{df1_se.shape[1]} / {df2_se.shape[0]}×{df2_se.shape[1]})"
+            )
         except Exception as e:
             df1_se = df2_se = None
-            print(f"  ⚠ Could not load aggregated_se.csv ({e}); falling back to counts-based error bars")
+            print(
+                f"  ⚠ Could not load aggregated_se.csv ({e}); falling back to counts-based error bars"
+            )
     else:
-        print("  ⚠ aggregated_se.csv not found for one/both experiments; using counts-based error bars")
+        print(
+            "  ⚠ aggregated_se.csv not found for one/both experiments; using counts-based error bars"
+        )
 
     # In reasoning_vs_instruct mode, align count DFs to instruct-name index (for plots)
-    if reasoning_vs_instruct and df_counts_exp1 is not None and df_counts_exp2 is not None:
+    if (
+        reasoning_vs_instruct
+        and df_counts_exp1 is not None
+        and df_counts_exp2 is not None
+    ):
         df1_temp = pd.read_csv(exp1_file, index_col=0)
         df2_temp = pd.read_csv(exp2_file, index_col=0)
         _thinking, _instruct = _get_thinking_instruct_pairs(df1_temp, df2_temp)
@@ -1486,11 +1710,15 @@ def main():
     # Generate plots (subject to --figures selection)
     if want_figure("performance_contrast"):
         plot_path = output_dir / "performance_contrast.png"
-        plot_diverging_stacked_bar_chart(df_diff, plot_path, args.exp1_name, args.exp2_name)
+        plot_diverging_stacked_bar_chart(
+            df_diff, plot_path, args.exp1_name, args.exp2_name
+        )
         print()
 
     # Generate grouped bar chart
-    if want_figure("performance_contrast_grouped", "performance_contrast_grouped_minimal"):
+    if want_figure(
+        "performance_contrast_grouped", "performance_contrast_grouped_minimal"
+    ):
         grouped_plot_path = output_dir / "performance_contrast_grouped.png"
         plot_grouped_bar_chart(
             df_diff,
@@ -1517,30 +1745,36 @@ def main():
             args.exp1_name,
             args.exp2_name,
             df_counts_exp1=df_counts_exp1,
-            df_counts_exp2=df_counts_exp2
+            df_counts_exp2=df_counts_exp2,
         )
         print()
 
     # Display preview
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("PREVIEW: Performance Difference (Total Across Datasets)")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
     totals = df_diff.sum(axis=1).sort_values(ascending=False)
     print(totals.round(3))
     print()
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("ANALYSIS COMPLETE")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"Output directory: {output_dir}")
     print("  • performance_contrast.csv: Difference data (exp1 - exp2)")
     if want_figure("performance_contrast"):
         print("  • performance_contrast.png: Diverging stacked bar chart")
-    if want_figure("performance_contrast_grouped", "performance_contrast_grouped_minimal"):
-        print("  • performance_contrast_grouped.png: Grouped bar chart with error bars and significance")
+    if want_figure(
+        "performance_contrast_grouped", "performance_contrast_grouped_minimal"
+    ):
+        print(
+            "  • performance_contrast_grouped.png: Grouped bar chart with error bars and significance"
+        )
     if want_figure("performance_scatter"):
-        print("  • performance_scatter.png: Scatter plot (exp1 vs exp2) with regression lines")
-    print(f"{'='*70}\n")
+        print(
+            "  • performance_scatter.png: Scatter plot (exp1 vs exp2) with regression lines"
+        )
+    print(f"{'=' * 70}\n")
 
 
 if __name__ == "__main__":
