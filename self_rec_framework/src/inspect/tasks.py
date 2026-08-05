@@ -39,6 +39,11 @@ from self_rec_framework.src.helpers.utils import (
     data_dir,
     load_json,
 )
+from self_rec_framework.src.helpers.exceptions import (
+    AlwaysReasoningModelError,
+    ReasoningTokensRequiredError,
+    ContextWindowExceededError,
+)
 
 
 def _load_icl_for_task(
@@ -246,26 +251,6 @@ def _is_always_reasoning_model(model_name: str) -> bool:
     ]
 
     return any(base_name.startswith(prefix) for prefix in always_reasoning_prefixes)
-
-
-class AlwaysReasoningModelError(Exception):
-    """Raised when trying to use an always-reasoning model without -thinking suffix."""
-
-    pass
-
-
-class ReasoningTokensRequiredError(Exception):
-    """Raised when reasoning is enabled but the required CoT token budget is unset."""
-
-    pass
-
-
-class ContextWindowExceededError(Exception):
-    """Raised when a model's context window can't fit the estimated input plus a
-    minimal output budget — i.e. the evaluator genuinely can't run this task. The
-    sweep catches this to skip the model gracefully rather than abort."""
-
-    pass
 
 
 def _disable_reasoning_for_instruct_mode(
