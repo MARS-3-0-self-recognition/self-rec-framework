@@ -23,7 +23,20 @@ if [[ ! -f "$_LSC_CONFIG" ]]; then
     return 1 2>/dev/null || exit 1
 fi
 
-eval "$(python3 - "$_LSC_CONFIG" <<'PY'
+# Force Python UTF-8 mode for every `uv run srf-*` invocation that sources this
+# loader. Without it Python uses the locale console encoding (cp1252 on a default
+# Windows console), so non-ASCII output in the framework (e.g. the ✓/✗ status
+# glyphs) raises UnicodeEncodeError and aborts the run. UTF-8 mode is a no-op
+# where the locale is already UTF-8 (typical on Linux/macOS).
+export PYTHONUTF8=1
+
+# Parse the YAML with the project's uv-managed interpreter rather than a bare
+# `python3`: the framework already requires uv (scripts call `uv run srf-*`),
+# so this resolves consistently on Linux/macOS/Windows and guarantees pyyaml is
+# present. A bare `python3` may be absent or a non-functional shim (e.g. the
+# Windows Store App Execution Alias), which would silently yield empty config.
+# uv writes progress to stderr, so command-substitution stdout stays clean.
+eval "$(uv run python - "$_LSC_CONFIG" <<'PY'
 import yaml, shlex, sys
 c = yaml.safe_load(open(sys.argv[1])) or {}
 q = shlex.quote
