@@ -1,3 +1,4 @@
+import argparse
 import json
 from pathlib import Path
 from typing import Dict, Any
@@ -46,6 +47,20 @@ def rollout_eval_log_dir(
 ) -> Path:
     """Returns the path to the Inspect eval file for base rollout corresponding to a given dataset, model, and generation string."""
     return data_dir() / dataset_name / model_name / generation_string
+
+
+def parse_range(range_str: str) -> tuple[int, int]:
+    """Parse a range string like '5-15' into a tuple of (start, end)."""
+    try:
+        parts = range_str.split("-")
+        if len(parts) != 2:
+            raise ValueError
+        start, end = int(parts[0]), int(parts[1])
+        return (start, end)
+    except (ValueError, AttributeError):
+        raise argparse.ArgumentTypeError(
+            f"Range must be in format 'START-END' (e.g., '5-15'), got: {range_str}"
+        )
 
 
 def load_rollout_json(
