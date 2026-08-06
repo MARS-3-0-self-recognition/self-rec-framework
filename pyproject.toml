@@ -58,3 +58,14 @@ srf-list-models = "self_rec_framework.scripts.admin.list_models:main"
 dev = [
     "ruff>=0.9.10",
 ]
+
+[tool.ruff]
+# Explicit config so the repo's two Ruff entry points agree (pre-commit + `uv run ruff`).
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+# Ruff defaults (E4/E7/E9/F) plus pyupgrade (UP) to keep annotations on builtin
+# generics / PEP 604 unions (issue #8) and prevent regression.
+select = ["E4", "E7", "E9", "F", "UP"]
+ignore = ["UP038"]  # isinstance(x, int | str) is slower than the tuple form

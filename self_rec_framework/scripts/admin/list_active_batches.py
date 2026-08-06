@@ -100,10 +100,13 @@ def list_together_batches(save_to_file=False):
 
         for batch in batches:
             # Check status - Together AI batches might have status as an attribute
-            status = getattr(batch, "status", None) or getattr(batch, "processing_status", None)
+            status = getattr(batch, "status", None) or getattr(
+                batch, "processing_status", None
+            )
             if status and status.lower() in [s.lower() for s in active_statuses]:
                 batch_info = {
-                    "id": getattr(batch, "id", None) or getattr(batch, "batch_job_id", None),
+                    "id": getattr(batch, "id", None)
+                    or getattr(batch, "batch_job_id", None),
                     "status": status,
                     "created_at": getattr(batch, "created_at", None),
                     "request_counts": {},
@@ -143,9 +146,9 @@ def main():
 
     args = parser.parse_args()
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("ACTIVE BATCH JOBS")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     all_batches = {}
 
@@ -187,7 +190,9 @@ def main():
     for batch in together_batches:
         request_counts = batch.get("request_counts", {})
         total = request_counts.get("total")
-        completed = request_counts.get("completed") or request_counts.get("succeeded", 0)
+        completed = request_counts.get("completed") or request_counts.get(
+            "succeeded", 0
+        )
         if total is not None:
             progress = f"{completed}/{total}"
         else:
@@ -199,9 +204,9 @@ def main():
 
     total_active = len(openai_batches) + len(anthropic_batches) + len(together_batches)
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"TOTAL ACTIVE: {total_active} batch jobs")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     # Save to file if requested
     if args.save:

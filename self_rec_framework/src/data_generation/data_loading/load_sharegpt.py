@@ -118,7 +118,7 @@ def load_sharegpt_data(
             )
 
             print(f"  Loading {filename}...")
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 content = f.read().strip()
                 # Try to parse as JSON array first
                 try:
@@ -175,7 +175,7 @@ def load_sharegpt_data(
         start, end = sample_range
         if start < 0 or end >= len(all_samples) or start > end:
             raise ValueError(
-                f"Invalid range {start}-{end}. Dataset has {len(all_samples)} samples (indices 0-{len(all_samples)-1})"
+                f"Invalid range {start}-{end}. Dataset has {len(all_samples)} samples (indices 0-{len(all_samples) - 1})"
             )
         all_samples = all_samples[start : end + 1]  # +1 to make end inclusive
 
@@ -209,7 +209,9 @@ def load_sharegpt_data(
         else:
             skipped_count += 1
 
-        if (idx + 1) % 1000 == 0 or idx == len(all_samples) - 1: # mod 1000 for progress updates, last sample for final update
+        if (idx + 1) % 1000 == 0 or idx == len(
+            all_samples
+        ) - 1:  # mod 1000 for progress updates, last sample for final update
             print(f"  Processed {idx + 1}/{len(all_samples)} samples...")
 
     if skipped_count > 0:

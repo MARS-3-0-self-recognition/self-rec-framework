@@ -18,7 +18,11 @@ from inspect_ai import eval
 from self_rec_framework.src.inspect.tasks import generation
 from self_rec_framework.src.inspect.config import create_generation_config
 from self_rec_framework.src.helpers.utils import data_dir, save_json
-from self_rec_framework.src.helpers.model_names import inspect_model_name, INSPECT_MODEL_NAMES, temp_suffix
+from self_rec_framework.src.helpers.model_names import (
+    inspect_model_name,
+    INSPECT_MODEL_NAMES,
+    temp_suffix,
+)
 from self_rec_framework.scripts.utils import expand_model_names
 from self_rec_framework.scripts.gen.generate_data import (
     apply_treatments,
@@ -28,8 +32,6 @@ from self_rec_framework.scripts.gen.generate_data import (
 
 from inspect_ai.log import read_eval_log
 import shutil
-
-
 
 
 def _collect_partial_results(log_dir: Path, eval_logs: list, model_names: list[str]):
@@ -179,7 +181,12 @@ def run_sweep_generation(
     for model_name in model_names:
         model_dir_name = model_name + temp_sfx
         output_path = (
-            data_dir() / "input" / dataset_name / data_subset / model_dir_name / "data.json"
+            data_dir()
+            / "input"
+            / dataset_name
+            / data_subset
+            / model_dir_name
+            / "data.json"
         )
         if output_path.exists() and not overwrite:
             print(f"  ⊘ {model_name}: data already exists, skipping")
@@ -264,7 +271,9 @@ def run_sweep_generation(
                     base_name = model_name.removesuffix("-thinking")
                     INSPECT_MODEL_NAMES[base_name] = f"openai/{hf_model_id}"
                 api_models.append(model_name)
-                print(f"  Tinker dispatch: {model_name} -> openai/{hf_model_id} (via Tinker API)")
+                print(
+                    f"  Tinker dispatch: {model_name} -> openai/{hf_model_id} (via Tinker API)"
+                )
             elif gpu_dispatch == "local":
                 # Run the hf/ model in-process on this machine's GPU via inspect's
                 # hf provider (same as the eval sweep's default for hf/ models).
@@ -280,9 +289,14 @@ def run_sweep_generation(
         gpu_dispatch = gen_config.get("gpu_dispatch")
         if gpu_dispatch:
             try:
-                from scripts.alpaca_eval.runpod_dispatch import launch_runpod_job, get_runtime_for_model
+                from scripts.alpaca_eval.runpod_dispatch import (
+                    launch_runpod_job,
+                    get_runtime_for_model,
+                )
             except ImportError:
-                print("⚠ RunPod dispatch not available (scripts.alpaca_eval.runpod_dispatch not found)")
+                print(
+                    "⚠ RunPod dispatch not available (scripts.alpaca_eval.runpod_dispatch not found)"
+                )
                 print("  Run hf/ models on a GPU machine directly.")
                 hf_models = []
             else:
@@ -309,7 +323,9 @@ def run_sweep_generation(
                         f"{'--batch ' + str(batch) + ' ' if batch else ''}"
                     ).strip()
 
-                    print(f"  Dispatching {model_name} (tier: {tier}, config: {Path(runtime_path).name})")
+                    print(
+                        f"  Dispatching {model_name} (tier: {tier}, config: {Path(runtime_path).name})"
+                    )
                     try:
                         pod_id = launch_runpod_job(
                             command=cmd,
@@ -326,22 +342,28 @@ def run_sweep_generation(
                 # Wait for pods after API models are done (handled below)
                 if hf_pod_ids:
                     import atexit
+
                     def _wait_for_hf_pods():
                         print(f"\n{'=' * 70}")
                         print(f"Waiting for {len(hf_pod_ids)} GPU pod(s)...")
                         print(f"{'=' * 70}")
                         from sgtr_rl.scripts.runpod_utils import RunPodClient
                         from sgtr_rl.runtime_config import load_runtime_config
+
                         client = RunPodClient(os.environ["RUNPOD_API_KEY"])
                         for model, (pid, rt_path) in hf_pod_ids.items():
                             rt = load_runtime_config(str(rt_path))
                             print(f"  Waiting for {model} (pod {pid})...")
-                            final = client.wait_for_exit(pid, poll_interval_seconds=rt.runpod.poll_interval_seconds)
+                            final = client.wait_for_exit(
+                                pid,
+                                poll_interval_seconds=rt.runpod.poll_interval_seconds,
+                            )
                             status = final.get("desiredStatus", "unknown")
                             print(f"  ✓ {model}: {status}")
                             if rt.runpod.terminate_on_exit:
                                 client.delete_pod(pid)
                                 print(f"    Deleted pod {pid}")
+
                     atexit.register(_wait_for_hf_pods)
         else:
             raise ValueError(
@@ -576,9 +598,9 @@ def run_sweep_generation(
 
     # Summary of results
     total_models_attempted = len(no_batch_tasks) + len(batch_tasks)
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("GENERATION SUMMARY")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"✓ Successful: {len(eval_logs)}/{total_models_attempted} models")
     if failed_models:
         print(f"✗ Failed: {len(failed_models)}/{total_models_attempted} models")
@@ -589,7 +611,7 @@ def run_sweep_generation(
         print(
             "\n💡 Tip: Re-run the script to retry failed models, or run them individually."
         )
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     if len(eval_logs) == 0:
         print("⚠ No models succeeded! Cannot continue with processing.")
@@ -713,7 +735,12 @@ def run_sweep_generation(
     for model_name in successful:
         model_dir_name = model_name + temp_sfx
         base_data_path = (
-            data_dir() / "input" / dataset_name / data_subset / model_dir_name / "data.json"
+            data_dir()
+            / "input"
+            / dataset_name
+            / data_subset
+            / model_dir_name
+            / "data.json"
         )
 
         try:

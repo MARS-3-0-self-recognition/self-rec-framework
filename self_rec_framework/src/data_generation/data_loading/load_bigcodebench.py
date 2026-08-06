@@ -140,7 +140,9 @@ def load_bigcodebench_data(
         else:
             skipped_count += 1
 
-        if (idx + 1) % 1000 == 0 or idx == len(dataset) - 1: # mod 1000 for progress updates, last sample for final update
+        if (idx + 1) % 1000 == 0 or idx == len(
+            dataset
+        ) - 1:  # mod 1000 for progress updates, last sample for final update
             print(f"  Processed {idx + 1}/{len(dataset)} samples...")
 
     if skipped_count > 0:

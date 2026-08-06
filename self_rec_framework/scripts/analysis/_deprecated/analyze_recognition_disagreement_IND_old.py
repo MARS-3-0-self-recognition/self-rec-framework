@@ -638,13 +638,13 @@ def generate_summary_stats(
             low_disagreement = valid_disagreement <= 0.2
 
             f.write(
-                f"High disagreement (>0.5): {high_disagreement.sum()} / {len(valid_disagreement)} ({100*high_disagreement.sum()/len(valid_disagreement):.1f}%)\n"
+                f"High disagreement (>0.5): {high_disagreement.sum()} / {len(valid_disagreement)} ({100 * high_disagreement.sum() / len(valid_disagreement):.1f}%)\n"
             )
             f.write(
-                f"Medium disagreement (0.2-0.5): {medium_disagreement.sum()} / {len(valid_disagreement)} ({100*medium_disagreement.sum()/len(valid_disagreement):.1f}%)\n"
+                f"Medium disagreement (0.2-0.5): {medium_disagreement.sum()} / {len(valid_disagreement)} ({100 * medium_disagreement.sum() / len(valid_disagreement):.1f}%)\n"
             )
             f.write(
-                f"Low disagreement (≤0.2): {low_disagreement.sum()} / {len(valid_disagreement)} ({100*low_disagreement.sum()/len(valid_disagreement):.1f}%)\n\n"
+                f"Low disagreement (≤0.2): {low_disagreement.sum()} / {len(valid_disagreement)} ({100 * low_disagreement.sum() / len(valid_disagreement):.1f}%)\n\n"
             )
 
         # Pivot table dimensions
@@ -801,9 +801,9 @@ def main():
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("RECOGNITION DISAGREEMENT ANALYSIS")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     if len(results_dirs) == 1:
         print(f"Results dir: {results_dirs[0]}")
     else:
@@ -811,7 +811,7 @@ def main():
         for d in results_dirs:
             print(f"  - {d}")
     print(f"Output dir: {output_dir}")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     # Load all evaluations from all directories
     df = load_all_evaluations(results_dirs)
@@ -862,9 +862,9 @@ def main():
     print()
 
     # Display preview
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("PREVIEW: Disagreement Matrix")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
     print(disagreement_matrix.round(3))
     print()
 
@@ -875,16 +875,16 @@ def main():
     )
     print()
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("ANALYSIS COMPLETE")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"Output directory: {output_dir}")
     print("  • recognition_pivot.csv: Raw recognition data")
     print("  • disagreement_matrix.csv: Disagreement scores")
     print("  • disagreement_heatmap.png: Disagreement visualization")
     print("  • evaluator_disagreement_performance.png: Evaluator performance bar chart")
     print("  • disagreement_summary_stats.txt: Comprehensive statistics")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
 
 if __name__ == "__main__":

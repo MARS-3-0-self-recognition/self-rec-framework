@@ -1,11 +1,11 @@
 _MODEL_SETS: dict[str, list[str]] = {
     "test": [
         "gemma-3n-e4b",  # together/google/gemma-3n-E4B-it (32k ctx, serverless — fits pairwise)
-        "qwen-2.5-7b",   # together/Qwen/Qwen2.5-7B-Instruct-Turbo (32k ctx)
+        "qwen-2.5-7b",  # together/Qwen/Qwen2.5-7B-Instruct-Turbo (32k ctx)
     ],
     "tutorial": [
         "gemma-3n-e4b",  # together/google/gemma-3n-E4B-it (32k ctx, serverless — fits pairwise)
-        "qwen-2.5-7b",   # together/Qwen/Qwen2.5-7B-Instruct-Turbo (32k ctx)
+        "qwen-2.5-7b",  # together/Qwen/Qwen2.5-7B-Instruct-Turbo (32k ctx)
     ],
     "sgtr-training-judges": [
         "gpt-oss-20b-thinking",
@@ -69,11 +69,11 @@ _MODEL_SETS: dict[str, list[str]] = {
         "gemini-2.0-flash",
         # Together AI - Llama (weakest to strongest)
         "ll-3-8b-lite",  # was ll-3.1-8b (retired from Together serverless)
-        #"ll-3.1-70b", # still available but not working
+        # "ll-3.1-70b", # still available but not working
         # Together AI - Qwen (weakest to strongest)
         "qwen-2.5-7b",
-        #"qwen-2.5-72b", # still available but not working
-        #"qwen-3.5-27b",  # removed: no longer hosted by Together serverless
+        # "qwen-2.5-72b", # still available but not working
+        # "qwen-3.5-27b",  # removed: no longer hosted by Together serverless
         "qwen-3.0-80b",
         # Together AI - DeepSeek (weakest to strongest)
         "deepseek-3.1",

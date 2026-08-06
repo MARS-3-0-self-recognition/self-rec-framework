@@ -38,9 +38,9 @@ def run_script(script_name: str, args: list[str]) -> bool:
     scripts_dir = Path(__file__).parent
     script_path = scripts_dir / script_name
     cmd = ["uv", "run", "python3", str(script_path)] + args
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"Running: {' '.join(cmd)}")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
     result = subprocess.run(cmd)
     return result.returncode == 0
 
@@ -318,8 +318,7 @@ def regenerate_figure_2_with_report_titles(
     fig.text(
         0.5,
         0.01,
-        "High (green): Models agree on quality | "
-        "Low (red): Models disagree on quality",
+        "High (green): Models agree on quality | Low (red): Models disagree on quality",
         ha="center",
         fontsize=10,
         style="italic",
@@ -914,11 +913,11 @@ functions in the individual analysis scripts to accept custom title/label parame
     report_dir = Path(args.report_dir)
     report_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("GENERATING FIGURES FOR PERFORMANCE REPORT #1")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"Report directory: {report_dir.absolute()}")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     figures_generated = []
 
@@ -1016,9 +1015,9 @@ functions in the individual analysis scripts to accept custom title/label parame
                 figures_generated.append(("Figure 5", fig5))
 
     # Summary
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("SUMMARY")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"Figures generated: {len(figures_generated)}/5")
     for name, path in figures_generated:
         print(f"  ✓ {name}: {path.name}")
@@ -1026,7 +1025,7 @@ functions in the individual analysis scripts to accept custom title/label parame
     print("\nNote: Original figures remain in their analysis directories.")
     print("      To improve figure titles/labels, modify the plotting functions")
     print("      in the individual analysis scripts.")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     if len(figures_generated) < 5:
         print(

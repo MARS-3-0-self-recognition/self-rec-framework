@@ -12,17 +12,14 @@ Usage:
 """
 
 import argparse
-import sys
 from pathlib import Path
 
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator
-from scipy import stats
 
 from self_rec_framework.scripts.utils import (
-    get_model_family_colors,
     get_model_provider,
     calculate_binomial_ci,
     apply_fdr_correction,
@@ -59,6 +56,7 @@ def extract_dataset_name(full_path: str) -> str:
     Extract short dataset name from full path.
     """
     return full_path.split("/")[0]
+
 
 def format_dataset_display_name(dataset_name: str) -> str:
     """Format dataset name for display in legends (neater capitalization)."""
@@ -148,15 +146,22 @@ def plot_stacked_bar_chart(
             bottom_pos += values
 
         # Reference line
-        ax.axvline(x=0, color="black", linestyle="--", linewidth=1, alpha=0.5, label="Chance (0.5)")
-        
+        ax.axvline(
+            x=0,
+            color="black",
+            linestyle="--",
+            linewidth=1,
+            alpha=0.5,
+            label="Chance (0.5)",
+        )
+
         # Limits
         max_pos = df_positive.sum(axis=1).max()
         max_neg = abs(df_negative.sum(axis=1).min())
         max_val = max(max_pos, max_neg) if not pd.isna(max(max_pos, max_neg)) else 1.0
         padding = max(max_val * 0.1, 0.05)
         ax.set_xlim(-max_val - padding, max_val + padding)
-        
+
         xlabel = "Aggregated Deviation from Chance (Sum Across Datasets)"
         title = "Evaluator Deviation from Chance Across Datasets (Diverging Stacked)"
 
@@ -179,7 +184,9 @@ def plot_stacked_bar_chart(
         bottom = np.zeros(len(df_plot))
         for i, (dataset, color) in enumerate(zip(df_plot.columns, colors)):
             values = df_plot[dataset].values
-            ax.barh(range(len(df_plot)), values, left=bottom, label=dataset, color=color)
+            ax.barh(
+                range(len(df_plot)), values, left=bottom, label=dataset, color=color
+            )
             bottom += values
 
         max_val = df_plot.sum(axis=1).max()
@@ -203,23 +210,34 @@ def plot_stacked_bar_chart(
     ax.legend(loc="lower right" if not is_deviation else "upper right", fontsize=10)
     ax.grid(axis="x", alpha=0.3, linestyle="--")
     ax.set_axisbelow(True)
-    
+
     # Add totals
     if is_deviation:
-        totals = df_plot.sum(axis=1) # df_plot already sorted by absolute sum, but we want net sum for label position? 
+        totals = df_plot.sum(
+            axis=1
+        )  # df_plot already sorted by absolute sum, but we want net sum for label position?
         # Actually in original code we just used the values from the df passed in.
         # But here I modified df_plot (sorted it). Let's re-calculate sum.
         totals = df_plot.sum(axis=1)
         for i, (model, total) in enumerate(totals.items()):
             if total != 0:
-                label_x = total + (padding * 0.02) if total >= 0 else total - (padding * 0.02)
+                label_x = (
+                    total + (padding * 0.02) if total >= 0 else total - (padding * 0.02)
+                )
                 ha = "left" if total >= 0 else "right"
                 ax.text(label_x, i, f"{total:.3f}", va="center", ha=ha, fontsize=9)
     else:
         totals = df_plot.sum(axis=1)
         for i, (model, total) in enumerate(totals.items()):
             if total > 0:
-                ax.text(total + padding * 0.02, i, f"{total:.3f}", va="center", ha="left", fontsize=9)
+                ax.text(
+                    total + padding * 0.02,
+                    i,
+                    f"{total:.3f}",
+                    va="center",
+                    ha="left",
+                    fontsize=9,
+                )
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
@@ -244,11 +262,13 @@ def plot_grouped_bar_chart(
             (highest rank first, unranked models last).
     """
     chart_type = "deviation" if is_deviation else "performance"
-    sort_label = f", sorted by {sort_by.replace('_', ' ')}" if sort_by != "performance" else ""
+    sort_label = (
+        f", sorted by {sort_by.replace('_', ' ')}" if sort_by != "performance" else ""
+    )
     print(f"Generating grouped bar chart ({chart_type}{sort_label})...")
 
     if df.empty:
-        print(f"  ⚠ No data to plot")
+        print("  ⚠ No data to plot")
         return
 
     # Work on a copy
@@ -293,21 +313,27 @@ def plot_grouped_bar_chart(
     counts_file = output_path.parent / "aggregated_counts.csv"
     if not counts_file.exists():
         # Fallback to old naming convention
-        counts_file = output_path.parent / output_path.name.replace("_grouped.png", "_counts.csv").replace(".png", "_counts.csv")
+        counts_file = output_path.parent / output_path.name.replace(
+            "_grouped.png", "_counts.csv"
+        ).replace(".png", "_counts.csv")
     df_counts = None
     if counts_file.exists():
         try:
             df_counts = pd.read_csv(counts_file, index_col=0)
             # Shorten dataset names to match
-            counts_short_names = [extract_dataset_name(name) for name in df_counts.columns]
-            counts_short_names = [format_dataset_display_name(name) for name in counts_short_names]
+            counts_short_names = [
+                extract_dataset_name(name) for name in df_counts.columns
+            ]
+            counts_short_names = [
+                format_dataset_display_name(name) for name in counts_short_names
+            ]
             df_counts.columns = counts_short_names
             # Reindex to match df_plot
             df_counts = df_counts.reindex(df_plot.index)
             print(f"  ✓ Loaded sample counts from {counts_file.name}")
         except Exception as e:
             print(f"  ⚠ Could not load counts file: {e}")
-    
+
     # Calculate error bars if counts available
     error_bars = None
     if df_counts is not None:
@@ -328,16 +354,16 @@ def plot_grouped_bar_chart(
                     model_errors.append(0)
             errors.append(model_errors)
         error_bars = np.array(errors).T  # Transpose to match pandas plot format
-    
+
     # Calculate x positions for bars (used for both matplotlib and pandas plots)
     x = np.arange(len(df_plot.index))
     width = 0.8 / n_datasets
-    
+
     # Plot grouped bars with error bars if available
     if error_bars is not None:
         # Use matplotlib bar plot to add error bars
         for i, (dataset, color) in enumerate(zip(df_plot.columns, colors)):
-            offset = (i - n_datasets/2 + 0.5) * width
+            offset = (i - n_datasets / 2 + 0.5) * width
             values = df_plot[dataset].values
             yerr = error_bars[i] if error_bars.shape[0] > i else None
             ax.bar(
@@ -349,8 +375,13 @@ def plot_grouped_bar_chart(
                 edgecolor="black",
                 linewidth=0.5,
                 yerr=yerr,
-                error_kw={'capsize': 2, 'capthick': 0.5, 'elinewidth': 0.5, 'alpha': 0.6},
-                label=dataset
+                error_kw={
+                    "capsize": 2,
+                    "capthick": 0.5,
+                    "elinewidth": 0.5,
+                    "alpha": 0.6,
+                },
+                label=dataset,
             )
         ax.set_xticks(x)
         ax.set_xticklabels(
@@ -368,7 +399,7 @@ def plot_grouped_bar_chart(
             width=0.8,
             alpha=0.8,
             edgecolor="black",
-            linewidth=0.5
+            linewidth=0.5,
         )
         # Get x positions from pandas plot for significance markers
         # Pandas uses 0, 1, 2, ... for x positions
@@ -398,14 +429,20 @@ def plot_grouped_bar_chart(
         # But wait, stacked chart sums them up.
         # Here we are showing side-by-side, so each bar is the accuracy for that dataset.
         # So chance line at 0.5 makes sense for the bars.
-        ax.axhline(y=0.5, color="#333333", linestyle="--", linewidth=1.5, alpha=1.0, label="Chance (0.5)")
+        ax.axhline(
+            y=0.5,
+            color="#333333",
+            linestyle="--",
+            linewidth=1.5,
+            alpha=1.0,
+            label="Chance (0.5)",
+        )
         ax.set_ylim(0, 1)
         ax.yaxis.set_major_locator(MultipleLocator(0.1))
-        
+
         # Add significance markers if counts available
         if df_counts is not None:
             # Test each bar against chance (0.5) using binomial test
-            from scipy import stats
             p_values = []
             for model in df_plot.index:
                 for dataset in df_plot.columns:
@@ -417,13 +454,16 @@ def plot_grouped_bar_chart(
                             n_int = int(n)  # Ensure n is an integer
                             k = int(perf * n_int)  # Number of successes
                             from scipy.stats import binomtest
-                            p_val = binomtest(k, n_int, p=0.5, alternative='two-sided').pvalue
+
+                            p_val = binomtest(
+                                k, n_int, p=0.5, alternative="two-sided"
+                            ).pvalue
                             p_values.append(p_val)
                         else:
                             p_values.append(np.nan)
                     else:
                         p_values.append(np.nan)
-            
+
             # Apply FDR correction
             if len(p_values) > 0 and not np.all(np.isnan(p_values)):
                 rejected, p_corrected = apply_fdr_correction(p_values)
@@ -432,46 +472,55 @@ def plot_grouped_bar_chart(
                 # Use same x positions as bars (x is already defined above)
                 if error_bars is None:
                     # For pandas plot, need to ensure width is defined
-                    if 'width' not in locals():
+                    if "width" not in locals():
                         width = 0.8 / n_datasets
-                    
+
                 for model_idx, model in enumerate(df_plot.index):
                     for dataset_idx, dataset in enumerate(df_plot.columns):
                         if p_idx < len(rejected) and rejected[p_idx]:
-                            p_val = p_corrected[p_idx] if p_idx < len(p_corrected) else p_values[p_idx]
+                            p_val = (
+                                p_corrected[p_idx]
+                                if p_idx < len(p_corrected)
+                                else p_values[p_idx]
+                            )
                             marker = get_significance_marker(p_values[p_idx], p_val)
                             if marker:
-                                offset = (dataset_idx - n_datasets/2 + 0.5) * width
+                                offset = (dataset_idx - n_datasets / 2 + 0.5) * width
                                 bar_height = df_plot.loc[model, dataset]
                                 if error_bars is not None:
-                                    yerr_val = error_bars[dataset_idx, model_idx] if error_bars.shape[0] > dataset_idx and error_bars.shape[1] > model_idx else 0.02
+                                    yerr_val = (
+                                        error_bars[dataset_idx, model_idx]
+                                        if error_bars.shape[0] > dataset_idx
+                                        and error_bars.shape[1] > model_idx
+                                        else 0.02
+                                    )
                                 else:
                                     yerr_val = 0.02
                                 # Place marker above bar if positive, below if negative
                                 if bar_height < 0:
                                     marker_y = bar_height - yerr_val - 0.01
-                                    va = 'top'
+                                    va = "top"
                                 else:
                                     marker_y = bar_height + yerr_val + 0.01
-                                    va = 'bottom'
+                                    va = "bottom"
                                 ax.text(
                                     x[model_idx] + offset,
                                     marker_y,
                                     marker,
-                                    ha='center',
+                                    ha="center",
                                     va=va,
                                     fontsize=10,
-                                    fontweight='bold'
+                                    fontweight="bold",
                                 )
                         p_idx += 1
 
     ax.set_xlabel("Evaluator Model", fontsize=12, fontweight="bold")
     ax.set_ylabel(ylabel, fontsize=12, fontweight="bold")
-    
+
     if experiment_title:
         title = f"{title}\n{experiment_title}"
     ax.set_title(title, fontsize=13, fontweight="bold", pad=20)
-    
+
     # Grid
     ax.grid(axis="y", alpha=0.3, linestyle="--")
     ax.set_axisbelow(True)
@@ -480,25 +529,56 @@ def plot_grouped_bar_chart(
     # Legend - add significance marker if any markers were added; Chance 2nd to last, * p last
     handles, labels = ax.get_legend_handles_labels()
     # Check if any significance markers were added
-    has_significance = any('*' in str(text.get_text()) for text in ax.texts)
+    has_significance = any("*" in str(text.get_text()) for text in ax.texts)
     if has_significance:
         # Add significance marker to legend
         from matplotlib.patches import Rectangle
-        sig_handle = Rectangle((0, 0), 1, 1, fill=False, edgecolor='none', visible=False)
+
+        sig_handle = Rectangle(
+            (0, 0), 1, 1, fill=False, edgecolor="none", visible=False
+        )
         handles.append(sig_handle)
         labels.append("* p < 0.05")
     # Reorder so Chance (0.5) is 2nd to last, * p < 0.05 last
-    others_h = [h for h, l in zip(handles, labels) if l not in ("Chance (0.5)", "* p < 0.05")]
-    others_l = [l for h, l in zip(handles, labels) if l not in ("Chance (0.5)", "* p < 0.05")]
-    chance_pair = next(((h, l) for h, l in zip(handles, labels) if l == "Chance (0.5)"), (None, None))
-    sig_pair = next(((h, l) for h, l in zip(handles, labels) if l == "* p < 0.05"), (None, None))
-    handles = others_h + ([chance_pair[0]] if chance_pair[0] is not None else []) + ([sig_pair[0]] if sig_pair[0] is not None else [])
-    labels = others_l + ([chance_pair[1]] if chance_pair[1] is not None else []) + ([sig_pair[1]] if sig_pair[1] is not None else [])
-    ax.legend(handles=handles, labels=labels, title="Dataset", loc="center left", bbox_to_anchor=(1.02, 0.5))
-    
+    others_h = [
+        h
+        for h, label in zip(handles, labels)
+        if label not in ("Chance (0.5)", "* p < 0.05")
+    ]
+    others_l = [
+        label
+        for h, label in zip(handles, labels)
+        if label not in ("Chance (0.5)", "* p < 0.05")
+    ]
+    chance_pair = next(
+        ((h, label) for h, label in zip(handles, labels) if label == "Chance (0.5)"),
+        (None, None),
+    )
+    sig_pair = next(
+        ((h, label) for h, label in zip(handles, labels) if label == "* p < 0.05"),
+        (None, None),
+    )
+    handles = (
+        others_h
+        + ([chance_pair[0]] if chance_pair[0] is not None else [])
+        + ([sig_pair[0]] if sig_pair[0] is not None else [])
+    )
+    labels = (
+        others_l
+        + ([chance_pair[1]] if chance_pair[1] is not None else [])
+        + ([sig_pair[1]] if sig_pair[1] is not None else [])
+    )
+    ax.legend(
+        handles=handles,
+        labels=labels,
+        title="Dataset",
+        loc="center left",
+        bbox_to_anchor=(1.02, 0.5),
+    )
+
     # Rotate x labels if many models
     plt.xticks(rotation=45, ha="right")
-    
+
     plt.tight_layout(rect=[0, 0, 0.85, 1])
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     print(f"  ✓ Saved grouped bar chart to: {output_path}")
@@ -510,10 +590,10 @@ def plot_grouped_bar_chart(
 def get_family_base_color(model_name: str) -> str:
     """
     Get the base color for a model's family (single color, no gradations).
-    
+
     Args:
         model_name: Short model name (e.g., "gpt-4o", "haiku-3.5")
-        
+
     Returns:
         Hex color code for the model's family
     """
@@ -529,9 +609,9 @@ def get_family_base_color(model_name: str) -> str:
         "xai": "#1d4ed8",  # XAI blue
         "moonshot": "#0891b2",  # Cyan
     }
-    
+
     model_lower = model_name.lower()
-    
+
     if model_lower.startswith("gpt-"):
         return family_colors["openai"]
     elif (
@@ -572,7 +652,7 @@ def plot_dataset_grouped_bar_chart(
     print(f"Generating dataset-grouped bar chart ({chart_type})...")
 
     if df.empty:
-        print(f"  ⚠ No data to plot")
+        print("  ⚠ No data to plot")
         return
 
     # Work on a copy
@@ -582,16 +662,16 @@ def plot_dataset_grouped_bar_chart(
     short_names = [extract_dataset_name(name) for name in df_plot.columns]
     short_names = [format_dataset_display_name(name) for name in short_names]
     df_plot.columns = short_names
-    
+
     # Get all unique model names and create color mapping (single color per family)
     all_models = df_plot.index.tolist()
     model_color_map = {model: get_family_base_color(model) for model in all_models}
-    
+
     # Sort each dataset column by performance (descending)
     # This will create a consistent ordering within each group
     n_models = len(df_plot)
     n_datasets = len(df_plot.columns)
-    
+
     # Create figure
     # Width: space for dataset groups, each with n_models bars (wider for many bars)
     bar_width = 0.8 / n_models  # Each bar width
@@ -607,39 +687,39 @@ def plot_dataset_grouped_bar_chart(
         if family.startswith("Together-"):
             family = family.replace("Together-", "")
         model_families[model] = family
-    
+
     # Create family to color mapping
     family_to_color = {}
     for model, family in model_families.items():
         if family not in family_to_color:
             family_to_color[family] = model_color_map.get(model, "#9ca3af")
-    
+
     # Plot bars for each dataset group
     x_positions = []
     group_labels = []
-    
+
     # Track which families we've seen for legend (to avoid duplicate entries)
     seen_families = set()
-    
+
     for group_idx, dataset in enumerate(df_plot.columns):
         # Sort models by performance for this dataset (descending)
         dataset_data = df_plot[dataset].sort_values(ascending=False)
-        
+
         # Calculate x positions for bars in this group
         group_start = group_idx * group_width
         bar_positions = [group_start + i * bar_width for i in range(len(dataset_data))]
         x_positions.extend(bar_positions)
-        
+
         # Plot bars with model family colors (single color per family)
         for i, (model, value) in enumerate(dataset_data.items()):
             family = model_families.get(model, "Unknown")
             color = family_to_color.get(family, "#9ca3af")  # Use family color
-            
+
             # Add label only for first occurrence of each family
             label = family if family not in seen_families else ""
             if family not in seen_families:
                 seen_families.add(family)
-            
+
             ax.bar(
                 [bar_positions[i]],
                 [value],
@@ -648,9 +728,9 @@ def plot_dataset_grouped_bar_chart(
                 alpha=0.8,
                 edgecolor="black",
                 linewidth=0.5,
-                label=label
+                label=label,
             )
-        
+
         # Store group label position (center of group)
         group_center = group_start + (len(dataset_data) * bar_width) / 2
         display_name = format_dataset_display_name(dataset)
@@ -661,44 +741,51 @@ def plot_dataset_grouped_bar_chart(
     group_names = [name for _, name in group_labels]
     ax.set_xticks(group_centers)
     ax.set_xticklabels(group_names, fontsize=18, fontweight="bold")
-    
+
     # Remove minor ticks and labels
-    ax.tick_params(axis='x', which='minor', length=0)
+    ax.tick_params(axis="x", which="minor", length=0)
 
     if is_deviation:
         # Add reference line at 0
         ax.axhline(y=0, color="black", linestyle="-", linewidth=1, alpha=0.8)
-        
+
         ylabel = "Deviation from Chance (0.5)"
         title = "Evaluator Deviation by Dataset\n(Models sorted by performance within each group)"
     else:
         # Regular performance
         ylabel = "Performance Score"
         title = "Evaluator Performance by Dataset\n(Models sorted by performance within each group)"
-        
+
         # Add chance line at 0.5
-        ax.axhline(y=0.5, color="#333333", linestyle="--", linewidth=1.5, alpha=1.0, label="Chance (0.5)")
+        ax.axhline(
+            y=0.5,
+            color="#333333",
+            linestyle="--",
+            linewidth=1.5,
+            alpha=1.0,
+            label="Chance (0.5)",
+        )
         ax.set_ylim(0, 1)
         ax.yaxis.set_major_locator(MultipleLocator(0.1))
 
     ax.set_xlabel("Dataset", fontsize=12, fontweight="bold")
     ax.set_ylabel(ylabel, fontsize=12, fontweight="bold")
-    
+
     if experiment_title:
         title = f"{title}\n{experiment_title}"
     ax.set_title(title, fontsize=13, fontweight="bold", pad=20)
-    
+
     # Grid
     ax.grid(axis="y", alpha=0.3, linestyle="--")
     ax.set_axisbelow(True)
-    
+
     # Legend (model families, not datasets) - "Together-" prefix already removed
     ax.legend(title="Model Family", loc="best", fontsize=10)
-    
+
     # Set x-axis limits with padding
     if x_positions:
         ax.set_xlim(min(x_positions) - bar_width, max(x_positions) + bar_width)
-    
+
     plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     print(f"  ✓ Saved dataset-grouped bar chart to: {output_path}")
@@ -913,7 +1000,9 @@ def plot_accept_ratio_chart(
     ax.yaxis.set_major_locator(MultipleLocator(0.1))
 
     ax.set_xlabel("Evaluator Model", fontsize=12, fontweight="bold")
-    ax.set_ylabel("Accept Rate (Proportion Accepting Authorship)", fontsize=12, fontweight="bold")
+    ax.set_ylabel(
+        "Accept Rate (Proportion Accepting Authorship)", fontsize=12, fontweight="bold"
+    )
 
     sort_suffix = " (by LM Arena Ranking)" if sort_by == "arena_ranking" else ""
     title = f"Accept/Reject Ratio Across Datasets (Authorship Bias){sort_suffix}"
@@ -958,7 +1047,9 @@ def plot_f1_chart(
         sort_by: "performance" (default) sorts by total F1.
             "arena_ranking" sorts by LM Arena ranking.
     """
-    sort_label = f", sorted by {sort_by.replace('_', ' ')}" if sort_by != "performance" else ""
+    sort_label = (
+        f", sorted by {sort_by.replace('_', ' ')}" if sort_by != "performance" else ""
+    )
     print(f"Generating F1 score chart{sort_label}...")
 
     if df.empty:
@@ -1003,8 +1094,12 @@ def plot_f1_chart(
     if counts_file.exists():
         try:
             df_counts = pd.read_csv(counts_file, index_col=0)
-            counts_short_names = [extract_dataset_name(name) for name in df_counts.columns]
-            counts_short_names = [format_dataset_display_name(name) for name in counts_short_names]
+            counts_short_names = [
+                extract_dataset_name(name) for name in df_counts.columns
+            ]
+            counts_short_names = [
+                format_dataset_display_name(name) for name in counts_short_names
+            ]
             df_counts.columns = counts_short_names
             df_counts = df_counts.reindex(df_plot.index)
             print(f"  ✓ Loaded sample counts from {counts_file.name}")
@@ -1104,40 +1199,43 @@ def main():
         if args.figures.strip().lower() == "all"
         else {f.strip() for f in args.figures.split(",") if f.strip()}
     )
+
     def want(*names: str) -> bool:
         return selected is None or any(n in selected for n in names)
-    
+
     file_path = Path(args.aggregated_file)
     if not file_path.exists():
         print(f"Error: File not found: {file_path}")
         return
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("GENERATING AGGREGATED CHARTS")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"Input file: {file_path}\n")
 
     # Load data
     df = pd.read_csv(file_path, index_col=0)
-    
+
     # Try to load aggregated counts if available (for error bars)
     # Check for aggregated_counts.csv (new format)
     counts_file = file_path.parent / "aggregated_counts.csv"
     if not counts_file.exists():
         # Fallback to old naming convention
-        counts_file = file_path.parent / file_path.name.replace("performance.csv", "counts.csv").replace("deviation.csv", "counts.csv")
-    
+        counts_file = file_path.parent / file_path.name.replace(
+            "performance.csv", "counts.csv"
+        ).replace("deviation.csv", "counts.csv")
+
     if counts_file.exists():
         try:
-            df_counts = pd.read_csv(counts_file, index_col=0)
+            pd.read_csv(counts_file, index_col=0)
             print(f"  ✓ Found counts file: {counts_file.name}")
             # Note: aggregated_counts.csv already has shortened names, so no need to process
         except Exception as e:
             print(f"  ⚠ Could not load counts file: {e}")
-    
+
     # Determine type (performance or deviation) based on filename
     is_deviation = "deviation" in file_path.name
-    
+
     # Extract experiment title from path
     experiment_title = ""
     path_parts = file_path.parts
@@ -1163,7 +1261,7 @@ def main():
             df,
             stacked_output,
             experiment_title=experiment_title,
-            is_deviation=is_deviation
+            is_deviation=is_deviation,
         )
         print()
 
@@ -1186,13 +1284,16 @@ def main():
             df,
             dataset_grouped_output,
             experiment_title=experiment_title,
-            is_deviation=is_deviation
+            is_deviation=is_deviation,
         )
         print()
 
     # 4. Answer Choice Ratio Chart (if aggregated_answer_choice_ratio.csv exists)
     answer_ratio_file = output_dir / "aggregated_answer_choice_ratio.csv"
-    if want("aggregated_answer_choice_ratio", "aggregated_answer_choice_ratio_minimal") and answer_ratio_file.exists():
+    if (
+        want("aggregated_answer_choice_ratio", "aggregated_answer_choice_ratio_minimal")
+        and answer_ratio_file.exists()
+    ):
         df_answer = pd.read_csv(answer_ratio_file, index_col=0)
         answer_output = output_dir / "aggregated_answer_choice_ratio.png"
         plot_answer_choice_ratio_chart(
@@ -1217,7 +1318,13 @@ def main():
         print()
 
     # 6. Answer Choice Ratio Chart sorted by LM Arena ranking
-    if want("aggregated_answer_choice_ratio_arena", "aggregated_answer_choice_ratio_arena_minimal") and answer_ratio_file.exists():
+    if (
+        want(
+            "aggregated_answer_choice_ratio_arena",
+            "aggregated_answer_choice_ratio_arena_minimal",
+        )
+        and answer_ratio_file.exists()
+    ):
         df_answer = pd.read_csv(answer_ratio_file, index_col=0)
         arena_answer_output = output_dir / "aggregated_answer_choice_ratio_arena.png"
         plot_answer_choice_ratio_chart(
@@ -1245,7 +1352,9 @@ def main():
             print()
 
         # 8. Accept Ratio Chart sorted by LM Arena ranking
-        if want("aggregated_accept_ratio_arena", "aggregated_accept_ratio_arena_minimal"):
+        if want(
+            "aggregated_accept_ratio_arena", "aggregated_accept_ratio_arena_minimal"
+        ):
             if df_accept is None:
                 df_accept = pd.read_csv(accept_ratio_file, index_col=0)
             arena_accept_output = output_dir / "aggregated_accept_ratio_arena.png"
@@ -1287,9 +1396,9 @@ def main():
             )
             print()
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("CHARTS COMPLETE")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
 
 if __name__ == "__main__":

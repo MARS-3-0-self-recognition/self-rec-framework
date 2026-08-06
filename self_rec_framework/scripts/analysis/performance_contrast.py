@@ -365,7 +365,14 @@ def plot_model_variance_chart(
 
     # Create bar chart
     x_pos = range(len(variances))
-    ax.bar(x_pos, variances.values, color="#3b82f6", alpha=0.7, edgecolor="black", linewidth=0.5)
+    ax.bar(
+        x_pos,
+        variances.values,
+        color="#3b82f6",
+        alpha=0.7,
+        edgecolor="black",
+        linewidth=0.5,
+    )
 
     # Set x-axis labels
     ax.set_xticks(x_pos)
@@ -462,6 +469,7 @@ def main():
         if args.figures.strip().lower() == "all"
         else {f.strip() for f in args.figures.split(",") if f.strip()}
     )
+
     def want_figure(name: str) -> bool:
         return selected_figures is None or name in selected_figures
 
@@ -504,9 +512,9 @@ def main():
         print(f"Error: File not found: {aggregated_file}")
         return
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"DATASET-LEVEL STATISTICS ({metric_name})")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"Input file: {aggregated_file}\n")
 
     # Load and filter data
@@ -525,12 +533,12 @@ def main():
 
     # Compute percentage above chance
     above_chance_pct = compute_above_chance_percentage(df, chance_level=0.5)
-    print(
-        f"  ✓ Computed percentage above chance for {len(above_chance_pct)} datasets"
-    )
+    print(f"  ✓ Computed percentage above chance for {len(above_chance_pct)} datasets")
 
     # Compute variance per model (across datasets)
-    model_variances = df.var(axis=1)  # Variance across columns (datasets) for each model
+    model_variances = df.var(
+        axis=1
+    )  # Variance across columns (datasets) for each model
     print(f"  ✓ Computed variance across datasets for {len(model_variances)} models\n")
 
     # Determine output directory (same as input file)
@@ -604,38 +612,40 @@ def main():
         print()
 
     # Display preview
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("PREVIEW: Dataset Averages (with Std Dev)")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
     preview_df = stats_df.sort_values("average_accuracy", ascending=False)
     print(preview_df.round(3))
     print()
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("PREVIEW: Percentage Above Chance")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
     print(above_chance_pct.sort_values(ascending=False).round(1).astype(str) + "%")
     print()
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("PREVIEW: Model Variance (Across Datasets)")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
     preview_variance = model_variances.sort_values(ascending=False)
     print(preview_variance.round(6))
     print()
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("ANALYSIS COMPLETE")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"Output directory: {output_dir}")
     print(
         "  • dataset_averages.csv: Average accuracy, std dev, and % above chance per dataset"
     )
     print("  • dataset_averages.png: Bar chart with error bars")
     print("  • dataset_above_chance.png: Percentage of models above chance per dataset")
-    print("  • model_variance.csv: Variance of each model's performance across datasets")
+    print(
+        "  • model_variance.csv: Variance of each model's performance across datasets"
+    )
     print("  • model_variance.png: Bar chart showing variance per model")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
 
 if __name__ == "__main__":

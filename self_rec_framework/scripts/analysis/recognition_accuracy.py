@@ -1093,13 +1093,13 @@ def generate_summary_stats(
             # Count significant asymmetries
             large_asym = abs(valid_asym) > 0.2
             f.write(
-                f"Large asymmetries (|diff| > 0.2): {large_asym.sum()} / {len(valid_asym)} ({100*large_asym.sum()/len(valid_asym):.1f}%)\n"
+                f"Large asymmetries (|diff| > 0.2): {large_asym.sum()} / {len(valid_asym)} ({100 * large_asym.sum() / len(valid_asym):.1f}%)\n"
             )
             f.write(
-                f"Positive asymmetries: {(valid_asym > 0).sum()} ({100*(valid_asym > 0).sum()/len(valid_asym):.1f}%)\n"
+                f"Positive asymmetries: {(valid_asym > 0).sum()} ({100 * (valid_asym > 0).sum() / len(valid_asym):.1f}%)\n"
             )
             f.write(
-                f"Negative asymmetries: {(valid_asym < 0).sum()} ({100*(valid_asym < 0).sum()/len(valid_asym):.1f}%)\n\n"
+                f"Negative asymmetries: {(valid_asym < 0).sum()} ({100 * (valid_asym < 0).sum() / len(valid_asym):.1f}%)\n\n"
             )
 
     print(f"  ✓ Saved summary to: {output_path}")
@@ -1218,9 +1218,9 @@ def main():
     accuracy_dir = output_dir / "recognition_accuracy"
     accuracy_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("RECOGNITION ACCURACY ANALYSIS")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     if len(results_dirs) == 1:
         print(f"Results dir: {results_dirs[0]}")
     else:
@@ -1228,7 +1228,7 @@ def main():
         for d in results_dirs:
             print(f"  - {d}")
     print(f"Output dir: {accuracy_dir}")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     # Load all evaluations from all directories
     df = load_all_evaluations(results_dirs)
@@ -1312,15 +1312,15 @@ def main():
     print()
 
     # Display preview
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("PREVIEW: Accuracy Pivot Table")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
     print(pivot.round(3))
     print()
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("ANALYSIS COMPLETE")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"Output directory: {accuracy_dir}")
     print("  • accuracy_pivot.csv: Raw accuracy data")
     print("  • accuracy_counts.csv: Sample counts per cell")
@@ -1329,7 +1329,7 @@ def main():
     print("  • answer_choice_ratio.csv: Proportion choosing answer 1")
     print("  • answer_choice_counts.csv: Raw counts (1/2) per cell")
     print("  • answer_choice_heatmap.png: Ordering bias visualization")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
 
 if __name__ == "__main__":

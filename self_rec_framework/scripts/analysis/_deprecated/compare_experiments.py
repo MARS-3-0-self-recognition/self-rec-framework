@@ -130,7 +130,7 @@ def load_model_type(config_path: Path | None) -> str | None:
     if config_path is None or not config_path.exists():
         return None
     try:
-        with open(config_path, "r") as f:
+        with open(config_path) as f:
             cfg = yaml.safe_load(f) or {}
         return cfg.get("model_type")
     except Exception:
@@ -142,7 +142,7 @@ def load_models_from_config(config_path: Path | None) -> list[str] | None:
     if config_path is None or not config_path.exists():
         return None
     try:
-        with open(config_path, "r") as f:
+        with open(config_path) as f:
             cfg = yaml.safe_load(f) or {}
         return parse_models_from_config(cfg.get("models"))
     except Exception:
@@ -683,10 +683,7 @@ def plot_difference_heatmap(
 
     # Multi-line title
     title = (
-        f"Self-Recognition Accuracy Difference\n"
-        f"({exp1_title})\n"
-        f"MINUS\n"
-        f"({exp2_title})"
+        f"Self-Recognition Accuracy Difference\n({exp1_title})\nMINUS\n({exp2_title})"
     )
 
     ax.set_title(
@@ -820,10 +817,10 @@ def generate_summary_stats(
                 f.write("-" * 70 + "\n")
                 f.write(f"Total tests performed: {total_tests}\n")
                 f.write(
-                    f"Significant differences (p < 0.05): {sig_count} ({sig_count/total_tests*100:.1f}%)\n"
+                    f"Significant differences (p < 0.05): {sig_count} ({sig_count / total_tests * 100:.1f}%)\n"
                 )
                 f.write(
-                    f"Non-significant: {total_tests - sig_count} ({(total_tests-sig_count)/total_tests*100:.1f}%)\n\n"
+                    f"Non-significant: {total_tests - sig_count} ({(total_tests - sig_count) / total_tests * 100:.1f}%)\n\n"
                 )
             else:
                 f.write("CELL-WISE McNEMAR'S TESTS\n")
@@ -849,13 +846,13 @@ def generate_summary_stats(
             f.write("PERFORMANCE SHIFTS (±5% threshold)\n")
             f.write("-" * 70 + "\n")
             f.write(
-                f"Exp1 better: {positive} comparisons ({positive/len(flat_diff)*100:.1f}%)\n"
+                f"Exp1 better: {positive} comparisons ({positive / len(flat_diff) * 100:.1f}%)\n"
             )
             f.write(
-                f"Exp2 better: {negative} comparisons ({negative/len(flat_diff)*100:.1f}%)\n"
+                f"Exp2 better: {negative} comparisons ({negative / len(flat_diff) * 100:.1f}%)\n"
             )
             f.write(
-                f"Similar: {similar} comparisons ({similar/len(flat_diff)*100:.1f}%)\n\n"
+                f"Similar: {similar} comparisons ({similar / len(flat_diff) * 100:.1f}%)\n\n"
             )
 
             # Evaluator-wise summary
@@ -1290,11 +1287,11 @@ def main():
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("EXPERIMENT COMPARISON")
     if is_cross_dataset:
         print("(Cross-Dataset Comparison)")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"Experiment 1: {exp1_title}")
     print(f"              {exp1_dir}")
     if is_cross_dataset and exp1_info:
@@ -1308,7 +1305,7 @@ def main():
     if model_type2:
         print(f"              model_type: {model_type2}")
     print(f"Output dir:   {output_dir}")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     # Load pivot tables
     try:
@@ -1366,22 +1363,22 @@ def main():
     print()
 
     # Display preview
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("PREVIEW: Accuracy Difference Matrix (Exp1 - Exp2)")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
     print(diff.round(3))
     print()
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("COMPARISON COMPLETE")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"Output directory: {output_dir}")
     print("  • accuracy_difference.csv: Difference matrix")
     print("  • pvalues.csv: P-values from paired t-tests")
     print("  • accuracy_difference_heatmap.png: Visualization (bold = significant)")
     print("  • evaluator_difference_performance.png: Evaluator performance bar chart")
     print("  • experiment_comparison_stats.txt: Comparison statistics & t-test results")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
 
 if __name__ == "__main__":

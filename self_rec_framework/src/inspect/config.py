@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 from enum import StrEnum
 import yaml
-from typing import Optional, Union
 from pathlib import Path
 from self_rec_framework.src.helpers.utils import project_root, package_root
 
@@ -12,14 +11,14 @@ from self_rec_framework.src.helpers.utils import project_root, package_root
 # These subclass StrEnum, so members ARE their string values ("DR" == EvaluatorReasoning.DR)
 # and all existing string usage (comparisons, dict keys, model-API params) keeps working.
 class EvaluatorReasoning(StrEnum):
-    DR = "DR"      # direct response
-    COT = "CoT"    # chain of thought (variant resolved per model: CoT-I / CoT-R)
+    DR = "DR"  # direct response
+    COT = "CoT"  # chain of thought (variant resolved per model: CoT-I / CoT-R)
 
 
 class GeneratorOutput(StrEnum):
-    FA = "FA"        # final answer only
+    FA = "FA"  # final answer only
     RT_FA = "RT-FA"  # reasoning trace + final answer
-    RT = "RT"        # reasoning trace only
+    RT = "RT"  # reasoning trace only
 
 
 class ReasoningEffort(StrEnum):
@@ -52,26 +51,25 @@ class ExperimentConfig:
     # When "CoT", the actual prompt variant is determined by model type:
     #   - Thinking models (-thinking suffix) → "CoT-R" (trained reasoning)
     #   - Instruct models → "CoT-I" (prompted reasoning)
-    evaluator_reasoning: Optional[EvaluatorReasoning] = None
-    dataset_name: Optional[str] = (
-        None  # Optional, will be inferred from dataset path if not provided
-    )
+    evaluator_reasoning: EvaluatorReasoning | None = None
+    # Optional, will be inferred from dataset path if not provided
+    dataset_name: str | None = None
 
     # Generation parameters
-    temperature: Optional[float] = None  # Evaluator inference temperature
-    generator_temperature: Optional[float] = None  # Data generation temperature (for dir lookup)
+    temperature: float | None = None  # Evaluator inference temperature
+    # Data generation temperature (for dir lookup)
+    generator_temperature: float | None = None
     # Token budgets accept an int, null, or the string "max" (resolved per-model
     # to the model's output ceiling via get_model_output_token_cap at task-build time).
-    max_final_answer_tokens: Optional[Union[int, str]] = None
-    max_thinking_tokens: Optional[Union[int, str]] = (
-        None  # Max tokens for thinking models; "max" -> model ceiling
-    )
-    seed: Optional[int] = None
+    max_final_answer_tokens: int | str | None = None
+    # Max tokens for thinking models; "max" -> model ceiling
+    max_thinking_tokens: int | str | None = None
+    seed: int | None = None
 
     # Reasoning parameters for thinking models
-    reasoning_effort: Optional[ReasoningEffort] = ReasoningEffort.HIGH
-    reasoning_summary: Optional[ReasoningSummary] = None
-    reasoning_history: Optional[ReasoningHistory] = ReasoningHistory.ALL
+    reasoning_effort: ReasoningEffort | None = ReasoningEffort.HIGH
+    reasoning_summary: ReasoningSummary | None = None
+    reasoning_history: ReasoningHistory | None = ReasoningHistory.ALL
 
     # Prompt variant selection
     # Controls how generator outputs are inserted into UT transcripts
@@ -79,14 +77,16 @@ class ExperimentConfig:
     #   FA = Final Answer only
     #   RT-FA = Reasoning Trace + Final Answer
     #   RT = Reasoning Trace only
-    generator_output: Optional[GeneratorOutput] = None
+    generator_output: GeneratorOutput | None = None
 
     # In-context learning (ICL) — inject QA examples before evaluation
-    icl_model: Optional[str] = None       # Model whose responses to use (e.g., "deepseek-3.1")
-    icl_count: Optional[int] = None       # Number of QA pairs to inject
-    icl_seed: Optional[int] = None        # Seed for reproducible sampling (default: seed or 42)
-    icl_data_subset: Optional[str] = None # Data subset override for ICL (default: same as eval)
-    icl_dataset: Optional[str] = None     # Dataset override for ICL pool (default: same as eval)
+    icl_model: str | None = None  # Model whose responses to use (e.g., "deepseek-3.1")
+    icl_count: int | None = None  # Number of QA pairs to inject
+    icl_seed: int | None = None  # Seed for reproducible sampling (default: seed or 42)
+    # Data subset override for ICL (default: same as eval)
+    icl_data_subset: str | None = None
+    # Dataset override for ICL pool (default: same as eval)
+    icl_dataset: str | None = None
     # If True, each eval UUID gets a different random subset of ICL examples
     # (in its own order). The two answer-order-bias samples sharing a UUID get
     # the SAME ICL context so their comparison stays fair.
@@ -96,13 +96,13 @@ class ExperimentConfig:
     # When both are set, eval logs land under:
     #   data/results/{dataset}/{subset}/{experiment_name}/{mini_batch_name}/
     # When unset, legacy single-level layout is preserved (old MSJ configs).
-    experiment_name: Optional[str] = None
-    mini_batch_name: Optional[str] = None
+    experiment_name: str | None = None
+    mini_batch_name: str | None = None
 
     # Built prompts (set after initialization)
-    generation_prompt: Optional[str] = None
-    SR_task_prompt: Optional[str] = None
-    system_prompt: Optional[str] = None
+    generation_prompt: str | None = None
+    SR_task_prompt: str | None = None
+    system_prompt: str | None = None
 
     def __post_init__(self):
         # The only non-int string accepted for token budgets is the "max" sentinel.
@@ -166,7 +166,9 @@ class ExperimentConfig:
         return name
 
     @classmethod
-    def from_yaml(cls, config_path: str | Path, dataset_name: str) -> "ExperimentConfig":
+    def from_yaml(
+        cls, config_path: str | Path, dataset_name: str
+    ) -> "ExperimentConfig":
         """
         Build an ExperimentConfig from a YAML config file (prompts not built yet).
 
@@ -177,7 +179,7 @@ class ExperimentConfig:
         if not config_path.exists():
             raise FileNotFoundError(f"Config file not found: {config_path}")
 
-        with open(config_path, "r") as f:
+        with open(config_path) as f:
             config_dict = yaml.safe_load(f)
 
         return cls(
@@ -302,7 +304,7 @@ def _load_base_prompts(prompts_path: Path | None = None) -> dict:
     if not prompts_path.exists():
         raise FileNotFoundError(f"Base prompts file not found: {prompts_path}")
 
-    with open(prompts_path, "r") as f:
+    with open(prompts_path) as f:
         return yaml.safe_load(f)
 
 
@@ -314,7 +316,7 @@ def _load_dataset_prompts(dataset_name: str, prompts_path: Path | None = None) -
     if not prompts_path.exists():
         raise FileNotFoundError(f"Dataset prompts file not found: {prompts_path}")
 
-    with open(prompts_path, "r") as f:
+    with open(prompts_path) as f:
         return yaml.safe_load(f)
 
 

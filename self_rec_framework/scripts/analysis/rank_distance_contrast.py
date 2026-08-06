@@ -255,11 +255,16 @@ def plot_rank_distance_contrast(
 
     # --- Reference lines ---
     ax.axhline(
-        y=0.5, color="#555555", linestyle="--", linewidth=1.0, alpha=0.8,
+        y=0.5,
+        color="#555555",
+        linestyle="--",
+        linewidth=1.0,
+        alpha=0.8,
         label="Chance (0.5)",
     )
-    ax.axvline(x=0, color="black", linestyle="-", linewidth=1, alpha=0.3,
-               label="Equal Rank")
+    ax.axvline(
+        x=0, color="black", linestyle="-", linewidth=1, alpha=0.3, label="Equal Rank"
+    )
 
     # --- Slope annotation ---
     delta = slope1 - slope2 if not (np.isnan(slope1) or np.isnan(slope2)) else np.nan
@@ -269,25 +274,31 @@ def plot_rank_distance_contrast(
         f"\u0394slope: {delta:+.4f}"
     )
     ax.text(
-        0.02, 0.02, annotation,
+        0.02,
+        0.02,
+        annotation,
         transform=ax.transAxes,
         fontsize=10,
         verticalalignment="bottom",
         fontfamily="monospace",
-        bbox=dict(boxstyle="round,pad=0.4", facecolor="white", alpha=0.8, edgecolor="gray"),
+        bbox=dict(
+            boxstyle="round,pad=0.4", facecolor="white", alpha=0.8, edgecolor="gray"
+        ),
     )
 
     # --- Legend ---
     handles, labels = ax.get_legend_handles_labels()
     # Move Chance (0.5) to end
-    chance_idx = next((i for i, l in enumerate(labels) if l == "Chance (0.5)"), None)
+    chance_idx = next(
+        (i for i, label in enumerate(labels) if label == "Chance (0.5)"), None
+    )
     if chance_idx is not None:
         h = handles.pop(chance_idx)
-        l = labels.pop(chance_idx)
+        label = labels.pop(chance_idx)
         handles.append(h)
-        labels.append(l)
+        labels.append(label)
     # Remove Equal Rank from legend
-    eq_idx = next((i for i, l in enumerate(labels) if l == "Equal Rank"), None)
+    eq_idx = next((i for i, label in enumerate(labels) if label == "Equal Rank"), None)
     if eq_idx is not None:
         handles.pop(eq_idx)
         labels.pop(eq_idx)
@@ -303,22 +314,29 @@ def plot_rank_distance_contrast(
 
     # --- Formatting ---
     if distance_type == "score":
-        x_label = ("Score Distance (Evaluator Score - Generator Score)\n"
-                    "Positive = Evaluator has higher score")
+        x_label = (
+            "Score Distance (Evaluator Score - Generator Score)\n"
+            "Positive = Evaluator has higher score"
+        )
         dist_label = "Score Distance"
     else:
-        x_label = ("Rank Distance (Evaluator Rank - Generator Rank)\n"
-                    "Positive = Evaluator is worse ranked")
+        x_label = (
+            "Rank Distance (Evaluator Rank - Generator Rank)\n"
+            "Positive = Evaluator is worse ranked"
+        )
         dist_label = "Rank Distance"
 
     ax.set_xlabel(x_label, fontsize=12, fontweight="bold")
     ax.set_ylabel(
         f"Average {metric_name} (across datasets)",
-        fontsize=12, fontweight="bold",
+        fontsize=12,
+        fontweight="bold",
     )
     ax.set_title(
         f"{metric_name} vs {dist_label}\n{exp1_name} vs {exp2_name}",
-        fontsize=14, fontweight="bold", pad=20,
+        fontsize=14,
+        fontweight="bold",
+        pad=20,
     )
     ax.grid(alpha=0.3, linestyle="--")
     ax.set_axisbelow(True)
@@ -350,35 +368,52 @@ def main():
         allow_abbrev=False,
     )
     parser.add_argument(
-        "--exp1_file", type=str, required=True,
+        "--exp1_file",
+        type=str,
+        required=True,
         help="Path to first experiment's rank_distance_data.csv",
     )
     parser.add_argument(
-        "--exp2_file", type=str, required=True,
+        "--exp2_file",
+        type=str,
+        required=True,
         help="Path to second experiment's rank_distance_data.csv",
     )
     parser.add_argument(
-        "--exp1_name", type=str, required=True,
+        "--exp1_name",
+        type=str,
+        required=True,
         help="Name of first experiment (for display)",
     )
     parser.add_argument(
-        "--exp2_name", type=str, required=True,
+        "--exp2_name",
+        type=str,
+        required=True,
         help="Name of second experiment (for display)",
     )
     parser.add_argument(
-        "--model_names", type=str, nargs="+",
+        "--model_names",
+        type=str,
+        nargs="+",
         help="Model names to filter evaluators. Supports -set notation.",
     )
     parser.add_argument(
-        "--metric_name", type=str, default="Recognition Accuracy",
+        "--metric_name",
+        type=str,
+        default="Recognition Accuracy",
         help="Label for the y-axis metric (default: Recognition Accuracy)",
     )
     parser.add_argument(
-        "--distance_type", type=str, choices=["rank", "score"], default="rank",
+        "--distance_type",
+        type=str,
+        choices=["rank", "score"],
+        default="rank",
         help="Type of distance: 'rank' (lower rank = better) or 'score' (higher score = better)",
     )
     parser.add_argument(
-        "--output_dir", type=str, default=None,
+        "--output_dir",
+        type=str,
+        default=None,
         help="Output directory (default: data/analysis/_aggregated_data/{exp1}-vs-{exp2}/{timestamp}/)",
     )
 
@@ -403,9 +438,9 @@ def main():
     dist_type = args.distance_type
     dist_label = "SCORE" if dist_type == "score" else "RANK"
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"{dist_label} DISTANCE CONTRAST")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"Experiment 1: {args.exp1_name} ({exp1_file})")
     print(f"Experiment 2: {args.exp2_name} ({exp2_file})")
 
@@ -459,9 +494,14 @@ def main():
 
     # Plot
     plot_rank_distance_contrast(
-        agg1, agg2, reg1, reg2,
-        args.exp1_name, args.exp2_name,
-        output_path, args.metric_name,
+        agg1,
+        agg2,
+        reg1,
+        reg2,
+        args.exp1_name,
+        args.exp2_name,
+        output_path,
+        args.metric_name,
         distance_type=dist_type,
     )
 
@@ -479,13 +519,13 @@ def main():
     s1 = reg1["reg_result"]["slope"] if reg1["reg_result"] else np.nan
     s2 = reg2["reg_result"]["slope"] if reg2["reg_result"] else np.nan
     delta = s1 - s2 if not (np.isnan(s1) or np.isnan(s2)) else np.nan
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("SLOPE COMPARISON")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"  {args.exp1_name}: slope={s1:.4f}, r={reg1['correlation']:.2f}")
     print(f"  {args.exp2_name}: slope={s2:.4f}, r={reg2['correlation']:.2f}")
     print(f"  \u0394slope: {delta:+.4f}")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
 
 if __name__ == "__main__":
