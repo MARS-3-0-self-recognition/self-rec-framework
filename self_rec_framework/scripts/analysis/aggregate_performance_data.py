@@ -60,7 +60,7 @@ def load_performance_data(
         # Extract specified column
         if column_name in df.columns:
             merged_data[dataset_name] = df[column_name]
-            
+
             # Extract counts if available
             if "n_samples" in df.columns:
                 merged_counts[dataset_name] = df["n_samples"]
@@ -154,9 +154,9 @@ def main():
             print(f"Error: File not found: {file_path}")
             return
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("PERFORMANCE AGGREGATION")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"Datasets: {len(dataset_names)}")
     for name in dataset_names:
         print(f"  • {name}")
@@ -183,7 +183,7 @@ def main():
             )  # Use full name for directory (e.g., "ICML_01_UT_PW-Q_Rec_NPr_FA_Inst")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_dir = output_base / timestamp
-    
+
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Output directory: {output_dir}\n")
@@ -201,7 +201,9 @@ def main():
             f"  ✓ Loaded data: {df_perf.shape[0]} models × {df_perf.shape[1]} datasets\n"
         )
         if df_perf_counts is not None:
-            print(f"  ✓ Loaded counts data: {df_perf_counts.shape[0]} models × {df_perf_counts.shape[1]} datasets\n")
+            print(
+                f"  ✓ Loaded counts data: {df_perf_counts.shape[0]} models × {df_perf_counts.shape[1]} datasets\n"
+            )
     except ValueError as e:
         print(f"  ⚠ Error loading performance data: {e}")
         df_perf = pd.DataFrame()
@@ -223,26 +225,33 @@ def main():
         # Compute weighted average if counts available, otherwise simple average
         if df_perf_counts is not None:
             # Weighted average: sum(performance * n_samples) / sum(n_samples) per model
-            weighted_perf = (df_perf * df_perf_counts).sum(axis=1) / df_perf_counts.sum(axis=1)
+            weighted_perf = (df_perf * df_perf_counts).sum(axis=1) / df_perf_counts.sum(
+                axis=1
+            )
             total_counts = df_perf_counts.sum(axis=1)
             # Create DataFrame with weighted performance and total counts
-            df_perf_weighted = pd.DataFrame({
-                'performance': weighted_perf,
-                'n_samples': total_counts
-            })
+            df_perf_weighted = pd.DataFrame(
+                {"performance": weighted_perf, "n_samples": total_counts}
+            )
             # Also save the per-dataset data
             df_perf.to_csv(output_dir / "aggregated_performance.csv")
             df_perf_weighted.to_csv(output_dir / "aggregated_performance_weighted.csv")
             df_perf_counts.to_csv(output_dir / "aggregated_counts.csv")
-            print(f"  ✓ Saved aggregated performance data to: {output_dir / 'aggregated_performance.csv'}")
-            print(f"  ✓ Saved weighted performance (with counts) to: {output_dir / 'aggregated_performance_weighted.csv'}")
-            print(f"  ✓ Saved aggregated counts to: {output_dir / 'aggregated_counts.csv'}\n")
+            print(
+                f"  ✓ Saved aggregated performance data to: {output_dir / 'aggregated_performance.csv'}"
+            )
+            print(
+                f"  ✓ Saved weighted performance (with counts) to: {output_dir / 'aggregated_performance_weighted.csv'}"
+            )
+            print(
+                f"  ✓ Saved aggregated counts to: {output_dir / 'aggregated_counts.csv'}\n"
+            )
         else:
             # Simple average (no counts available)
             csv_path = output_dir / "aggregated_performance.csv"
             df_perf.to_csv(csv_path)
             print(f"  ✓ Saved aggregated performance data to: {csv_path}")
-            print(f"  ⚠ No counts data available (weighted average not computed)\n")
+            print("  ⚠ No counts data available (weighted average not computed)\n")
     else:
         print("  ⚠ No valid performance data to save.\n")
 
@@ -264,8 +273,10 @@ def main():
             df_se.to_csv(output_dir / "aggregated_se.csv")
             print(f"  ✓ Saved aggregated SE to: {output_dir / 'aggregated_se.csv'}\n")
     except ValueError:
-        print("  ⚠ No 'se' column in evaluator_performance.csv files — skipping "
-              "aggregated_se.csv (comparisons will fall back to counts-based error bars)\n")
+        print(
+            "  ⚠ No 'se' column in evaluator_performance.csv files — skipping "
+            "aggregated_se.csv (comparisons will fall back to counts-based error bars)\n"
+        )
 
     # ============================================================================
     # Process Deviation Data
@@ -302,7 +313,9 @@ def main():
                 f"  ✓ Loaded data: {df_dev.shape[0]} models × {df_dev.shape[1]} datasets\n"
             )
             if df_dev_counts is not None:
-                print(f"  ✓ Loaded counts data: {df_dev_counts.shape[0]} models × {df_dev_counts.shape[1]} datasets\n")
+                print(
+                    f"  ✓ Loaded counts data: {df_dev_counts.shape[0]} models × {df_dev_counts.shape[1]} datasets\n"
+                )
 
             # Filter and order models (use same order as performance)
             if model_order:
@@ -334,7 +347,9 @@ def main():
     answer_ratio_names = []
     for perf_file, dataset_name in zip(performance_files, dataset_names):
         # Navigate from evaluator_performance/ sibling to recognition_accuracy/
-        ratio_file = perf_file.parent.parent / "recognition_accuracy" / "answer_choice_ratio.csv"
+        ratio_file = (
+            perf_file.parent.parent / "recognition_accuracy" / "answer_choice_ratio.csv"
+        )
         if ratio_file.exists():
             answer_ratio_files.append(ratio_file)
             answer_ratio_names.append(dataset_name)
@@ -359,7 +374,9 @@ def main():
 
             # Filter and order models
             if model_order:
-                available_models = [m for m in model_order if m in df_answer_ratio.index]
+                available_models = [
+                    m for m in model_order if m in df_answer_ratio.index
+                ]
                 if available_models:
                     df_answer_ratio = df_answer_ratio.reindex(available_models)
 
@@ -408,7 +425,9 @@ def main():
 
             # Filter and order models
             if model_order:
-                available_models = [m for m in model_order if m in df_accept_ratio.index]
+                available_models = [
+                    m for m in model_order if m in df_accept_ratio.index
+                ]
                 if available_models:
                     df_accept_ratio = df_accept_ratio.reindex(available_models)
 
@@ -479,9 +498,9 @@ def main():
     # Summary
     # ============================================================================
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("DATA AGGREGATION COMPLETE")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"Output directory: {output_dir}")
     if not df_perf.empty:
         print("  • aggregated_performance.csv")
@@ -496,7 +515,7 @@ def main():
         print("  • aggregated_accept_ratio.csv")
     if not df_f1.empty:
         print("  • aggregated_f1.csv")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
 
 if __name__ == "__main__":

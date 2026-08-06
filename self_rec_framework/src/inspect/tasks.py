@@ -1,5 +1,6 @@
 """Self-recognition tasks."""
 
+import hashlib
 import os
 
 from inspect_ai import Task, task
@@ -10,6 +11,7 @@ from inspect_ai.model import (
     ChatMessageUser,
     ChatMessageAssistant,
     GenerateConfig,
+    Model,
     get_model,
 )
 from inspect_ai._util.content import ContentReasoning, ContentText
@@ -25,13 +27,29 @@ from self_rec_framework.src.helpers.model_names import (
     get_model_context_window,
     get_model_max_thinking_tokens,
 )
-from self_rec_framework.src.inspect.config import ExperimentConfig, load_experiment_config
+from self_rec_framework.src.inspect.config import (
+    ExperimentConfig,
+    ensure_evaluator_reasoning,
+    load_experiment_config,
+)
 from self_rec_framework.src.inspect.scorer import logprob_scorer, answer_length_scorer
-from self_rec_framework.src.inspect.data import load_dataset_pairwise, load_dataset_individual, load_dataset_mmlu, load_icl_examples, load_icl_pool, select_icl_from_pool
+from self_rec_framework.src.inspect.data import (
+    load_dataset_pairwise,
+    load_dataset_individual,
+    load_dataset_mmlu,
+    load_icl_examples,
+    load_icl_pool,
+    select_icl_from_pool,
+)
 
 from self_rec_framework.src.helpers.utils import (
     data_dir,
     load_json,
+)
+from self_rec_framework.src.helpers.exceptions import (
+    AlwaysReasoningModelError,
+    ReasoningTokensRequiredError,
+    ContextWindowExceededError,
 )
 
 
@@ -45,7 +63,11 @@ def _load_icl_for_task(
     if not exp_config.icl_count or not exp_config.icl_model:
         return []
     eval_uuids = {s["metadata"]["uuid"] for s in dataset_samples}
-    seed = exp_config.icl_seed if exp_config.icl_seed is not None else (exp_config.seed or 42)
+    seed = (
+        exp_config.icl_seed
+        if exp_config.icl_seed is not None
+        else (exp_config.seed or 42)
+    )
     icl_dataset = exp_config.icl_dataset or dataset_name
     icl_subset = exp_config.icl_data_subset or data_subset
     same_pool = (icl_dataset == dataset_name) and (icl_subset == data_subset)
@@ -58,8 +80,10 @@ def _load_icl_for_task(
         exclude_uuids=exclude,
         seed=seed,
     )
-    print(f"  ICL: loaded {len(examples)} examples from {exp_config.icl_model}/{icl_dataset}/{icl_subset} "
-          f"(excluded {len(exclude)} UUIDs)")
+    print(
+        f"  ICL: loaded {len(examples)} examples from {exp_config.icl_model}/{icl_dataset}/{icl_subset} "
+        f"(excluded {len(exclude)} UUIDs)"
+    )
     return examples
 
 
@@ -73,7 +97,11 @@ def _load_icl_pool_for_task(
     if not exp_config.icl_count or not exp_config.icl_model:
         return None, None
     eval_uuids = {s["metadata"]["uuid"] for s in dataset_samples}
-    base_seed = exp_config.icl_seed if exp_config.icl_seed is not None else (exp_config.seed or 42)
+    base_seed = (
+        exp_config.icl_seed
+        if exp_config.icl_seed is not None
+        else (exp_config.seed or 42)
+    )
     icl_dataset = exp_config.icl_dataset or dataset_name
     icl_subset = exp_config.icl_data_subset or data_subset
     same_pool = (icl_dataset == dataset_name) and (icl_subset == data_subset)
@@ -84,8 +112,10 @@ def _load_icl_pool_for_task(
         data_subset=icl_subset,
         exclude_uuids=exclude,
     )
-    print(f"  ICL (per-sample): pool={len(pool)} examples from {exp_config.icl_model}/{icl_dataset}/{icl_subset} "
-          f"(excluded {len(exclude)} UUIDs)")
+    print(
+        f"  ICL (per-sample): pool={len(pool)} examples from {exp_config.icl_model}/{icl_dataset}/{icl_subset} "
+        f"(excluded {len(exclude)} UUIDs)"
+    )
     return pool, base_seed
 
 
@@ -95,7 +125,6 @@ def _icl_seed_for_uuid(base_seed: int, uuid: str) -> int:
     The two answer-order-bias samples sharing a UUID get the SAME seed, so they
     see the SAME ICL context — preserving a fair same-context comparison.
     """
-    import hashlib
     h = hashlib.sha256(f"{base_seed}:{uuid}".encode()).digest()
     return int.from_bytes(h[:8], "big", signed=False)
 
@@ -131,8 +160,9 @@ def _build_icl_resolver(
         return lambda uuid: []
 
     if exp_config.icl_shuffle_per_sample:
-        pool, base_seed = _load_icl_pool_for_task(exp_config, dataset_samples,
-                                                  dataset_name, data_subset)
+        pool, base_seed = _load_icl_pool_for_task(
+            exp_config, dataset_samples, dataset_name, data_subset
+        )
 
         def resolve(uuid: str):
             examples = select_icl_from_pool(
@@ -144,18 +174,23 @@ def _build_icl_resolver(
 
         return resolve
 
-    shared_examples = _load_icl_for_task(exp_config, dataset_samples,
-                                         dataset_name, data_subset)
-    shared_messages = (_build_icl_messages(shared_examples, exp_config.generation_prompt)
-                       if shared_examples else [])
+    shared_examples = _load_icl_for_task(
+        exp_config, dataset_samples, dataset_name, data_subset
+    )
+    shared_messages = (
+        _build_icl_messages(shared_examples, exp_config.generation_prompt)
+        if shared_examples
+        else []
+    )
     return lambda uuid: shared_messages
-
 
     # _build_icl_text removed — all formats now use _build_icl_messages
     # to inject ICL as real ChatMessage turn pairs (no framing text)
 
 
-def _get_model_with_custom_base_url(model_name: str, inspect_model_str: str):
+def _get_model_with_custom_base_url(
+    model_name: str, inspect_model_str: str
+) -> Model | str:
     """
     Get a Model object, handling custom base URLs for providers like XAI.
 
@@ -241,26 +276,6 @@ def _is_always_reasoning_model(model_name: str) -> bool:
     ]
 
     return any(base_name.startswith(prefix) for prefix in always_reasoning_prefixes)
-
-
-class AlwaysReasoningModelError(Exception):
-    """Raised when trying to use an always-reasoning model without -thinking suffix."""
-
-    pass
-
-
-class ReasoningTokensRequiredError(Exception):
-    """Raised when reasoning is enabled but the required CoT token budget is unset."""
-
-    pass
-
-
-class ContextWindowExceededError(Exception):
-    """Raised when a model's context window can't fit the estimated input plus a
-    minimal output budget — i.e. the evaluator genuinely can't run this task. The
-    sweep catches this to skip the model gracefully rather than abort."""
-
-    pass
 
 
 def _disable_reasoning_for_instruct_mode(
@@ -437,7 +452,8 @@ def _configure_thinking_model_params(
     if "max_tokens" in config_params:
         seed = config_params["max_tokens"]
         config_params["max_tokens"] = (
-            max_output_ceiling() if _is_max_sentinel(seed)
+            max_output_ceiling()
+            if _is_max_sentinel(seed)
             else _resolve_max_tokens(seed, model_name)
         )
 
@@ -447,7 +463,9 @@ def _configure_thinking_model_params(
     if _is_max_sentinel(config.max_final_answer_tokens):
         resolved_answer = max_output_ceiling()
     else:
-        resolved_answer = _resolve_max_tokens(config.max_final_answer_tokens, model_name)
+        resolved_answer = _resolve_max_tokens(
+            config.max_final_answer_tokens, model_name
+        )
 
     # For dual-mode models WITHOUT -thinking suffix, explicitly disable reasoning
     if not is_thinking_model(model_name):
@@ -502,7 +520,9 @@ def _configure_thinking_model_params(
                 # This is an API requirement. We ensure max_tokens > reasoning_tokens.
                 if "max_tokens" not in config_params:
                     # User-specified answer limit, else a high practical default.
-                    max_answer = resolved_answer if resolved_answer is not None else 8192
+                    max_answer = (
+                        resolved_answer if resolved_answer is not None else 8192
+                    )
                     max_tokens = max(max_answer, reasoning_tokens + 1)
                     if model_ceiling is not None:
                         max_tokens = min(max_tokens, model_ceiling)
@@ -690,7 +710,6 @@ def pairwise_query(
         Task object configured with logprobs enabled
     """
     config = exp_config
-    from self_rec_framework.src.inspect.config import ensure_evaluator_reasoning
 
     ensure_evaluator_reasoning(config, model_name)
 
@@ -707,7 +726,9 @@ def pairwise_query(
     )
 
     # Load ICL examples if configured (per-sample resolver; returns [] if ICL not set)
-    icl_resolve = _build_icl_resolver(config, dataset_samples, dataset_name, data_subset)
+    icl_resolve = _build_icl_resolver(
+        config, dataset_samples, dataset_name, data_subset
+    )
 
     # Create Inspect samples
     inspect_samples = []
@@ -802,7 +823,6 @@ def pairwise_conversation_assistant_tags(
         Task object configured with logprobs enabled
     """
     config = exp_config
-    from self_rec_framework.src.inspect.config import ensure_evaluator_reasoning
 
     ensure_evaluator_reasoning(config, model_name)
 
@@ -816,7 +836,6 @@ def pairwise_conversation_assistant_tags(
 
     # Check if treatment models are Anthropic (to determine if we can use their reasoning format)
     # Get base model names (remove -thinking suffix and treatment suffixes)
-    from self_rec_framework.src.helpers.model_names import get_base_model_name
 
     base_control = get_base_model_name(treatment_name_control)
     base_treatment = get_base_model_name(treatment_name_treatment)
@@ -843,7 +862,9 @@ def pairwise_conversation_assistant_tags(
     )
 
     # Load ICL examples if configured (per-sample resolver; returns [] if ICL not set)
-    icl_resolve = _build_icl_resolver(config, dataset_samples, dataset_name, data_subset)
+    icl_resolve = _build_icl_resolver(
+        config, dataset_samples, dataset_name, data_subset
+    )
 
     # Create Inspect samples with conversation history
     inspect_samples = []
@@ -864,115 +885,54 @@ def pairwise_conversation_assistant_tags(
         # First interaction with output1
         messages.append(ChatMessageUser(content=generation_prompt))
 
-        # Add output1 with CoT if available
-        cot1 = sample_data.get("cot1")
-        signature1 = sample_data.get("signature1")
-        if cot1:
-            # Determine which treatment model generated output1
-            # In sample 1: output1 is from treatment_name_1 (control)
-            # In sample 2: output1 is from treatment_name_2 (treatment, swapped)
-            # Check metadata to see which sample this is
-            is_first_sample = sample_data["metadata"].get("correct_answer") == "1"
-            cot1_source_is_anthropic = (
-                is_control_anthropic if is_first_sample else is_treatment_anthropic
+        # Append an output turn, embedding its CoT reasoning (if any) according
+        # to the evaluator's and the source model's Anthropic-ness. Nested so it is
+        # clearly scoped to this per-sample loop; output1 and output2 share identical
+        # logic and differ only in which model is the CoT "source".
+        def append_output_with_cot(cot, signature, output, source_is_anthropic):
+            if not cot:
+                messages.append(ChatMessageAssistant(content=output))
+                return
+            if signature and is_anthropic_evaluator and source_is_anthropic:
+                # Anthropic evaluator + Anthropic-source CoT + signature (may work
+                # across Anthropic models, e.g. sonnet 3.7 -> opus 4.1).
+                reasoning = ContentReasoning(reasoning=cot, signature=signature)
+            elif not is_anthropic_evaluator:
+                # Non-Anthropic evaluator: plaintext reasoning so it appears in logs.
+                reasoning = ContentReasoning(reasoning=cot)
+            elif source_is_anthropic:
+                # Anthropic evaluator + Anthropic-source CoT, no signature: redact.
+                reasoning = ContentReasoning(reasoning=cot, redacted=True)
+            else:
+                # Anthropic evaluator + non-Anthropic CoT, no signature: skip CoT.
+                messages.append(ChatMessageAssistant(content=output))
+                return
+            messages.append(
+                ChatMessageAssistant(content=[reasoning, ContentText(text=output)])
             )
 
-            # Use ContentReasoning with signature if available (for Anthropic models)
-            # Note: Signatures are tied to specific reasoning content. We allow cross-Anthropic
-            # model usage (e.g., sonnet 3.7 signature with opus 4.1 evaluator) - if the API
-            # rejects this, we'll get an error and can adjust.
-            # Otherwise use redacted=True for other providers
-            if signature1 and is_anthropic_evaluator and cot1_source_is_anthropic:
-                # Anthropic evaluator with Anthropic CoT - use signature
-                # (May work across different Anthropic models, e.g., sonnet -> opus)
-                messages.append(
-                    ChatMessageAssistant(
-                        content=[
-                            ContentReasoning(reasoning=cot1, signature=signature1),
-                            ContentText(text=sample_data["output1"]),
-                        ]
-                    )
-                )
-            elif not is_anthropic_evaluator:
-                # Non-Anthropic evaluator - include plaintext reasoning so it appears in logs
-                messages.append(
-                    ChatMessageAssistant(
-                        content=[
-                            ContentReasoning(reasoning=cot1),
-                            ContentText(text=sample_data["output1"]),
-                        ]
-                    )
-                )
-            elif cot1_source_is_anthropic:
-                # Anthropic evaluator with Anthropic CoT but no signature - fall back to redacted
-                messages.append(
-                    ChatMessageAssistant(
-                        content=[
-                            ContentReasoning(reasoning=cot1, redacted=True),
-                            ContentText(text=sample_data["output1"]),
-                        ]
-                    )
-                )
-            else:
-                # Skip CoT for Anthropic evaluator with non-Anthropic CoT (no signature)
-                messages.append(ChatMessageAssistant(content=sample_data["output1"]))
-        else:
-            messages.append(ChatMessageAssistant(content=sample_data["output1"]))
+        # Which physical model produced each output swaps between the two
+        # answer-order samples, so the "source is Anthropic" flag differs per output.
+        is_first_sample = sample_data["metadata"].get("correct_answer") == "1"
+
+        # Add output1 with CoT if available
+        append_output_with_cot(
+            sample_data.get("cot1"),
+            sample_data.get("signature1"),
+            sample_data["output1"],
+            is_control_anthropic if is_first_sample else is_treatment_anthropic,
+        )
 
         # Second interaction with output2 (same article/question)
         messages.append(ChatMessageUser(content=generation_prompt))
 
         # Add output2 with CoT if available
-        cot2 = sample_data.get("cot2")
-        signature2 = sample_data.get("signature2")
-        if cot2:
-            # Determine which treatment model generated output2
-            is_first_sample = sample_data["metadata"].get("correct_answer") == "1"
-            cot2_source_is_anthropic = (
-                is_treatment_anthropic if is_first_sample else is_control_anthropic
-            )
-
-            # Use ContentReasoning with signature if available (for Anthropic models)
-            # Note: Signatures are tied to specific reasoning content. We allow cross-Anthropic
-            # model usage (e.g., sonnet 3.7 signature with opus 4.1 evaluator) - if the API
-            # rejects this, we'll get an error and can adjust.
-            # Otherwise use redacted=True for other providers
-            if signature2 and is_anthropic_evaluator and cot2_source_is_anthropic:
-                # Anthropic evaluator with Anthropic CoT - use signature
-                # (May work across different Anthropic models, e.g., sonnet -> opus)
-                messages.append(
-                    ChatMessageAssistant(
-                        content=[
-                            ContentReasoning(reasoning=cot2, signature=signature2),
-                            ContentText(text=sample_data["output2"]),
-                        ]
-                    )
-                )
-            elif not is_anthropic_evaluator:
-                # Non-Anthropic evaluator - include plaintext reasoning so it appears in logs
-                messages.append(
-                    ChatMessageAssistant(
-                        content=[
-                            ContentReasoning(reasoning=cot2),
-                            ContentText(text=sample_data["output2"]),
-                        ]
-                    )
-                )
-            elif cot2_source_is_anthropic:
-                # Anthropic evaluator with Anthropic CoT but no signature - fall back to redacted
-                messages.append(
-                    ChatMessageAssistant(
-                        content=[
-                            ContentReasoning(reasoning=cot2, redacted=True),
-                            ContentText(text=sample_data["output2"]),
-                        ]
-                    )
-                )
-            else:
-                # Skip CoT for Anthropic evaluator with non-Anthropic CoT (no signature)
-                messages.append(ChatMessageAssistant(content=sample_data["output2"]))
-        else:
-            messages.append(ChatMessageAssistant(content=sample_data["output2"]))
+        append_output_with_cot(
+            sample_data.get("cot2"),
+            sample_data.get("signature2"),
+            sample_data["output2"],
+            is_treatment_anthropic if is_first_sample else is_control_anthropic,
+        )
 
         # Final verification question
         messages.append(ChatMessageUser(content=config.SR_task_prompt))
@@ -1036,7 +996,6 @@ def pairwise_conversation_user_tags(
         Task object configured with logprobs enabled
     """
     config = exp_config
-    from self_rec_framework.src.inspect.config import ensure_evaluator_reasoning
 
     ensure_evaluator_reasoning(config, model_name)
 
@@ -1053,7 +1012,9 @@ def pairwise_conversation_user_tags(
     )
 
     # Load ICL examples if configured (per-sample resolver; returns [] if ICL not set)
-    icl_resolve = _build_icl_resolver(config, dataset_samples, dataset_name, data_subset)
+    icl_resolve = _build_icl_resolver(
+        config, dataset_samples, dataset_name, data_subset
+    )
 
     # Create Inspect samples
     inspect_samples = []
@@ -1130,7 +1091,6 @@ def individual_conversation_assistant_tags(
         Task object configured with logprobs enabled
     """
     config = exp_config
-    from self_rec_framework.src.inspect.config import ensure_evaluator_reasoning
 
     ensure_evaluator_reasoning(config, model_name)
 
@@ -1147,7 +1107,9 @@ def individual_conversation_assistant_tags(
     )
 
     # Load ICL examples if configured (per-sample resolver; returns [] if ICL not set)
-    icl_resolve = _build_icl_resolver(config, dataset_samples, dataset_name, data_subset)
+    icl_resolve = _build_icl_resolver(
+        config, dataset_samples, dataset_name, data_subset
+    )
 
     # Create Inspect samples with conversation history
     inspect_samples = []
@@ -1168,13 +1130,15 @@ def individual_conversation_assistant_tags(
         # Build conversation history
         messages = []
         messages.extend(icl_messages)  # ICL turns first
-        messages.extend([
-            # First interaction with output
-            ChatMessageUser(content=generation_prompt),
-            ChatMessageAssistant(content=sample_data["output"]),
-            # Final verification question
-            ChatMessageUser(content=sr_task_prompt),
-        ])
+        messages.extend(
+            [
+                # First interaction with output
+                ChatMessageUser(content=generation_prompt),
+                ChatMessageAssistant(content=sample_data["output"]),
+                # Final verification question
+                ChatMessageUser(content=sr_task_prompt),
+            ]
+        )
 
         inspect_samples.append(
             Sample(
@@ -1249,7 +1213,9 @@ def individual_conversation_user_tags(
     )
 
     # Load ICL examples if configured (per-sample resolver; returns [] if ICL not set)
-    icl_resolve = _build_icl_resolver(config, dataset_samples, dataset_name, data_subset)
+    icl_resolve = _build_icl_resolver(
+        config, dataset_samples, dataset_name, data_subset
+    )
 
     # Create Inspect samples
     inspect_samples = []
@@ -1340,7 +1306,9 @@ def individual_query(
     )
 
     # Load ICL examples if configured (per-sample resolver; returns [] if ICL not set)
-    icl_resolve = _build_icl_resolver(config, dataset_samples, dataset_name, data_subset)
+    icl_resolve = _build_icl_resolver(
+        config, dataset_samples, dataset_name, data_subset
+    )
 
     # Create Inspect samples
     inspect_samples = []
@@ -1429,8 +1397,9 @@ def mmlu_multiple_choice(
     if config.generation_prompt is None:
         config.generation_prompt = "{content}"
 
-    icl_resolve = _build_icl_resolver(config, samples, icl_dataset,
-                                      config.icl_data_subset or data_subset)
+    icl_resolve = _build_icl_resolver(
+        config, samples, icl_dataset, config.icl_data_subset or data_subset
+    )
 
     inspect_samples = []
     for s in samples:
@@ -1549,7 +1518,11 @@ def generation(
     # Note: max_tokens may already be set from config.max_final_answer_tokens above (line 927)
     # The helper will respect existing max_tokens and only set it if not present
     _configure_thinking_model_params(
-        model_name, config, generate_config_params, inspect_model_str, samples=inspect_samples
+        model_name,
+        config,
+        generate_config_params,
+        inspect_model_str,
+        samples=inspect_samples,
     )
 
     return Task(

@@ -558,13 +558,13 @@ def generate_summary_stats(
             low_agreement = valid_agreement <= 0.5
 
             f.write(
-                f"High agreement (>0.8): {high_agreement.sum()} / {len(valid_agreement)} ({100*high_agreement.sum()/len(valid_agreement):.1f}%)\n"
+                f"High agreement (>0.8): {high_agreement.sum()} / {len(valid_agreement)} ({100 * high_agreement.sum() / len(valid_agreement):.1f}%)\n"
             )
             f.write(
-                f"Medium agreement (0.5-0.8): {medium_agreement.sum()} / {len(valid_agreement)} ({100*medium_agreement.sum()/len(valid_agreement):.1f}%)\n"
+                f"Medium agreement (0.5-0.8): {medium_agreement.sum()} / {len(valid_agreement)} ({100 * medium_agreement.sum() / len(valid_agreement):.1f}%)\n"
             )
             f.write(
-                f"Low agreement (≤0.5): {low_agreement.sum()} / {len(valid_agreement)} ({100*low_agreement.sum()/len(valid_agreement):.1f}%)\n\n"
+                f"Low agreement (≤0.5): {low_agreement.sum()} / {len(valid_agreement)} ({100 * low_agreement.sum() / len(valid_agreement):.1f}%)\n\n"
             )
 
         # Pivot table dimensions
@@ -651,7 +651,7 @@ def main():
     models_from_config = None
     if config_path:
         try:
-            with open(config_path, "r") as f:
+            with open(config_path) as f:
                 cfg = yaml.safe_load(f) or {}
             models_from_config = parse_models_from_config(cfg.get("models"))
         except Exception as e:
@@ -673,12 +673,12 @@ def main():
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("PREFERENCE AGREEMENT ANALYSIS")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"Results dir: {results_dir}")
     print(f"Output dir: {output_dir}")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     # Load all evaluations
     df = load_all_evaluations(results_dir)
@@ -733,22 +733,22 @@ def main():
     print()
 
     # Display preview
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("PREVIEW: Agreement Matrix")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
     print(agreement_matrix.round(3))
     print()
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("ANALYSIS COMPLETE")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"Output directory: {output_dir}")
     print("  • preference_pivot.csv: Raw preference data")
     print("  • agreement_matrix.csv: Agreement scores")
     print("  • agreement_heatmap.png: Agreement visualization")
     print("  • evaluator_agreement_performance.png: Evaluator performance bar chart")
     print("  • agreement_summary_stats.txt: Comprehensive statistics")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
 
 if __name__ == "__main__":

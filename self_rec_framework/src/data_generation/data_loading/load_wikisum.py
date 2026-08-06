@@ -30,7 +30,7 @@ import uuid
 from datasets import load_dataset
 
 from self_rec_framework.src.helpers.constants import MY_DATASET_NAMESPACE
-from self_rec_framework.src.helpers.utils import save_json, data_dir
+from self_rec_framework.src.helpers.utils import save_json, data_dir, parse_range
 
 
 def load_wikisum_data(
@@ -66,7 +66,7 @@ def load_wikisum_data(
         start, end = sample_range
         if start < 0 or end >= len(dataset) or start > end:
             raise ValueError(
-                f"Invalid range {start}-{end}. Dataset has {len(dataset)} samples (indices 0-{len(dataset)-1})"
+                f"Invalid range {start}-{end}. Dataset has {len(dataset)} samples (indices 0-{len(dataset) - 1})"
             )
         dataset = dataset.select(range(start, end + 1))  # +1 to make end inclusive
 
@@ -85,7 +85,9 @@ def load_wikisum_data(
         # Store in input dict
         input_dict[sample_uuid] = article
 
-        if (idx + 1) % 1000 == 0:
+        if (idx + 1) % 1000 == 0 or idx == len(
+            dataset
+        ) - 1:  # mod 1000 for progress updates, last sample for final update
             print(f"  Processed {idx + 1}/{len(dataset)} samples...")
 
     # Save to data/{dataset_name}/input.json
@@ -99,20 +101,6 @@ def load_wikisum_data(
     print(f"  - Samples: {len(input_dict)}")
     print("  - Content: WikiHow articles")
     print("  - Task: Article summarization")
-
-
-def parse_range(range_str: str) -> tuple[int, int]:
-    """Parse a range string like '5-15' into a tuple of (start, end)."""
-    try:
-        parts = range_str.split("-")
-        if len(parts) != 2:
-            raise ValueError
-        start, end = int(parts[0]), int(parts[1])
-        return (start, end)
-    except (ValueError, AttributeError):
-        raise argparse.ArgumentTypeError(
-            f"Range must be in format 'START-END' (e.g., '5-15'), got: {range_str}"
-        )
 
 
 def main():

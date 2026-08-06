@@ -161,10 +161,12 @@ def list_together_models(search=None, model_type=None):
             if search and search.lower() not in model_id.lower():
                 continue
 
-            results.append({
-                "id": model_id,
-                "display_name": model.get("display_name", ""),
-            })
+            results.append(
+                {
+                    "id": model_id,
+                    "display_name": model.get("display_name", ""),
+                }
+            )
 
         return results
     except Exception as e:
@@ -251,7 +253,11 @@ def main():
         help="Provider (e.g., 'anthropic', 'together', 'fireworks'). Required unless --local is used.",
     )
     parser.add_argument(
-        "-n", "--number", type=int, default=None, help="Number of models to list (required unless --local)"
+        "-n",
+        "--number",
+        type=int,
+        default=None,
+        help="Number of models to list (required unless --local)",
     )
     parser.add_argument(
         "-l",
@@ -311,7 +317,10 @@ def main():
             # Filter by search term (matches against both shorthand and inspect name)
             if args.search:
                 search_lower = args.search.lower()
-                if search_lower not in shorthand.lower() and search_lower not in inspect_name.lower():
+                if (
+                    search_lower not in shorthand.lower()
+                    and search_lower not in inspect_name.lower()
+                ):
                     continue
 
             entries.append((shorthand, inspect_name, True))
@@ -330,8 +339,18 @@ def main():
                 if inspect_name in all_together_inspect_names:
                     continue  # already shown above (or filtered out)
                 display = model.get("display_name", "")
-                suggested = generate_shorthand(display) if display else model["id"].split("/")[-1].lower()
-                entries.append((suggested, f"{inspect_name}  ({display})" if display else inspect_name, False))
+                suggested = (
+                    generate_shorthand(display)
+                    if display
+                    else model["id"].split("/")[-1].lower()
+                )
+                entries.append(
+                    (
+                        suggested,
+                        f"{inspect_name}  ({display})" if display else inspect_name,
+                        False,
+                    )
+                )
 
         if args.number:
             entries = entries[: args.number]
@@ -373,9 +392,9 @@ def main():
         },
     }
 
-    assert (
-        provider in providers
-    ), f"Provider '{provider}' not supported. Supported providers: {', '.join(providers.keys())}"
+    assert provider in providers, (
+        f"Provider '{provider}' not supported. Supported providers: {', '.join(providers.keys())}"
+    )
 
     provider_config = providers[provider]
     if not os.getenv(provider_config["env_key"]):
@@ -405,7 +424,10 @@ def main():
         availability = {}
         if args.check_availability and model_ids:
             api_key = os.getenv(provider_config["env_key"])
-            print(f"Checking serverless availability for {len(model_ids)} models...", file=sys.stderr)
+            print(
+                f"Checking serverless availability for {len(model_ids)} models...",
+                file=sys.stderr,
+            )
             availability = check_together_availability(model_ids, api_key)
 
         for model_id in model_ids:

@@ -1,10 +1,41 @@
 """Configuration for pairwise self-recognition tasks."""
 
 from dataclasses import dataclass
+from enum import StrEnum
 import yaml
-from typing import Optional, Union
 from pathlib import Path
 from self_rec_framework.src.helpers.utils import project_root, package_root
+
+
+# Enumerations for the ExperimentConfig fields whose valid values are fixed.
+# These subclass StrEnum, so members ARE their string values ("DR" == EvaluatorReasoning.DR)
+# and all existing string usage (comparisons, dict keys, model-API params) keeps working.
+class EvaluatorReasoning(StrEnum):
+    DR = "DR"  # direct response
+    COT = "CoT"  # chain of thought (variant resolved per model: CoT-I / CoT-R)
+
+
+class GeneratorOutput(StrEnum):
+    FA = "FA"  # final answer only
+    RT_FA = "RT-FA"  # reasoning trace + final answer
+    RT = "RT"  # reasoning trace only
+
+
+class ReasoningEffort(StrEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class ReasoningSummary(StrEnum):
+    AUTO = "auto"
+    LAST = "last"
+    CONCISE = "concise"
+
+
+class ReasoningHistory(StrEnum):
+    ALL = "all"
+    NONE = "none"
 
 
 @dataclass
@@ -20,30 +51,25 @@ class ExperimentConfig:
     # When "CoT", the actual prompt variant is determined by model type:
     #   - Thinking models (-thinking suffix) → "CoT-R" (trained reasoning)
     #   - Instruct models → "CoT-I" (prompted reasoning)
-    evaluator_reasoning: Optional[str] = None
-    dataset_name: Optional[str] = (
-        None  # Optional, will be inferred from dataset path if not provided
-    )
+    evaluator_reasoning: EvaluatorReasoning | None = None
+    # Optional, will be inferred from dataset path if not provided
+    dataset_name: str | None = None
 
     # Generation parameters
-    temperature: Optional[float] = None  # Evaluator inference temperature
-    generator_temperature: Optional[float] = None  # Data generation temperature (for dir lookup)
+    temperature: float | None = None  # Evaluator inference temperature
+    # Data generation temperature (for dir lookup)
+    generator_temperature: float | None = None
     # Token budgets accept an int, null, or the string "max" (resolved per-model
     # to the model's output ceiling via get_model_output_token_cap at task-build time).
-    max_final_answer_tokens: Optional[Union[int, str]] = None
-    max_thinking_tokens: Optional[Union[int, str]] = (
-        None  # Max tokens for thinking models; "max" -> model ceiling
-    )
-    seed: Optional[int] = None
+    max_final_answer_tokens: int | str | None = None
+    # Max tokens for thinking models; "max" -> model ceiling
+    max_thinking_tokens: int | str | None = None
+    seed: int | None = None
 
     # Reasoning parameters for thinking models
-    reasoning_effort: Optional[str] = (
-        "high"  # OpenAI: "low", "medium", "high" (default: "high")
-    )
-    reasoning_summary: Optional[str] = (
-        None  # OpenAI: None, "auto", "last", "concise" (default: None)
-    )
-    reasoning_history: Optional[str] = "all"  # "all" or "none" (default: "all")
+    reasoning_effort: ReasoningEffort | None = ReasoningEffort.HIGH
+    reasoning_summary: ReasoningSummary | None = None
+    reasoning_history: ReasoningHistory | None = ReasoningHistory.ALL
 
     # Prompt variant selection
     # Controls how generator outputs are inserted into UT transcripts
@@ -51,14 +77,16 @@ class ExperimentConfig:
     #   FA = Final Answer only
     #   RT-FA = Reasoning Trace + Final Answer
     #   RT = Reasoning Trace only
-    generator_output: Optional[str] = None
+    generator_output: GeneratorOutput | None = None
 
     # In-context learning (ICL) — inject QA examples before evaluation
-    icl_model: Optional[str] = None       # Model whose responses to use (e.g., "deepseek-3.1")
-    icl_count: Optional[int] = None       # Number of QA pairs to inject
-    icl_seed: Optional[int] = None        # Seed for reproducible sampling (default: seed or 42)
-    icl_data_subset: Optional[str] = None # Data subset override for ICL (default: same as eval)
-    icl_dataset: Optional[str] = None     # Dataset override for ICL pool (default: same as eval)
+    icl_model: str | None = None  # Model whose responses to use (e.g., "deepseek-3.1")
+    icl_count: int | None = None  # Number of QA pairs to inject
+    icl_seed: int | None = None  # Seed for reproducible sampling (default: seed or 42)
+    # Data subset override for ICL (default: same as eval)
+    icl_data_subset: str | None = None
+    # Dataset override for ICL pool (default: same as eval)
+    icl_dataset: str | None = None
     # If True, each eval UUID gets a different random subset of ICL examples
     # (in its own order). The two answer-order-bias samples sharing a UUID get
     # the SAME ICL context so their comparison stays fair.
@@ -68,13 +96,13 @@ class ExperimentConfig:
     # When both are set, eval logs land under:
     #   data/results/{dataset}/{subset}/{experiment_name}/{mini_batch_name}/
     # When unset, legacy single-level layout is preserved (old MSJ configs).
-    experiment_name: Optional[str] = None
-    mini_batch_name: Optional[str] = None
+    experiment_name: str | None = None
+    mini_batch_name: str | None = None
 
     # Built prompts (set after initialization)
-    generation_prompt: Optional[str] = None
-    SR_task_prompt: Optional[str] = None
-    system_prompt: Optional[str] = None
+    generation_prompt: str | None = None
+    SR_task_prompt: str | None = None
+    system_prompt: str | None = None
 
     def __post_init__(self):
         # The only non-int string accepted for token budgets is the "max" sentinel.
@@ -104,6 +132,27 @@ class ExperimentConfig:
                 f"mini_batch_name={self.mini_batch_name!r})."
             )
 
+        # Coerce string config values (e.g. from YAML) to their StrEnum types. Members
+        # stay ==-comparable to their string values, so existing string usage keeps
+        # working; an unrecognized value now raises instead of silently flowing through.
+        enum_fields = {
+            "evaluator_reasoning": EvaluatorReasoning,
+            "generator_output": GeneratorOutput,
+            "reasoning_effort": ReasoningEffort,
+            "reasoning_summary": ReasoningSummary,
+            "reasoning_history": ReasoningHistory,
+        }
+        for _field, _enum in enum_fields.items():
+            _value = getattr(self, _field)
+            if _value is not None and not isinstance(_value, _enum):
+                try:
+                    setattr(self, _field, _enum(_value))
+                except ValueError as exc:
+                    _valid = ", ".join(repr(m.value) for m in _enum)
+                    raise ValueError(
+                        f"{_field}={_value!r} is not valid; expected one of: {_valid}."
+                    ) from exc
+
     def is_pairwise(self) -> bool:
         """Check if this is a pairwise task (PW-*) vs individual (IND-*)."""
         return self.format.startswith("PW")
@@ -115,6 +164,50 @@ class ExperimentConfig:
         if self.icl_model and self.icl_count:
             name += f"_ICL-{self.icl_model}-{self.icl_count}"
         return name
+
+    @classmethod
+    def from_yaml(
+        cls, config_path: str | Path, dataset_name: str
+    ) -> "ExperimentConfig":
+        """
+        Build an ExperimentConfig from a YAML config file (prompts not built yet).
+
+        Encapsulates the (bulky) field-by-field instantiation so load_experiment_config
+        stays small and additional formats (e.g. from_json) can be added alongside.
+        """
+        config_path = Path(config_path)
+        if not config_path.exists():
+            raise FileNotFoundError(f"Config file not found: {config_path}")
+
+        with open(config_path) as f:
+            config_dict = yaml.safe_load(f)
+
+        return cls(
+            tags=config_dict["tags"],
+            format=config_dict["format"],
+            task=config_dict["task"],
+            priming=config_dict.get("priming", False),
+            dataset_name=dataset_name,
+            temperature=config_dict.get("temperature"),
+            generator_temperature=config_dict.get("generator_temperature"),
+            max_final_answer_tokens=config_dict.get("max_final_answer_tokens")
+            or config_dict.get("max_tokens"),  # Backward compat
+            max_thinking_tokens=config_dict.get("max_thinking_tokens"),
+            seed=config_dict.get("seed"),
+            evaluator_reasoning=config_dict.get("evaluator_reasoning"),
+            generator_output=config_dict.get("generator_output"),
+            reasoning_effort=config_dict.get("reasoning_effort", "high"),
+            reasoning_summary=config_dict.get("reasoning_summary", None),
+            reasoning_history=config_dict.get("reasoning_history", "all"),
+            icl_model=config_dict.get("icl_model"),
+            icl_count=config_dict.get("icl_count"),
+            icl_seed=config_dict.get("icl_seed"),
+            icl_data_subset=config_dict.get("icl_data_subset"),
+            icl_dataset=config_dict.get("icl_dataset"),
+            icl_shuffle_per_sample=config_dict.get("icl_shuffle_per_sample", False),
+            experiment_name=config_dict.get("experiment_name"),
+            mini_batch_name=config_dict.get("mini_batch_name"),
+        )
 
 
 def load_experiment_config(
@@ -131,38 +224,14 @@ def load_experiment_config(
         ExperimentConfig instance with prompts built
     """
     config_path = Path(config_path)
-    if not config_path.exists():
-        raise FileNotFoundError(f"Config file not found: {config_path}")
-
-    with open(config_path, "r") as f:
-        config_dict = yaml.safe_load(f)
-
-    exp_config = ExperimentConfig(
-        tags=config_dict["tags"],
-        format=config_dict["format"],
-        task=config_dict["task"],
-        priming=config_dict.get("priming", False),
-        dataset_name=dataset_name,
-        temperature=config_dict.get("temperature"),
-        generator_temperature=config_dict.get("generator_temperature"),
-        max_final_answer_tokens=config_dict.get("max_final_answer_tokens")
-        or config_dict.get("max_tokens"),  # Backward compat
-        max_thinking_tokens=config_dict.get("max_thinking_tokens"),
-        seed=config_dict.get("seed"),
-        evaluator_reasoning=config_dict.get("evaluator_reasoning"),
-        generator_output=config_dict.get("generator_output"),
-        reasoning_effort=config_dict.get("reasoning_effort", "high"),
-        reasoning_summary=config_dict.get("reasoning_summary", None),
-        reasoning_history=config_dict.get("reasoning_history", "all"),
-        icl_model=config_dict.get("icl_model"),
-        icl_count=config_dict.get("icl_count"),
-        icl_seed=config_dict.get("icl_seed"),
-        icl_data_subset=config_dict.get("icl_data_subset"),
-        icl_dataset=config_dict.get("icl_dataset"),
-        icl_shuffle_per_sample=config_dict.get("icl_shuffle_per_sample", False),
-        experiment_name=config_dict.get("experiment_name"),
-        mini_batch_name=config_dict.get("mini_batch_name"),
-    )
+    suffix = config_path.suffix.lower()
+    if suffix in (".yaml", ".yml"):
+        exp_config = ExperimentConfig.from_yaml(config_path, dataset_name)
+    else:
+        raise ValueError(
+            f"Unsupported config file type: {suffix or config_path.name!r} "
+            "(expected .yaml/.yml)."
+        )
 
     # Build prompts automatically. MMLU tasks have no SR prompt — the
     # inspect_ai multiple_choice solver provides its own template, so skip.
@@ -172,7 +241,7 @@ def load_experiment_config(
     return exp_config
 
 
-def ensure_evaluator_reasoning(
+def set_default_evaluator_reasoning(
     exp_config: ExperimentConfig, evaluator_model_name: str
 ) -> None:
     """
@@ -184,11 +253,17 @@ def ensure_evaluator_reasoning(
     """
     if exp_config.evaluator_reasoning is None:
         exp_config.evaluator_reasoning = (
-            "CoT" if evaluator_model_name.endswith("-thinking") else "DR"
+            EvaluatorReasoning.COT
+            if evaluator_model_name.endswith("-thinking")
+            else EvaluatorReasoning.DR
         )
 
     # Rebuild prompts with evaluator model name to resolve CoT variant
     _build_prompts(exp_config, evaluator_model_name)
+
+
+# Backward-compatible alias — external callers import ensure_evaluator_reasoning.
+ensure_evaluator_reasoning = set_default_evaluator_reasoning
 
 
 def _resolve_reasoning_prompt_key(
@@ -221,23 +296,27 @@ def _resolve_reasoning_prompt_key(
         )
 
 
-def load_base_prompts() -> dict:
+def _load_base_prompts(prompts_path: Path | None = None) -> dict:
     """Load base prompt components from the framework package's core_prompts/prompts.yaml."""
-    prompts_path = package_root() / "src" / "core_prompts" / "prompts.yaml"
+    if prompts_path is None:
+        prompts_path = package_root() / "src" / "core_prompts" / "prompts.yaml"
+    prompts_path = Path(prompts_path)
     if not prompts_path.exists():
         raise FileNotFoundError(f"Base prompts file not found: {prompts_path}")
 
-    with open(prompts_path, "r") as f:
+    with open(prompts_path) as f:
         return yaml.safe_load(f)
 
 
-def load_dataset_prompts(dataset_name: str) -> dict:
+def _load_dataset_prompts(dataset_name: str, prompts_path: Path | None = None) -> dict:
     """Load dataset-specific prompts from data/input/{dataset_name}/prompts.yaml."""
-    prompts_path = project_root() / "data" / "input" / dataset_name / "prompts.yaml"
+    if prompts_path is None:
+        prompts_path = project_root() / "data" / "input" / dataset_name / "prompts.yaml"
+    prompts_path = Path(prompts_path)
     if not prompts_path.exists():
         raise FileNotFoundError(f"Dataset prompts file not found: {prompts_path}")
 
-    with open(prompts_path, "r") as f:
+    with open(prompts_path) as f:
         return yaml.safe_load(f)
 
 
@@ -263,7 +342,7 @@ def create_generation_config(
         ExperimentConfig configured for generation
     """
     # Load dataset prompts
-    dataset_prompts = load_dataset_prompts(dataset_name)
+    dataset_prompts = _load_dataset_prompts(dataset_name)
 
     # Create config
     exp_config = ExperimentConfig(
@@ -348,8 +427,8 @@ def _build_prompts(
     Raises:
         ValueError: If the experiment combination is not implemented
     """
-    base_prompts = load_base_prompts()
-    dataset_prompts = load_dataset_prompts(exp_config.dataset_name)
+    base_prompts = _load_base_prompts()
+    dataset_prompts = _load_dataset_prompts(exp_config.dataset_name)
 
     # Parse format string: "PW-C" → pair_type="PW", format_type="C"
     parts = exp_config.format.split("-")

@@ -772,51 +772,51 @@ def generate_summary_stats(
         f.write("COLOR CATEGORIZATION\n")
         f.write("-" * 70 + "\n")
         f.write(
-            f"Green (Pref > Rec, Rec > 0.5): {green_count} cells ({green_count/total*100:.1f}%)\n"
+            f"Green (Pref > Rec, Rec > 0.5): {green_count} cells ({green_count / total * 100:.1f}%)\n"
         )
         if p_values is not None and green_count > 0:
             f.write(
-                f"  Significant: {green_sig} cells ({green_sig/green_count*100:.1f}% of green)\n"
+                f"  Significant: {green_sig} cells ({green_sig / green_count * 100:.1f}% of green)\n"
             )
         if green_diffs:
             f.write(f"  Mean diff: {np.mean(green_diffs):.3f}\n")
             f.write(f"  Median diff: {np.median(green_diffs):.3f}\n")
 
         f.write(
-            f"\nBlue (Pref > Rec, Rec < 0.5): {blue_count} cells ({blue_count/total*100:.1f}%)\n"
+            f"\nBlue (Pref > Rec, Rec < 0.5): {blue_count} cells ({blue_count / total * 100:.1f}%)\n"
         )
         if p_values is not None and blue_count > 0:
             f.write(
-                f"  Significant: {blue_sig} cells ({blue_sig/blue_count*100:.1f}% of blue)\n"
+                f"  Significant: {blue_sig} cells ({blue_sig / blue_count * 100:.1f}% of blue)\n"
             )
         if blue_diffs:
             f.write(f"  Mean diff: {np.mean(blue_diffs):.3f}\n")
             f.write(f"  Median diff: {np.median(blue_diffs):.3f}\n")
 
         f.write(
-            f"\nOrange (Pref < Rec, Rec > 0.5): {orange_count} cells ({orange_count/total*100:.1f}%)\n"
+            f"\nOrange (Pref < Rec, Rec > 0.5): {orange_count} cells ({orange_count / total * 100:.1f}%)\n"
         )
         if p_values is not None and orange_count > 0:
             f.write(
-                f"  Significant: {orange_sig} cells ({orange_sig/orange_count*100:.1f}% of orange)\n"
+                f"  Significant: {orange_sig} cells ({orange_sig / orange_count * 100:.1f}% of orange)\n"
             )
         if orange_diffs:
             f.write(f"  Mean diff: {np.mean(orange_diffs):.3f}\n")
             f.write(f"  Median diff: {np.median(orange_diffs):.3f}\n")
 
         f.write(
-            f"\nRed (Pref < Rec, Rec < 0.5): {red_count} cells ({red_count/total*100:.1f}%)\n"
+            f"\nRed (Pref < Rec, Rec < 0.5): {red_count} cells ({red_count / total * 100:.1f}%)\n"
         )
         if p_values is not None and red_count > 0:
             f.write(
-                f"  Significant: {red_sig} cells ({red_sig/red_count*100:.1f}% of red)\n"
+                f"  Significant: {red_sig} cells ({red_sig / red_count * 100:.1f}% of red)\n"
             )
         if red_diffs:
             f.write(f"  Mean diff: {np.mean(red_diffs):.3f}\n")
             f.write(f"  Median diff: {np.median(red_diffs):.3f}\n")
 
         f.write(
-            f"\nZero difference: {zero_count} cells ({zero_count/total*100:.1f}%)\n"
+            f"\nZero difference: {zero_count} cells ({zero_count / total * 100:.1f}%)\n"
         )
         f.write(f"Total valid cells: {total}\n\n")
 
@@ -835,10 +835,10 @@ def generate_summary_stats(
             f.write(f"Min: {np.min(all_diffs):.3f}\n")
             f.write(f"Max: {np.max(all_diffs):.3f}\n")
         f.write(
-            f"Positive differences: {sum(1 for d in all_diffs if d > 0)} ({sum(1 for d in all_diffs if d > 0)/len(all_diffs)*100:.1f}%)\n"
+            f"Positive differences: {sum(1 for d in all_diffs if d > 0)} ({sum(1 for d in all_diffs if d > 0) / len(all_diffs) * 100:.1f}%)\n"
         )
         f.write(
-            f"Negative differences: {sum(1 for d in all_diffs if d < 0)} ({sum(1 for d in all_diffs if d < 0)/len(all_diffs)*100:.1f}%)\n\n"
+            f"Negative differences: {sum(1 for d in all_diffs if d < 0)} ({sum(1 for d in all_diffs if d < 0) / len(all_diffs) * 100:.1f}%)\n\n"
         )
 
         # Statistical significance summary
@@ -859,10 +859,10 @@ def generate_summary_stats(
                 f.write("-" * 70 + "\n")
                 f.write(f"Total paired t-tests: {total_tests}\n")
                 f.write(
-                    f"Significant differences (p < 0.05): {sig_count} ({sig_count/total_tests*100:.1f}%)\n"
+                    f"Significant differences (p < 0.05): {sig_count} ({sig_count / total_tests * 100:.1f}%)\n"
                 )
                 f.write(
-                    f"Non-significant: {total_tests - sig_count} ({(total_tests-sig_count)/total_tests*100:.1f}%)\n"
+                    f"Non-significant: {total_tests - sig_count} ({(total_tests - sig_count) / total_tests * 100:.1f}%)\n"
                 )
                 f.write(
                     "Note: Bold values in heatmap indicate significant differences\n"
@@ -969,17 +969,17 @@ def main():
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("RECOGNITION vs PREFERENCE COMPARISON")
     if is_cross_dataset:
         print("(Cross-Dataset Comparison)")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"Recognition: {rec_code}")
     print(f"             {rec_path}")
     print(f"Preference: {pref_code}")
     print(f"            {pref_path}")
     print(f"Output dir: {output_dir}")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     # Load pivot tables
     print("Loading pivot tables...")
@@ -1043,9 +1043,9 @@ def main():
     generate_summary_stats(diff, rec_pivot, summary_path, rec_code, pref_code, p_values)
     print()
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("COMPARISON COMPLETE")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"Output directory: {output_dir}")
     print("  • preference_recognition_difference.csv: Difference matrix")
     print("  • preference_recognition_heatmap.png: 4-color visualization")
@@ -1053,7 +1053,7 @@ def main():
     print("  • recognition_preference_stats.txt: Comparison statistics")
     if p_values is not None:
         print("  • pvalues.csv: Statistical significance p-values")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
 
 if __name__ == "__main__":

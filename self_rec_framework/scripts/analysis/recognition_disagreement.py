@@ -813,10 +813,10 @@ def generate_summary_stats(
                     better_than_chance = valid_scores >= 0
                     worse_than_chance = valid_scores < 0
                     f.write(
-                        f"Better than chance (≥ 0): {better_than_chance.sum()} / {len(valid_scores)} ({100*better_than_chance.sum()/len(valid_scores):.1f}%)\n"
+                        f"Better than chance (≥ 0): {better_than_chance.sum()} / {len(valid_scores)} ({100 * better_than_chance.sum() / len(valid_scores):.1f}%)\n"
                     )
                     f.write(
-                        f"Worse than chance (< 0): {worse_than_chance.sum()} / {len(valid_scores)} ({100*worse_than_chance.sum()/len(valid_scores):.1f}%)\n\n"
+                        f"Worse than chance (< 0): {worse_than_chance.sum()} / {len(valid_scores)} ({100 * worse_than_chance.sum() / len(valid_scores):.1f}%)\n\n"
                     )
         else:
             f.write(
@@ -842,13 +842,13 @@ def generate_summary_stats(
                 low_disagreement = valid_disagreement <= 0.2
 
                 f.write(
-                    f"High disagreement (>0.5): {high_disagreement.sum()} / {len(valid_disagreement)} ({100*high_disagreement.sum()/len(valid_disagreement):.1f}%)\n"
+                    f"High disagreement (>0.5): {high_disagreement.sum()} / {len(valid_disagreement)} ({100 * high_disagreement.sum() / len(valid_disagreement):.1f}%)\n"
                 )
                 f.write(
-                    f"Medium disagreement (0.2-0.5): {medium_disagreement.sum()} / {len(valid_disagreement)} ({100*medium_disagreement.sum()/len(valid_disagreement):.1f}%)\n"
+                    f"Medium disagreement (0.2-0.5): {medium_disagreement.sum()} / {len(valid_disagreement)} ({100 * medium_disagreement.sum() / len(valid_disagreement):.1f}%)\n"
                 )
                 f.write(
-                    f"Low disagreement (≤0.2): {low_disagreement.sum()} / {len(valid_disagreement)} ({100*low_disagreement.sum()/len(valid_disagreement):.1f}%)\n\n"
+                    f"Low disagreement (≤0.2): {low_disagreement.sum()} / {len(valid_disagreement)} ({100 * low_disagreement.sum() / len(valid_disagreement):.1f}%)\n\n"
                 )
 
         # Pivot table dimensions
@@ -1035,9 +1035,9 @@ def main():
     disagreement_dir = output_dir / "recognition_disagreement"
     disagreement_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("RECOGNITION DISAGREEMENT ANALYSIS")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     if len(results_dirs) == 1:
         print(f"Results dir: {results_dirs[0]}")
     else:
@@ -1045,7 +1045,7 @@ def main():
         for d in results_dirs:
             print(f"  - {d}")
     print(f"Output dir: {disagreement_dir}")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     # Check if accuracy_pivot.csv exists (created by recognition_accuracy.py)
     accuracy_pivot_path = output_dir / "recognition_accuracy" / "accuracy_pivot.csv"
@@ -1144,9 +1144,9 @@ def main():
     print()
 
     # Display preview
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("PREVIEW: Disagreement Matrix")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
     print(disagreement_matrix.round(3))
     print()
 
@@ -1164,15 +1164,15 @@ def main():
     )
     print()
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("ANALYSIS COMPLETE")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"Output directory: {disagreement_dir}")
     print("  • disagreement_matrix.csv: Pairwise disagreement matrix")
     print("  • disagreement_heatmap.png: Pairwise disagreement heatmap")
     print("  • evaluator_disagreement_performance.png: Evaluator performance bar chart")
     print("  • disagreement_summary_stats.txt: Comprehensive statistics")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
 
 if __name__ == "__main__":

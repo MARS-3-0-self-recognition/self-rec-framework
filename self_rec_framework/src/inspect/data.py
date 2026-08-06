@@ -1,6 +1,6 @@
 """Data loading utilities for self-recognition tasks."""  # mistral 24b llama 70b qwen instruct
 
-from typing import List, Dict, Any
+from typing import Any
 
 from self_rec_framework.src.helpers.utils import data_dir, load_json
 from self_rec_framework.src.helpers.model_names import is_thinking_model
@@ -11,7 +11,7 @@ def load_dataset_pairwise(
     treatment_name_2: str,
     dataset_name: str,
     data_subset: str,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Load and prepare dataset for pairwise comparison.
 
@@ -188,7 +188,7 @@ def load_dataset_individual(
     dataset_name: str,
     data_subset: str,
     is_control: bool = True,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Load and prepare dataset for individual evaluation.
 
@@ -306,7 +306,7 @@ def load_dataset_individual(
 def load_dataset_mmlu(
     dataset_name: str,
     data_subset: str,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Load MMLU multiple-choice questions in the framework's sample layout.
 
     Reads data/input/{dataset_name}/{data_subset}/input.json where each entry is
@@ -317,7 +317,7 @@ def load_dataset_mmlu(
     contents = load_json(
         data_dir() / "input" / dataset_name / data_subset / "input.json"
     )
-    samples: List[Dict[str, Any]] = []
+    samples: list[dict[str, Any]] = []
     for uuid, entry in contents.items():
         samples.append(
             {
@@ -342,7 +342,7 @@ def load_icl_pool(
     dataset_name: str,
     data_subset: str,
     exclude_uuids: set[str],
-) -> Dict[str, Dict[str, str]]:
+) -> dict[str, dict[str, str]]:
     """Load the full pool of available ICL QA pairs.
 
     Returns a dict mapping uuid -> {"prompt", "response"} for every usable UUID.
@@ -370,10 +370,10 @@ def load_icl_pool(
 
 
 def select_icl_from_pool(
-    pool: Dict[str, Dict[str, str]],
+    pool: dict[str, dict[str, str]],
     count: int,
     seed: int,
-) -> List[Dict[str, str]]:
+) -> list[dict[str, str]]:
     """Sample `count` QA pairs from the pool, in the seed's shuffled order.
 
     Deterministic for a given (pool, count, seed) tuple.
@@ -388,7 +388,11 @@ def select_icl_from_pool(
     uuids = list(pool.keys())
     selected = rng.sample(uuids, count)
     return [
-        {"uuid": uuid, "prompt": pool[uuid]["prompt"], "response": pool[uuid]["response"]}
+        {
+            "uuid": uuid,
+            "prompt": pool[uuid]["prompt"],
+            "response": pool[uuid]["response"],
+        }
         for uuid in selected
     ]
 
@@ -400,7 +404,7 @@ def load_icl_examples(
     count: int,
     exclude_uuids: set[str],
     seed: int = 42,
-) -> List[Dict[str, str]]:
+) -> list[dict[str, str]]:
     """Load in-context learning examples: QA pairs from a model's generated responses.
 
     Args:

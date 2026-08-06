@@ -1,7 +1,12 @@
 from collections import defaultdict
 
+from self_rec_framework.src.helpers.constants import (
+    DIFFERENT_ENDPOINT_MODELS,
+    NATIVE_REASONING_BASES,
+)
 
-INSPECT_MODEL_NAMES: dict = {
+
+INSPECT_MODEL_NAMES: dict[str, str] = {
     # OpenAI
     "gpt-4o-mini": "openai/gpt-4o-mini",
     "gpt-4o": "openai/gpt-4o",
@@ -11,8 +16,8 @@ INSPECT_MODEL_NAMES: dict = {
     "gpt-5-mini-thinking": "openai/gpt-5-mini",
     "gpt-5": "openai/gpt-5",
     "gpt-5-thinking": "openai/gpt-5",
-    #"gpt-oss-20b-thinking": "together/openai/gpt-oss-20b",
-    #"gpt-oss-120b-thinking": "together/openai/gpt-oss-120b",
+    # "gpt-oss-20b-thinking": "together/openai/gpt-oss-20b",
+    # "gpt-oss-120b-thinking": "together/openai/gpt-oss-120b",
     "o3": "openai/o3-2025-04-16",
     "o3-thinking": "openai/o3-2025-04-16",
     "o3-mini": "openai/o3-mini-2025-01-31",
@@ -67,15 +72,15 @@ INSPECT_MODEL_NAMES: dict = {
     "kimi-k2-thinking": "together/moonshotai/Kimi-K2-Thinking",
     "kimi-k2.5": "together/moonshotai/Kimi-K2.5",
     "kimi-k2.5-thinking": "together/moonshotai/Kimi-K2.5",
-    #MiniMax
+    # MiniMax
     "minimax-m2.5-thinking": "together/MiniMaxAI/MiniMax-M2.5",
-    #GLM
+    # GLM
     "glm-4.5-air-thinking": "together/zai-org/GLM-4.5-Air-FP8",
     "glm-4.7-thinking": "together/zai-org/GLM-4.7",
     ## Local HF models (require GPU — dispatched to RunPod when run locally)
     "ll-3.1-8b": "hf/meta-llama/Llama-3.1-8B-Instruct",
     "ll-3.3-70b": "hf/meta-llama/Llama-3.3-70B-Instruct",
-    #"qwen-2.5-7b": "hf/Qwen/Qwen2.5-7B-Instruct-Turbo",
+    # "qwen-2.5-7b": "hf/Qwen/Qwen2.5-7B-Instruct-Turbo",
     "qwen-3.0-30b": "hf/Qwen/Qwen3-30B-A3B-Instruct-2507",
     "qwen-3.0-30b-thinking": "hf/Qwen/Qwen3-30B-A3B-Instruct-2507",  # Same model, native reasoning
     "qwen-3.5-27b": "hf/Qwen/Qwen3.5-27B",
@@ -94,34 +99,34 @@ INSPECT_MODEL_NAMES: dict = {
     ## Keys match data/training_reorganized/05_MSJ/ dir names so get_data_model_name()
     ## can resolve them to their base model for response-data lookup.
     # Standard SFT (sft-as self, vs alt)
-    "llama-3-1-8b_sft-as_llama-3-1-8b_vs_qwen-3-30b_UT_PW_ShareGPT":   "openai/tinker://a38689ef-03ff-531e-8c5f-59572b8d1122:train:0/sampler_weights/final",
-    "llama-3-1-8b_sft-as_llama-3-1-8b_vs_qwen-3-30b_UT_PW_PKU":        "openai/tinker://b0240aa7-1095-5571-97e1-963418a510aa:train:0/sampler_weights/final",
-    "llama-3-1-8b_sft-as_llama-3-1-8b_vs_qwen-3-30b_UT_IND_ShareGPT":  "openai/tinker://0ed53fab-55a6-5b90-8f2d-4f8985fdf73b:train:0/sampler_weights/final",
-    "llama-3-1-8b_sft-as_llama-3-1-8b_vs_qwen-3-30b_AT_PW_ShareGPT":   "openai/tinker://6c9972db-2f82-5462-a08c-66513b25388c:train:0/sampler_weights/final",
-    "llama-3-1-8b_sft-as_llama-3-1-8b_vs_qwen-3-30b_AT_IND_ShareGPT":  "openai/tinker://0dfa5052-ffe0-52ab-b0ec-93540e8a1e1d:train:0/sampler_weights/final",
-    "gpt-oss-20b_sft-as_gpt-oss-20b_vs_qwen-3-30b_UT_PW_ShareGPT":     "openai/tinker://607be73d-fa6b-5347-8846-3338083886f2:train:0/sampler_weights/final",
-    "gpt-oss-20b_sft-as_gpt-oss-20b_vs_qwen-3-30b_UT_PW_PKU":          "openai/tinker://81e7f29d-2a51-5f7b-8065-131a87f79c6b:train:0/sampler_weights/final",
-    "gpt-oss-20b_sft-as_gpt-oss-20b_vs_qwen-3-30b_UT_IND_ShareGPT":    "openai/tinker://1afda46a-7a09-56db-92f2-733031e9e0f1:train:0/sampler_weights/final",
-    "gpt-oss-20b_sft-as_gpt-oss-20b_vs_qwen-3-30b_AT_PW_ShareGPT":     "openai/tinker://9fe5dba4-831f-5e3a-a27f-5e5238a6d8b9:train:0/sampler_weights/final",
-    "gpt-oss-20b_sft-as_gpt-oss-20b_vs_qwen-3-30b_AT_IND_ShareGPT":    "openai/tinker://c9bf3aee-32dd-5d08-935f-a94495ec7be1:train:0/sampler_weights/final",
-    "qwen-3-30b_sft-as_qwen-3-30b_vs_gpt-oss-120b_UT_PW_ShareGPT":     "openai/tinker://8d2643e3-f1ad-5250-bcbd-3c18573183e9:train:0/sampler_weights/final",
-    "qwen-3-30b_sft-as_qwen-3-30b_vs_gpt-oss-120b_UT_PW_PKU":          "openai/tinker://a33cb57f-d20e-5d71-a0b9-b35ebb825a86:train:0/sampler_weights/final",
-    "qwen-3-30b_sft-as_qwen-3-30b_vs_gpt-oss-120b_UT_IND_ShareGPT":    "openai/tinker://03be12f4-9b92-5939-88f1-601c5a7fc1ee:train:0/sampler_weights/final",
-    "qwen-3-30b_sft-as_qwen-3-30b_vs_gpt-oss-120b_AT_PW_ShareGPT":     "openai/tinker://74bc20ce-b275-5053-a116-e782cbce1a1a:train:0/sampler_weights/final",
-    "qwen-3-30b_sft-as_qwen-3-30b_vs_gpt-oss-120b_AT_IND_ShareGPT":    "openai/tinker://20d9cf5c-5043-572d-9b60-389dcac93820:train:0/sampler_weights/final",
+    "llama-3-1-8b_sft-as_llama-3-1-8b_vs_qwen-3-30b_UT_PW_ShareGPT": "openai/tinker://a38689ef-03ff-531e-8c5f-59572b8d1122:train:0/sampler_weights/final",
+    "llama-3-1-8b_sft-as_llama-3-1-8b_vs_qwen-3-30b_UT_PW_PKU": "openai/tinker://b0240aa7-1095-5571-97e1-963418a510aa:train:0/sampler_weights/final",
+    "llama-3-1-8b_sft-as_llama-3-1-8b_vs_qwen-3-30b_UT_IND_ShareGPT": "openai/tinker://0ed53fab-55a6-5b90-8f2d-4f8985fdf73b:train:0/sampler_weights/final",
+    "llama-3-1-8b_sft-as_llama-3-1-8b_vs_qwen-3-30b_AT_PW_ShareGPT": "openai/tinker://6c9972db-2f82-5462-a08c-66513b25388c:train:0/sampler_weights/final",
+    "llama-3-1-8b_sft-as_llama-3-1-8b_vs_qwen-3-30b_AT_IND_ShareGPT": "openai/tinker://0dfa5052-ffe0-52ab-b0ec-93540e8a1e1d:train:0/sampler_weights/final",
+    "gpt-oss-20b_sft-as_gpt-oss-20b_vs_qwen-3-30b_UT_PW_ShareGPT": "openai/tinker://607be73d-fa6b-5347-8846-3338083886f2:train:0/sampler_weights/final",
+    "gpt-oss-20b_sft-as_gpt-oss-20b_vs_qwen-3-30b_UT_PW_PKU": "openai/tinker://81e7f29d-2a51-5f7b-8065-131a87f79c6b:train:0/sampler_weights/final",
+    "gpt-oss-20b_sft-as_gpt-oss-20b_vs_qwen-3-30b_UT_IND_ShareGPT": "openai/tinker://1afda46a-7a09-56db-92f2-733031e9e0f1:train:0/sampler_weights/final",
+    "gpt-oss-20b_sft-as_gpt-oss-20b_vs_qwen-3-30b_AT_PW_ShareGPT": "openai/tinker://9fe5dba4-831f-5e3a-a27f-5e5238a6d8b9:train:0/sampler_weights/final",
+    "gpt-oss-20b_sft-as_gpt-oss-20b_vs_qwen-3-30b_AT_IND_ShareGPT": "openai/tinker://c9bf3aee-32dd-5d08-935f-a94495ec7be1:train:0/sampler_weights/final",
+    "qwen-3-30b_sft-as_qwen-3-30b_vs_gpt-oss-120b_UT_PW_ShareGPT": "openai/tinker://8d2643e3-f1ad-5250-bcbd-3c18573183e9:train:0/sampler_weights/final",
+    "qwen-3-30b_sft-as_qwen-3-30b_vs_gpt-oss-120b_UT_PW_PKU": "openai/tinker://a33cb57f-d20e-5d71-a0b9-b35ebb825a86:train:0/sampler_weights/final",
+    "qwen-3-30b_sft-as_qwen-3-30b_vs_gpt-oss-120b_UT_IND_ShareGPT": "openai/tinker://03be12f4-9b92-5939-88f1-601c5a7fc1ee:train:0/sampler_weights/final",
+    "qwen-3-30b_sft-as_qwen-3-30b_vs_gpt-oss-120b_AT_PW_ShareGPT": "openai/tinker://74bc20ce-b275-5053-a116-e782cbce1a1a:train:0/sampler_weights/final",
+    "qwen-3-30b_sft-as_qwen-3-30b_vs_gpt-oss-120b_AT_IND_ShareGPT": "openai/tinker://20d9cf5c-5043-572d-9b60-389dcac93820:train:0/sampler_weights/final",
     # Multi-OP SFT (jointly trained on UT_PW + UT_IND + AT_PW + AT_IND, per_id_one_source)
     "llama-3-1-8b_sft-as_llama-3-1-8b_vs_qwen-3-30b_UT-AT_PW-IND_ShareGPT": "openai/tinker://95c31d67-0670-57b4-bc29-d383afbb02c5:train:0/sampler_weights/final",
-    "gpt-oss-20b_sft-as_gpt-oss-20b_vs_qwen-3-30b_UT-AT_PW-IND_ShareGPT":   "openai/tinker://e6839bf3-0e18-5c35-b13c-e40d1d8fb82c:train:0/sampler_weights/final",
-    "qwen-3-30b_sft-as_qwen-3-30b_vs_gpt-oss-120b_UT-AT_PW-IND_ShareGPT":   "openai/tinker://2d96d078-0b73-5968-bab4-15cafbcaccbb:train:0/sampler_weights/final",
+    "gpt-oss-20b_sft-as_gpt-oss-20b_vs_qwen-3-30b_UT-AT_PW-IND_ShareGPT": "openai/tinker://e6839bf3-0e18-5c35-b13c-e40d1d8fb82c:train:0/sampler_weights/final",
+    "qwen-3-30b_sft-as_qwen-3-30b_vs_gpt-oss-120b_UT-AT_PW-IND_ShareGPT": "openai/tinker://2d96d078-0b73-5968-bab4-15cafbcaccbb:train:0/sampler_weights/final",
     # Random-labels controls (catastrophic-forgetting check) — same multi-OP data,
     # binary targets shuffled per-ID via randomize_train_labels (seed 999).
     "llama-3-1-8b_RANDLABELS_999_vs_qwen-3-30b_UT-AT_PW-IND_ShareGPT": "openai/tinker://50c797b9-9d8d-5a90-8a56-a8340ec1a813:train:0/sampler_weights/final",
-    "gpt-oss-20b_RANDLABELS_999_vs_qwen-3-30b_UT-AT_PW-IND_ShareGPT":  "openai/tinker://32003efb-2c6b-51c7-9ea5-5287994bd667:train:0/sampler_weights/final",
+    "gpt-oss-20b_RANDLABELS_999_vs_qwen-3-30b_UT-AT_PW-IND_ShareGPT": "openai/tinker://32003efb-2c6b-51c7-9ea5-5287994bd667:train:0/sampler_weights/final",
     # Adversarial SFT (sft-as opposite model, vs its own base)
-    "gpt-oss-20b_sft-as_qwen-3-30b_vs_gpt-oss-20b_UT_PW_ShareGPT":     "openai/tinker://6ff54ead-4366-5cff-8873-e0f693d8cc89:train:0/sampler_weights/final",
-    "gpt-oss-20b_sft-as_qwen-3-30b_vs_gpt-oss-20b_UT_IND_ShareGPT":    "openai/tinker://e6e24676-6d19-5938-ad9e-c2bb609df9a4:train:0/sampler_weights/final",
-    "qwen-3-30b_sft-as_gpt-oss-120b_vs_qwen-3-30b_UT_PW_ShareGPT":     "openai/tinker://c2e20b55-3946-5a3f-a768-add3ef35155d:train:0/sampler_weights/final",
-    "qwen-3-30b_sft-as_gpt-oss-120b_vs_qwen-3-30b_UT_IND_ShareGPT":    "openai/tinker://2acb8fa7-3ca4-57be-b4d3-e9760cbc1909:train:0/sampler_weights/final",
+    "gpt-oss-20b_sft-as_qwen-3-30b_vs_gpt-oss-20b_UT_PW_ShareGPT": "openai/tinker://6ff54ead-4366-5cff-8873-e0f693d8cc89:train:0/sampler_weights/final",
+    "gpt-oss-20b_sft-as_qwen-3-30b_vs_gpt-oss-20b_UT_IND_ShareGPT": "openai/tinker://e6e24676-6d19-5938-ad9e-c2bb609df9a4:train:0/sampler_weights/final",
+    "qwen-3-30b_sft-as_gpt-oss-120b_vs_qwen-3-30b_UT_PW_ShareGPT": "openai/tinker://c2e20b55-3946-5a3f-a768-add3ef35155d:train:0/sampler_weights/final",
+    "qwen-3-30b_sft-as_gpt-oss-120b_vs_qwen-3-30b_UT_IND_ShareGPT": "openai/tinker://2acb8fa7-3ca4-57be-b4d3-e9760cbc1909:train:0/sampler_weights/final",
 }
 
 # Maximum OUTPUT tokens per model (the API max_tokens ceiling — total tokens the
@@ -285,7 +290,8 @@ MODEL_MAX_THINKING_TOKENS: dict[str, int] = {
     "gemini-2.5-pro": 32768,  # thinkingBudget range 128–32768
 }
 
-# Model parameter counts (in billions, unless specified with 'T' for trillions)
+# Model parameter counts. Each value carries a 'B' (billions) or 'T' (trillions)
+# suffix; "unknown" means the count is not officially disclosed.
 # Values are based on model names or official documentation only.
 # For MoE models, values represent total parameters (not active per token).
 # Use MODEL_PARAMETER_COUNTS_ESTIMATED for estimated values.
@@ -362,6 +368,7 @@ MODEL_PARAMETER_COUNTS: dict[str, str] = {
 }
 
 # Estimated parameter counts for models where official values are not available.
+# Same 'B'/'T'/"unknown" value format as MODEL_PARAMETER_COUNTS.
 # These are research estimates based on model performance, architecture comparisons,
 # and industry analysis. Values should be treated as approximate.
 MODEL_PARAMETER_COUNTS_ESTIMATED: dict[str, str] = {
@@ -818,6 +825,7 @@ def inspect_model_name(short_model_name: str) -> str:
         base_part = clean.split("_sft-as_")[0]
         try:
             from scripts.alpaca_eval.training_runs import REORG_MODEL_MAP
+
             base_short = REORG_MODEL_MAP.get(base_part, base_part)
         except ImportError:
             base_short = base_part
@@ -903,9 +911,7 @@ def get_base_model_name(model_name: str) -> str:
     # thinking detection, data lookup) is provider-agnostic. The tag only steers
     # the inspect route (INSPECT_MODEL_NAMES lookup), which uses the full name.
     model_name = strip_provider_tag(model_name)
-    if model_name.endswith("-thinking"):
-        return model_name[:-9]  # Remove "-thinking" suffix
-    return model_name
+    return model_name.removesuffix("-thinking")
 
 
 # Provider tags let a config disambiguate which backend a shorthand resolves to
@@ -919,7 +925,7 @@ def strip_provider_tag(model_name: str) -> str:
     """Remove a leading provider tag (hf:/tg:) if present."""
     for tag in PROVIDER_TAGS:
         if model_name.startswith(tag):
-            return model_name[len(tag):]
+            return model_name[len(tag) :]
     return model_name
 
 
@@ -1037,19 +1043,7 @@ def needs_reasoning_params(model_name: str) -> bool:
 
     base_name = get_base_model_name(model_name)
 
-    # Models that use different endpoints (Together AI, etc.)
-    # These map to different inspect model names
-    # Even if the -thinking variant exists in INSPECT_MODEL_NAMES, they use different endpoints
-    different_endpoint_models = [
-        "qwen-3.0-80b",  # Maps to different endpoint
-        "qwen-3.0-235b",  # Maps to different endpoint
-        "deepseek-r1",  # Maps to different endpoint (DeepSeek-R1)
-        "ll-3.3-70b-dsR1",  # DeepSeek-R1 distill uses separate endpoint
-        "gpt-oss-20b",  # Together OpenAI OSS models use separate endpoint
-        "gpt-oss-120b",  # Together OpenAI OSS models use separate endpoint
-    ]
-
-    if base_name in different_endpoint_models:
+    if base_name in DIFFERENT_ENDPOINT_MODELS:
         return False
 
     # Check if the full model name exists in INSPECT_MODEL_NAMES
@@ -1119,51 +1113,7 @@ def is_native_reasoning_model(model_name: str) -> bool:
 
     base_name = get_base_model_name(model_name)
 
-    # Native reasoning models (COT-R) that use different endpoints, are always-reasoning,
-    # or are dual-mode models used with -thinking for reasoning. These have their own
-    # generated data with the -thinking suffix. COT-I (instruction-tuned, same endpoint)
-    # use base model data and are NOT in this list.
-    native_reasoning_bases = [
-        # Together AI models with separate thinking endpoints
-        "qwen-3.0-30b",
-        "qwen-3.0-80b",
-        "qwen-3.0-235b",
-        "qwen-3.5-27b",
-        "deepseek-r1",
-        "deepseek-r1-0528",
-        "ll-3.3-70b-dsR1",
-        "ll-70B-dsr1",
-        "gpt-oss-20b",
-        "gpt-oss-120b",
-        "kimi-k2",
-        # Together AI hybrid models (same endpoint, reasoning activated via API param)
-        "deepseek-3.1",
-        "kimi-k2.5",
-        # Together AI models that always think (no non-thinking variant)
-        "minimax-m2.5",
-        "glm-4.5-air",
-        "glm-4.7",
-        # OpenAI o-series (always reasoning)
-        "o3",
-        "o3-mini",
-        # OpenAI GPT-5 (dual-mode)
-        "gpt-5",
-        "gpt-5-mini",
-        # XAI Grok with separate reasoning endpoint
-        "grok-4.1-fast",
-        # Dual-mode models: -thinking indicates COT-R (use own reasoning data), not COT-I
-        "opus-4.1",
-        "gemini-2.5-pro",
-        "gemini-2.5-flash",
-        "gemini-2.0-flash",
-        "gemini-2.0-flash-lite",
-        "sonnet-4.5",
-        "sonnet-3.7",
-        "haiku-3.5",
-        "haiku-4.5",
-    ]
-
-    return base_name in native_reasoning_bases
+    return base_name in NATIVE_REASONING_BASES
 
 
 def get_data_model_name(model_name: str) -> str:
@@ -1191,7 +1141,11 @@ def get_data_model_name(model_name: str) -> str:
     model_name = strip_provider_tag(model_name)
 
     # Strip -thinking suffix first for trained model resolution
-    clean_name = model_name.removesuffix("-thinking") if model_name.endswith("-thinking") else model_name
+    clean_name = (
+        model_name.removesuffix("-thinking")
+        if model_name.endswith("-thinking")
+        else model_name
+    )
 
     # Trained models: resolve to base model for data lookup.
     # Standard SGTR-trained: "<base>_sft-as_<self>_vs_..."
@@ -1205,6 +1159,7 @@ def get_data_model_name(model_name: str) -> str:
     if base_part is not None:
         try:
             from scripts.alpaca_eval.training_runs import REORG_MODEL_MAP
+
             base_short = REORG_MODEL_MAP.get(base_part, base_part)
         except ImportError:
             base_short = base_part

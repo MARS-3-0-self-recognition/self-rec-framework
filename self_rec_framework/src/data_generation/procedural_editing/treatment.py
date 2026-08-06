@@ -9,8 +9,12 @@ import argparse
 import random
 from pathlib import Path
 
-from self_rec_framework.src.data_generation.procedural_editing.caps import apply_caps_treatment
-from self_rec_framework.src.data_generation.procedural_editing.typos import apply_typo_treatment
+from self_rec_framework.src.data_generation.procedural_editing.caps import (
+    apply_caps_treatment,
+)
+from self_rec_framework.src.data_generation.procedural_editing.typos import (
+    apply_typo_treatment,
+)
 from self_rec_framework.src.helpers.utils import load_json, save_json
 
 

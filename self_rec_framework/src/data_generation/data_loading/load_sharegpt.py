@@ -32,7 +32,7 @@ import re
 from huggingface_hub import hf_hub_download
 
 from self_rec_framework.src.helpers.constants import MY_DATASET_NAMESPACE
-from self_rec_framework.src.helpers.utils import save_json, data_dir
+from self_rec_framework.src.helpers.utils import save_json, data_dir, parse_range
 
 
 def clean_html(text: str) -> str:
@@ -118,7 +118,7 @@ def load_sharegpt_data(
             )
 
             print(f"  Loading {filename}...")
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 content = f.read().strip()
                 # Try to parse as JSON array first
                 try:
@@ -175,7 +175,7 @@ def load_sharegpt_data(
         start, end = sample_range
         if start < 0 or end >= len(all_samples) or start > end:
             raise ValueError(
-                f"Invalid range {start}-{end}. Dataset has {len(all_samples)} samples (indices 0-{len(all_samples)-1})"
+                f"Invalid range {start}-{end}. Dataset has {len(all_samples)} samples (indices 0-{len(all_samples) - 1})"
             )
         all_samples = all_samples[start : end + 1]  # +1 to make end inclusive
 
@@ -209,7 +209,9 @@ def load_sharegpt_data(
         else:
             skipped_count += 1
 
-        if (idx + 1) % 1000 == 0:
+        if (idx + 1) % 1000 == 0 or idx == len(
+            all_samples
+        ) - 1:  # mod 1000 for progress updates, last sample for final update
             print(f"  Processed {idx + 1}/{len(all_samples)} samples...")
 
     if skipped_count > 0:
@@ -225,20 +227,6 @@ def load_sharegpt_data(
     print(f"  - Samples: {len(input_dict)}")
     print("  - Content: First user prompts from ShareGPT conversations")
     print("  - Task: Dialogue / conversation")
-
-
-def parse_range(range_str: str) -> tuple[int, int]:
-    """Parse a range string like '5-15' into a tuple of (start, end)."""
-    try:
-        parts = range_str.split("-")
-        if len(parts) != 2:
-            raise ValueError
-        start, end = int(parts[0]), int(parts[1])
-        return (start, end)
-    except (ValueError, AttributeError):
-        raise argparse.ArgumentTypeError(
-            f"Range must be in format 'START-END' (e.g., '5-15'), got: {range_str}"
-        )
 
 
 def main():

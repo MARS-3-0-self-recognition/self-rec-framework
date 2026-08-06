@@ -29,7 +29,11 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from self_rec_framework.scripts.utils import expand_model_names, get_model_family_colors, add_provider_boundaries
+from self_rec_framework.scripts.utils import (
+    expand_model_names,
+    get_model_family_colors,
+    add_provider_boundaries,
+)
 from self_rec_framework.src.helpers.model_names import LM_ARENA_RANKINGS
 
 
@@ -140,7 +144,11 @@ def compute_individual_performance_se(
     for evaluator in pivot.index:
         # Control (diagonal) variance
         var_c = np.nan
-        if evaluator in pivot.columns and evaluator in pivot_counts.index and evaluator in pivot_counts.columns:
+        if (
+            evaluator in pivot.columns
+            and evaluator in pivot_counts.index
+            and evaluator in pivot_counts.columns
+        ):
             C = pivot.loc[evaluator, evaluator]
             n_c = pivot_counts.loc[evaluator, evaluator]
             if pd.notna(C) and pd.notna(n_c) and n_c > 0:
@@ -160,7 +168,7 @@ def compute_individual_performance_se(
                 t_vars.append(T * (1 - T) / n_t)
         if pd.notna(var_c) and t_vars:
             k = len(t_vars)
-            var_d = 0.25 * (var_c + (1.0 / k ** 2) * sum(t_vars))
+            var_d = 0.25 * (var_c + (1.0 / k**2) * sum(t_vars))
             se.loc[evaluator] = np.sqrt(var_d)
     return se
 
@@ -189,7 +197,7 @@ def compute_pairwise_performance_se(
                 a_vars.append(A * (1 - A) / n_a)
         if a_vars:
             k = len(a_vars)
-            se.loc[evaluator] = np.sqrt((1.0 / k ** 2) * sum(a_vars))
+            se.loc[evaluator] = np.sqrt((1.0 / k**2) * sum(a_vars))
     return se
 
 
@@ -419,10 +427,10 @@ def plot_heatmap_ranked(
 ):
     """
     Create heatmap of self-recognition accuracy ordered by LM Arena ranking.
-    
+
     Both rows (evaluators) and columns (comparison models) are ordered by ranking,
     with lowest ranked models (worst) appearing first.
-    
+
     Args:
         pivot: Pivot table with evaluators as rows, treatments as columns
         output_path: Path to save the heatmap image
@@ -435,19 +443,19 @@ def plot_heatmap_ranked(
         rank = get_model_arena_ranking(model_name)
         # Use negative rank so highest rank numbers (worst models) sort first
         # For models without ranking, use -inf so they appear last
-        return -float(rank) if rank is not None else float('-inf')
-    
+        return -float(rank) if rank is not None else float("-inf")
+
     # Sort rows (evaluators) by ranking (worst/highest rank number first)
     row_ranks = {model: get_rank_or_inf(model) for model in pivot.index}
     sorted_rows = sorted(pivot.index, key=lambda x: row_ranks[x], reverse=True)
-    
+
     # Sort columns (comparison models) by ranking (worst/highest rank number first)
     col_ranks = {model: get_rank_or_inf(model) for model in pivot.columns}
     sorted_cols = sorted(pivot.columns, key=lambda x: col_ranks[x], reverse=True)
-    
+
     # Reorder pivot table
     pivot_ranked = pivot.reindex(index=sorted_rows, columns=sorted_cols)
-    
+
     # Create figure
     fig, ax = plt.subplots(figsize=(14, 10))
 
@@ -505,8 +513,16 @@ def plot_heatmap_ranked(
     add_provider_boundaries(ax, pivot_ranked)
 
     # Labels
-    ax.set_xlabel("Comparison Model (Treatment)\n(Ordered by LM Arena Rank: Worst → Best)", fontsize=12, fontweight="bold")
-    ax.set_ylabel("Evaluator Model\n(Ordered by LM Arena Rank: Worst → Best)", fontsize=12, fontweight="bold")
+    ax.set_xlabel(
+        "Comparison Model (Treatment)\n(Ordered by LM Arena Rank: Worst → Best)",
+        fontsize=12,
+        fontweight="bold",
+    )
+    ax.set_ylabel(
+        "Evaluator Model\n(Ordered by LM Arena Rank: Worst → Best)",
+        fontsize=12,
+        fontweight="bold",
+    )
 
     # Build title with optional experiment name
     if experiment_title:
@@ -775,9 +791,11 @@ def main():
             col_order = [m for m in model_order if m in pivot_counts.columns]
             if row_order:
                 pivot_counts = pivot_counts.reindex(index=row_order, columns=col_order)
-        print(f"  ✓ Loaded counts table: {pivot_counts.shape[0]} rows × {pivot_counts.shape[1]} columns\n")
+        print(
+            f"  ✓ Loaded counts table: {pivot_counts.shape[0]} rows × {pivot_counts.shape[1]} columns\n"
+        )
     else:
-        print(f"  ⚠ accuracy_counts.csv not found (error bars will be unavailable)\n")
+        print("  ⚠ accuracy_counts.csv not found (error bars will be unavailable)\n")
 
     # Ensure model order is applied
     if model_order:
@@ -828,7 +846,9 @@ def main():
                     break
         if "_IND" in experiment_code:
             has_diagonal_data = True
-            print("IND experiment detected from name: Using individual-format metrics.\n")
+            print(
+                "IND experiment detected from name: Using individual-format metrics.\n"
+            )
 
     experiment_mapping = get_experiment_name_mapping()
     experiment_title = experiment_mapping.get(experiment_code, experiment_code)
@@ -847,13 +867,20 @@ def main():
             for evaluator in pivot.index:
                 total_n = 0
                 # Add control (diagonal) count
-                if evaluator in pivot_counts.index and evaluator in pivot_counts.columns:
+                if (
+                    evaluator in pivot_counts.index
+                    and evaluator in pivot_counts.columns
+                ):
                     control_n = pivot_counts.loc[evaluator, evaluator]
                     if pd.notna(control_n):
                         total_n += control_n
                 # Add treatment counts (off-diagonal)
                 if evaluator in pivot_counts.index:
-                    treatment_n = pivot_counts.loc[evaluator].sum() - (pivot_counts.loc[evaluator, evaluator] if evaluator in pivot_counts.columns else 0)
+                    treatment_n = pivot_counts.loc[evaluator].sum() - (
+                        pivot_counts.loc[evaluator, evaluator]
+                        if evaluator in pivot_counts.columns
+                        else 0
+                    )
                     total_n += treatment_n
                 total_counts.loc[evaluator] = total_n if total_n > 0 else pd.NA
     else:
@@ -931,21 +958,21 @@ def main():
     print()
 
     # Display preview
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("PREVIEW: Evaluator Performance (Raw Scores)")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
     print(performance_scores.sort_values(ascending=False).round(3))
     print()
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("PREVIEW: Evaluator Deviation from Chance")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
     print(deviation_scores.sort_values(ascending=False).round(3))
     print()
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("ANALYSIS COMPLETE")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"Output directory: {performance_dir}")
     print("  • evaluator_performance.csv: Performance scores (0-1 scale)")
     print("  • evaluator_performance.png: Bar chart (raw values with 0.5 reference)")
@@ -956,7 +983,7 @@ def main():
     print(
         "  • accuracy_heatmap_ranked.png: Heatmap ordered by LM Arena ranking (lowest ranked first)"
     )
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
 
 if __name__ == "__main__":

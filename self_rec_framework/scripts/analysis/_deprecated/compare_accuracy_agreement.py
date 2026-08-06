@@ -794,11 +794,11 @@ def main():
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("ACCURACY vs AGREEMENT COMPARISON")
     if is_cross_dataset:
         print("(Cross-Dataset Comparison)")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"Accuracy Matrix: {exp1_code}")
     print(f"                 {accuracy_path}")
     if is_cross_dataset and accuracy_info:
@@ -808,7 +808,7 @@ def main():
     if is_cross_dataset and agreement_info:
         print(f"                 Dataset: {agreement_info[0]}/{agreement_info[1]}")
     print(f"Output dir:       {output_dir}")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     # Load matrices
     print("Loading matrices...")
@@ -850,15 +850,15 @@ def main():
     print()
 
     # Display preview
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("PREVIEW: Combined Matrix ((Accuracy + Agreement) - 1)")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
     print(combined_matrix.round(3))
     print()
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print("COMPARISON COMPLETE")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"Output directory: {output_dir}")
     print(
         "  • combined_matrix.csv: Combined sum of accuracy and agreement matrices (minus 1)"
@@ -866,7 +866,7 @@ def main():
     print("  • combined_heatmap.png: Visualization")
     print("  • evaluator_performance.png: Evaluator performance bar chart")
     print("  • accuracy_agreement_stats.txt: Comparison statistics")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
 
 if __name__ == "__main__":

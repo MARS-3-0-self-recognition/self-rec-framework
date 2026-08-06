@@ -6,7 +6,7 @@ max_tasks: 1
 # Tutorials regenerate by default (no need to pass --overwrite on the CLI).
 overwrite: true
 
-model_names: ["gemma-3n-e4b"] #["-set", "tutorial"]
+model_names: ['-set', 'tutorial']
 
 treatments:
   caps: [S2]
